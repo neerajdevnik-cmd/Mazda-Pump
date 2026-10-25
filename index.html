@@ -1,62 +1,52 @@
 <!doctype html>
 <html lang="hi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>माज़दा पंप हिसाब</title>
-<link rel="manifest" href="./manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="पंप हिसाब">
-<meta name="theme-color" content="#0b3d91">
-<link rel="apple-touch-icon" href="./icon-180.png">
-<link rel="stylesheet" href="./style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>माज़दा पंप हिसाब</title>
+
+  <!-- PWA & Mobile App Setup -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mazda BPCL">
+  <meta name="theme-color" content="#0b3d91">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="icon" type="image/png" href="./icon-192.png">
+
+  <!-- Style & Libraries -->
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body>
-<div id="app">
-  <div style="padding:50px 20px; text-align:center; font-family:sans-serif;">
-    <h2 style="color:#0b3d91; margin-bottom:12px;">माज़दा ऑयल कंपनी</h2>
-    <p id="loading-text" style="color:#666; font-size:16px;">लोड हो रहा है…</p>
-    <div id="error-box" style="display:none; margin-top:20px; padding:15px; background:#ffebee; color:#c62828; border-radius:8px; font-size:14px; text-align:left;"></div>
+  <div id="app">
+    <div style="padding:50px 20px; text-align:center;">
+      <h2 style="color:#0b3d91; margin-bottom:10px;">माज़दा ऑयल कंपनी</h2>
+      <p id="loading-text" style="color:#666;">लोड हो रहा है…</p>
+      <div id="error-box" style="display:none; color:red; margin-top:10px;"></div>
+    </div>
   </div>
-</div>
-<div id="toast"></div>
 
-<!-- Global Error Logger -->
-<script>
-window.onerror = function(msg, url, lineNo) {
-  var errBox = document.getElementById('error-box');
-  var loadText = document.getElementById('loading-text');
-  if (errBox) {
-    errBox.style.display = 'block';
-    errBox.innerHTML = '<b>त्रुटि (Error):</b> ' + msg + '<br><small>फ़ाइल: ' + (url ? url.split('/').pop() : 'inline') + ' (Line: ' + lineNo + ')</small>';
-  }
-  if (loadText) loadText.style.display = 'none';
-  return false;
-};
-</script>
+  <div id="toast"></div>
 
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- App Core Scripts -->
+  <script src="./config.js"></script>
+  <script src="./calc.js"></script>
+  <script src="./app.js"></script>
+  <script src="./views2.js"></script>
 
-<!-- Libraries -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<!-- Core Application Scripts (Strict Sequence) -->
-<script src="./config.js"></script>
-<script src="./preset_parties.js"></script>
-<script src="./calc.js"></script>
-<script src="./app.js"></script>
-<script src="./views2.js"></script>
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(function() {});
-}
-</script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
