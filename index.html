@@ -14,20 +14,40 @@
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div id="app"><p style="padding:24px">लोड हो रहा है…</p></div>
+<div id="app">
+  <div style="padding:40px 20px; text-align:center; font-family:sans-serif;">
+    <h2 style="color:#0b3d91; margin-bottom:12px;">माज़दा ऑयल कंपनी</h2>
+    <p id="loading-text" style="color:#666; font-size:16px;">लोड हो रहा है…</p>
+    <div id="error-box" style="display:none; margin-top:20px; padding:15px; background:#ffebee; color:#c62828; border-radius:8px; font-size:14px; text-align:left;"></div>
+  </div>
+</div>
 <div id="toast"></div>
+
+<!-- Global Error Logger (Pura Sach Dikhega) -->
+<script>
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  var errBox = document.getElementById('error-box');
+  var loadText = document.getElementById('loading-text');
+  if (errBox) {
+    errBox.style.display = 'block';
+    errBox.innerHTML = '<b>त्रुटि (Error):</b> ' + msg + '<br><small>फ़ाइल: ' + (url ? url.split('/').pop() : 'inline') + ' (Line: ' + lineNo + ')</small>';
+  }
+  if (loadText) loadText.style.display = 'none';
+  return false;
+};
+</script>
 
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-<!-- Libraries -->
+<!-- Helper Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-<!-- App Code Files with relative dot paths -->
+<!-- Application Scripts -->
 <script src="./config.js"></script>
 <script src="./preset_parties.js"></script>
 <script src="./calc.js"></script>
@@ -35,17 +55,21 @@
 <script src="./app.js"></script>
 
 <script>
-  // Safety check for UI load
-  window.addEventListener('error', function(e) {
-    var appDiv = document.getElementById('app');
-    if (appDiv && appDiv.innerText.includes('लोड हो रहा')) {
-      appDiv.innerHTML = '<div style="padding:24px; color:#c00;"><b>लोड करने में त्रुटि:</b><br>' + (e.message || 'फाइल लोड नहीं हो सकी') + '<br><br><small>' + (e.filename || '') + '</small></div>';
+// Force Check: Agar 4 second tak app load na ho toh check karein
+setTimeout(function() {
+  var appDiv = document.getElementById('app');
+  if (document.getElementById('loading-text') && document.getElementById('loading-text').style.display !== 'none') {
+    if (typeof window.renderLogin === 'function') {
+      window.renderLogin();
+    } else if (typeof renderLogin === 'function') {
+      renderLogin();
     }
-  });
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(function() {});
   }
+}, 3000);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(function() {});
+}
 </script>
 </body>
 </html>
