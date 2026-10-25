@@ -4,30 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>माज़दा पंप हिसाब</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="./manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="पंप हिसाब">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#0b3d91">
-<link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <div id="app"><p style="padding:24px">लोड हो रहा है…</p></div>
 <div id="toast"></div>
 
+<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="config.js"></script>
-<script src="preset_parties.js"></script>
-<script src="calc.js"></script>
-<script src="app.js"></script>
-<script src="views2.js"></script>
-<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+
+<!-- App Code Files with relative dot paths -->
+<script src="./config.js"></script>
+<script src="./preset_parties.js"></script>
+<script src="./calc.js"></script>
+<script src="./views2.js"></script>
+<script src="./app.js"></script>
+
+<script>
+  // Safety check for UI load
+  window.addEventListener('error', function(e) {
+    var appDiv = document.getElementById('app');
+    if (appDiv && appDiv.innerText.includes('लोड हो रहा')) {
+      appDiv.innerHTML = '<div style="padding:24px; color:#c00;"><b>लोड करने में त्रुटि:</b><br>' + (e.message || 'फाइल लोड नहीं हो सकी') + '<br><br><small>' + (e.filename || '') + '</small></div>';
+    }
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(function() {});
+  }
+</script>
 </body>
 </html>
