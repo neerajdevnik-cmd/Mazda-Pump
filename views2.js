@@ -173,7 +173,7 @@
     };
   };
 
-     APP.scanRegister = async function (st) {
+       APP.scanRegister = async function (st) {
     let text = '';
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
@@ -216,34 +216,55 @@
 
       let filledCount = 0;
 
-      // 1. RATES & DIPS
+      // 1. RATES, DIPS AUR TESTING
       if (raw.petrol) {
-        if (setBySel(['#f-rateP', '#rateP', '[name="rateP"]', '[name="petrol_rate"]', '#f-rate-petrol', 'input[data-fuel="petrol"][data-type="rate"]'], raw.petrol.rate)) filledCount++;
-        if (setBySel(['#f-dipP', '#dipP', '[name="dipP"]', '[name="petrol_dip"]', '#f-dip-petrol', 'input[data-fuel="petrol"][data-type="dip"]'], raw.petrol.dip)) filledCount++;
+        if (setBySel(['#f-rateP', '#rateP', '[name="rateP"]', '[name="petrol_rate"]', '#f-rate-petrol'], raw.petrol.rate)) filledCount++;
+        if (setBySel(['#f-dipP', '#dipP', '[name="dipP"]', '[name="petrol_dip"]', '#f-dip-petrol'], raw.petrol.dip)) filledCount++;
       }
       if (raw.diesel) {
-        if (setBySel(['#f-rateD', '#rateD', '[name="rateD"]', '[name="diesel_rate"]', '#f-rate-diesel', 'input[data-fuel="diesel"][data-type="rate"]'], raw.diesel.rate)) filledCount++;
-        if (setBySel(['#f-dipD', '#dipD', '[name="dipD"]', '[name="diesel_dip"]', '#f-dip-diesel', 'input[data-fuel="diesel"][data-type="dip"]'], raw.diesel.dip)) filledCount++;
+        if (setBySel(['#f-rateD', '#rateD', '[name="rateD"]', '[name="diesel_rate"]', '#f-rate-diesel'], raw.diesel.rate)) filledCount++;
+        if (setBySel(['#f-dipD', '#dipD', '[name="dipD"]', '[name="diesel_dip"]', '#f-dip-diesel'], raw.diesel.dip)) filledCount++;
+      }
+      if (raw.testing !== undefined) {
+        if (setBySel(['#f-test', '#testing', '[name="test"]', '[name="testing"]'], raw.testing)) filledCount++;
       }
 
-      // 2. NOZZLE READINGS
-      if (Array.isArray(raw.nozzles) && raw.nozzles.length > 0) {
-        const allCloseInputs = document.querySelectorAll('input[name*="close"], input[data-f="close"], input[id*="close"], input[placeholder*="क्लोजिंग"]');
-        const allTestInputs = document.querySelectorAll('input[name*="test"], input[data-f="test"], input[id*="test"], input[placeholder*="टेस्टिंग"]');
+      // 2. NOZZLE CLOSING (P1 se P4 aur D1 se D4 layout match)
+      const nozzleTags = ['P1', 'P2', 'P3', 'P4', 'D1', 'D2', 'D3', 'D4'];
+      
+      // Har row mein doosra input hamesha Closing ka hota hai
+      const allRows = Array.from(document.querySelectorAll('tr, .row, div')).filter(el => {
+        const txt = el.innerText ? el.innerText.trim() : '';
+        return nozzleTags.some(tag => txt.startsWith(tag));
+      });
 
+      // Saare closing inputs dhoondhna
+      const allClosingInputs = Array.from(document.querySelectorAll('input')).filter(inp => {
+        const p = inp.placeholder || '';
+        const n = inp.name || '';
+        const id = inp.id || '';
+        return p.includes('क्लोज़िंग') || p.includes('क्लोजिंग') || n.includes('close') || id.includes('close');
+      });
+
+      if (Array.isArray(raw.nozzles)) {
         raw.nozzles.forEach((noz, idx) => {
-          if (noz.closing && allCloseInputs[idx]) {
-            if (setVal(allCloseInputs[idx], noz.closing)) filledCount++;
-          } else if (noz.closing) {
-            const nNum = noz.nozzle !== undefined ? noz.nozzle : (idx + 1);
-            if (setBySel([`#f-close-${idx}`, `#f-close-${nNum}`, `[name="noz_close_${idx}"]`, `[name="noz_close_${nNum}"]`], noz.closing)) filledCount++;
+          if (!noz || noz.closing === undefined) return;
+          
+          let targetInput = null;
+
+          // A. Agar closing placeholder ya name se direct mil jaye
+          if (allClosingInputs[idx]) {
+            targetInput = allClosingInputs[idx];
+          } 
+          // B. Agar P1-D4 row ke andar ka doosra dabbe se match karein
+          else if (allRows[idx]) {
+            const rowInps = allRows[idx].querySelectorAll('input');
+            if (rowInps.length >= 2) targetInput = rowInps[1]; // 0=Opening, 1=Closing
+            else if (rowInps.length === 1) targetInput = rowInps[0];
           }
 
-          if (noz.testing !== undefined && allTestInputs[idx]) {
-            if (setVal(allTestInputs[idx], noz.testing)) filledCount++;
-          } else if (noz.testing !== undefined) {
-            const nNum = noz.nozzle !== undefined ? noz.nozzle : (idx + 1);
-            if (setBySel([`#f-test-${idx}`, `#f-test-${nNum}`, `[name="noz_test_${idx}"]`, `[name="noz_test_${nNum}"]`], noz.testing)) filledCount++;
+          if (targetInput && setVal(targetInput, noz.closing)) {
+            filledCount++;
           }
         });
       }
@@ -287,6 +308,7 @@
       alert('Code parsing error! Kripya Gemini ka pura code sahi se copy karein.');
     }
   };
+
 
 
       // Universal field helper: chahe id ho, name ho ya data-attr, sabhi mein value bharega
