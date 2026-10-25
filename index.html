@@ -1,62 +1,214 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="hi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>माज़दा पंप हिसाब</title>
-<link rel="manifest" href="./manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="पंप हिसाब">
-<meta name="theme-color" content="#0b3d91">
-<link rel="apple-touch-icon" href="./icon-180.png">
-<link rel="stylesheet" href="./style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>माज़दा ऑयल कंपनी - BPCL</title>
+
+  <!-- PWA Web App & Home Screen Icons -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#003399">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mazda BPCL">
+  <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Bharat_Petroleum_Logo.svg/512px-Bharat_Petroleum_Logo.svg.png">
+  <link rel="icon" type="image/png" href="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Bharat_Petroleum_Logo.svg/512px-Bharat_Petroleum_Logo.svg.png">
+
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <style>
+    :root {
+      --bpcl-blue: #003399;
+      --bpcl-yellow: #ffcc00;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #222222;
+      --mut: #666666;
+      --border: #e2e8f0;
+      --pos: #00875a;
+      --neg: #de350b;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 75px;
+    }
+    header {
+      background: var(--bpcl-blue);
+      color: #fff;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { width: 34px; height: 34px; object-fit: contain; }
+    .brand h1 { font-size: 16px; margin: 0; line-height: 1.2; font-weight: 700; color: #fff; }
+    .brand small { font-size: 11px; color: var(--bpcl-yellow); display: block; font-weight: 500; }
+    
+    main { padding: 12px; max-width: 600px; margin: 0 auto; }
+    .card {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      border: 1px solid var(--border);
+    }
+    .card h3 { margin: 0 0 10px 0; font-size: 15px; color: var(--bpcl-blue); display: flex; align-items: center; gap: 6px; }
+    .kv { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed var(--border); }
+    .kv:last-child { border-bottom: none; }
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
+    .mut { color: var(--mut); }
+    
+    label { font-size: 12px; color: var(--mut); font-weight: 600; display: block; margin: 8px 0 3px 0; }
+    input, select, textarea {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 15px;
+      outline: none;
+      background: #fff;
+      color: #111;
+    }
+    input:focus { border-color: var(--bpcl-blue); ring: 2px rgba(0,51,153,0.2); }
+
+    .btns { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      display: inline-block;
+    }
+    .btn.o { background: var(--bpcl-blue); color: #fff; }
+    .btn.g { background: var(--pos); color: #fff; }
+    .btn.r { background: var(--neg); color: #fff; }
+    .btn.w { background: #e2e8f0; color: #333; }
+    .btn.bpcl { background: var(--bpcl-yellow); color: #003399; font-weight: 700; }
+    .btn.sm { padding: 4px 8px; font-size: 12px; flex: initial; }
+    .btn.full { width: 100%; display: block; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+    th.n, td.n { text-align: right; }
+    
+    .nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 0;
+      z-index: 100;
+    }
+    .nav-btn {
+      background: none;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 11px;
+      color: var(--mut);
+      cursor: pointer;
+      flex: 1;
+    }
+    .nav-btn.act { color: var(--bpcl-blue); font-weight: 700; }
+    .nav-btn span { font-size: 18px; margin-bottom: 2px; }
+
+    /* Modal Sheet */
+    .modal-wrap {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: flex-end;
+      z-index: 200;
+    }
+    .modal-box {
+      background: #fff;
+      width: 100%;
+      border-radius: 16px 16px 0 0;
+      padding: 16px;
+      max-height: 88vh;
+      overflow-y: auto;
+    }
+    #toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      z-index: 300;
+      display: none;
+    }
+  </style>
 </head>
 <body>
-<div id="app">
-  <div style="padding:50px 20px; text-align:center; font-family:sans-serif;">
-    <h2 style="color:#0b3d91; margin-bottom:12px;">माज़दा ऑयल कंपनी</h2>
-    <p id="loading-text" style="color:#666; font-size:16px;">लोड हो रहा है…</p>
-    <div id="error-box" style="display:none; margin-top:20px; padding:15px; background:#ffebee; color:#c62828; border-radius:8px; font-size:14px; text-align:left;"></div>
-  </div>
-</div>
-<div id="toast"></div>
 
-<!-- Global Error Logger -->
-<script>
-window.onerror = function(msg, url, lineNo) {
-  var errBox = document.getElementById('error-box');
-  var loadText = document.getElementById('loading-text');
-  if (errBox) {
-    errBox.style.display = 'block';
-    errBox.innerHTML = '<b>त्रुटि (Error):</b> ' + msg + '<br><small>फ़ाइल: ' + (url ? url.split('/').pop() : 'inline') + ' (Line: ' + lineNo + ')</small>';
-  }
-  if (loadText) loadText.style.display = 'none';
-  return false;
-};
-</script>
+  <header>
+    <div class="brand">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Bharat_Petroleum_Logo.svg/512px-Bharat_Petroleum_Logo.svg.png" alt="BPCL">
+      <div>
+        <h1>माज़दा ऑयल कंपनी</h1>
+        <small>Bharat Petroleum Dealer</small>
+      </div>
+    </div>
+    <div id="h-date" style="font-size:12px;font-weight:600;color:var(--bpcl-yellow)"></div>
+  </header>
 
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <main id="main">
+    <!-- Screen View Render Area -->
+  </main>
 
-<!-- Libraries -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <nav class="nav">
+    <button class="nav-btn act" onclick="APP.nav('day')"><span>📝</span>दैनिक हिसाब</button>
+    <button class="nav-btn" onclick="APP.nav('gaadicash')"><span>🚛</span>गाड़ी कैश</button>
+    <button class="nav-btn" onclick="APP.nav('stock')"><span>🛢️</span>स्टॉक</button>
+    <button class="nav-btn" onclick="APP.nav('priv')"><span>📒</span>निजी उधार</button>
+    <button class="nav-btn" onclick="APP.nav('more')"><span>⚙️</span>सेटिंग्स</button>
+  </nav>
 
-<!-- Core Application Scripts (Strict Sequence) -->
-<script src="./config.js"></script>
-<script src="./preset_parties.js"></script>
-<script src="./calc.js"></script>
-<script src="./app.js"></script>
-<script src="./views2.js"></script>
+  <div id="toast"></div>
 
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(function() {});
-}
-</script>
+  <!-- App Main Core Scripts -->
+  <script src="./app.js"></script>
+  <script src="./views2.js"></script>
+
+  <script>
+    // Service Worker registration for PWA install capability
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
