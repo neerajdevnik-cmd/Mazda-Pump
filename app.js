@@ -406,11 +406,7 @@
       if (o.filled < 8) msg.push(`सिर्फ ${o.filled}/8 नोज़ल भरे हैं`);
       o.warn.forEach(w => msg.push(w));
       if (o.close < 0) msg.push('बचा कैश माइनस है');
-      if (msg.length && !confirm('ये बातें देख लें:
-• ' + msg.join('
-• ') + '
-
-फिर भी जमा करें?')) return;
+      if (msg.length && !confirm(`ये बातें देख लें:\n• ${msg.join('\n• ')}\n\nफिर भी जमा करें?`)) return;
       if (!confirm('जमा करने के बाद आप बदल नहीं पाएंगे। जमा करें?')) return;
     }
     d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, stockCloseP: o.stockCloseP, stockCloseD: o.stockCloseD };
@@ -621,16 +617,14 @@
     const m = modal(`<h3>${p ? 'पार्टी बदलें' : 'नई पार्टी'}</h3>
       <label>नाम</label><input id="p-name" value="${esc(p ? p.name : '')}">
       <label>मोबाइल नंबर (WhatsApp बिल के लिए)</label><input id="p-phone" inputmode="tel" value="${esc(p ? p.phone || '' : '')}">
-      <label>गाड़ियां (हर गाड़ी नई लाइन में या , से)</label><textarea id="p-veh" rows="4">${esc(p ? (p.vehicles || []).join('
-') : '')}</textarea>
+      <label>गाड़ियां (हर गाड़ी नई लाइन में या , से)</label><textarea id="p-veh" rows="4">${esc(p ? (p.vehicles || []).join('\n') : '')}</textarea>
       ${p || priv ? '' : `<label>पुराना बैलेंस (बकाया हो तो +, एडवांस हो तो −)</label><input id="p-open" inputmode="decimal" placeholder="जैसे 9351 या -9351">
       <div class="mut">यह आज के कैश हिसाब में नहीं जुड़ेगा।</div>`}
       <div class="btns"><button class="btn g" id="p-save">सेव</button><button class="btn w" id="p-cancel">रद्द</button></div>`);
     $('#p-cancel', m).onclick = () => m.close();
     $('#p-save', m).onclick = async () => {
       const name = $('#p-name', m).value.trim(); if (!name) return toast('नाम लिखें');
-      const vehicles = $('#p-veh', m).value.split(/[
-,]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+      const vehicles = $('#p-veh', m).value.split(/[\n,]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
       const data = { name, phone: $('#p-phone', m).value.trim(), vehicles };
       const pcol = priv ? 'priv_parties' : 'parties';
       const b = db.batch();
@@ -691,7 +685,6 @@
     // Attendance View vs Grid Ledger View
     let contentBody = '';
     if (viewMode === 'attendance') {
-      // Monthly attendance calendar view
       contentBody = renderAttendanceView(filtered, from, to);
     } else {
       contentBody = renderGridLedgerTable(st, priv);
@@ -714,7 +707,7 @@
       <div class="card" style="padding:8px 12px">
         <small class="mut">गाड़ी के अनुसार फिल्टर करें:</small>
         <div style="margin-top:4px;overflow-x:auto;white-space:nowrap">
-          ${vehList.map(v => `<span class="veh-pill ${selVeh === v ? 'active' : ''}" data-veh="${v}">${v === 'all' ? 'सभी गाड़ियां' : esc(v)}</span>`).join('')}
+          ${vehList.map(v => `<span class="veh-pill ${selVeh === v ? 'active' : ''}" data-veh="${v}">${v === 'all' ? 'सभी गाड़ियां' : esc(v)}</span>`).join('')}
         </div>
       </div>
 
@@ -807,7 +800,6 @@
   }
 
   function renderAttendanceView(rows, from, to) {
-    // Group entries by date and vehicle
     const map = {};
     rows.forEach(r => {
       if (r.kind !== 'udhar') return;
@@ -821,7 +813,7 @@
     return `<div style="padding:4px 0">
       <small class="mut">📅 गाड़ी की हाजिरी (दिन-प्रतिदिन तेल भरवाने का ब्योरा):</small>
       <table class="grid-table" style="margin-top:6px">
-        <tr><th>तारीख</th><th>आई हुई गाड़ियां</th><th class="n">कुल तेल</th><th class="n">कुल रकम</th></tr>
+        <tr><th>तारीख</th><th>आई हुई गाड़ियां</th><th class="n">कुल तेल</th><th class="n">कुल रकम</th></tr>
         ${dates.map(dt => {
           const arr = map[dt];
           const totalL = arr.reduce((a, x) => a + num(x.litre), 0);
