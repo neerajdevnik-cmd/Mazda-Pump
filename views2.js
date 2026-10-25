@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व AI स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व यूनिवर्सल AI स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -92,9 +92,9 @@
         </div>
       </div>
       <div class="card">
-        <h3>AI स्कैनर सेटिंग्स (Gemini API)</h3>
-        <label>Gemini API Key</label>
-        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="API Key यहाँ पेस्ट करें">
+        <h3>AI स्कैनर सेटिंग्स (Gemini API Key)</h3>
+        <label>API Key</label>
+        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="अपनी API Key यहाँ पेस्ट करें">
         <div class="btns" style="margin-top:8px">
           <button class="btn g full" id="save-key">API Key सुरक्षित करें</button>
         </div>
@@ -109,7 +109,7 @@
     $('#save-key').onclick = () => {
       const k = $('#gemini-key').value.trim();
       localStorage.setItem('mazda_gemini_key', k);
-      toast('API Key सेव हो गई ✔');
+      toast('API Key सुरक्षित हो गई ✔');
     };
   };
 
@@ -173,13 +173,17 @@
     };
   };
 
-  /* ======================= BROWSER DIRECT GEMINI SCAN ======================= */
+  /* ======================= UNIVERSAL GEMINI AI SCAN (FLASH / PRO) ======================= */
   APP.scanRegister = function (st) {
     let k = localStorage.getItem('mazda_gemini_key') || '';
     if (!k) {
-      k = prompt('Gemini API Key paste karein:');
-      if (k) localStorage.setItem('mazda_gemini_key', k.trim());
-      else return toast('Key zaroori hai');
+      k = prompt('Gemini API Key दर्ज करें:');
+      if (k && k.trim()) {
+        k = k.trim();
+        localStorage.setItem('mazda_gemini_key', k);
+      } else {
+        return toast('API Key आवश्यक है');
+      }
     }
 
     const inp = document.createElement('input'); 
@@ -188,7 +192,7 @@
     inp.onchange = async () => {
       const file = inp.files[0]; 
       if (!file) return;
-      toast('AI register padh raha hai…');
+      toast('AI रजिस्टर पढ़ रहा है… (कृपया 5-8 सेकंड रुकें)');
 
       try {
         const bmp = await createImageBitmap(file);
@@ -199,19 +203,44 @@
         c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
         const b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        const promptText = `Extract petrol, diesel readings, and cash from this fuel pump register. Output JSON strictly: {"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}`;
+        const promptText = `Extract petrol and diesel meter rates, closing readings, cash, paytm, swipe, and expenses from this fuel pump register. Respond ONLY in valid JSON:
+{"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}`;
 
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${k}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        });
+        const payload = {
+          contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }],
+          generationConfig: { responseMimeType: 'application/json' }
+        };
 
-        const j = await res.json();
-        if (j.error) throw new Error(j.error.message || 'API Fail');
+        // Models to try in sequence: Flash-Latest -> Pro -> Standard Flash
+        const models = [
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent',
+          'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent'
+        ];
+
+        let j = null;
+        let lastErr = '';
+
+        for (let endpoint of models) {
+          try {
+            const res = await fetch(`${endpoint}?key=${k}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok && !data.error) {
+              j = data;
+              break;
+            } else if (data.error) {
+              lastErr = data.error.message;
+            }
+          } catch (netErr) {
+            lastErr = netErr.message;
+          }
+        }
+
+        if (!j) throw new Error(lastErr || 'API से कनेक्शन नहीं हो सका');
 
         const raw = JSON.parse(j.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim());
 
@@ -224,7 +253,7 @@
         if (raw.diesel && raw.diesel.rate && $('#f-rateD')) $('#f-rateD').value = raw.diesel.rate;
         
         if (APP.recalc) APP.recalc();
-        toast('Register data bhar gaya ✔');
+        toast('रजिस्टर डेटा फॉर्म में भर गया ✔');
       } catch (e) {
         alert('Scan Error: ' + e.message);
       }
