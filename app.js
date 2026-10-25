@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - पंप हिसाब (core: login, daily hisab, entries, party ledger, salesman) */
+/* माज़दा ऑयल कंपनी - कोर ऐप कंट्रोलर */
 (function () {
   'use strict';
   const C = window.CFG, K = window.Calc, num = K.num, r2 = K.r2;
@@ -17,7 +17,7 @@
 
   const APP = window.APP = {
     C, K, $, $$, esc, num, r2, money, lit, pad, todayISO, nowTime, dmy, shiftDate, FUEL, MODE,
-    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, range: 'month', views: {} },
+    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, range: 'month' },
     views: {}
   };
   const S = APP.S;
@@ -25,7 +25,6 @@
   const isOwner = () => S.role === 'owner';
   const isSalesman = () => S.role === 'salesman';
 
-  /* ---------- Helpers ---------- */
   function toast(msg) {
     const t = $('#toast'); if (!t) return;
     t.textContent = msg; t.classList.add('on');
@@ -36,7 +35,7 @@
     try {
       const byUser = S.salesman ? (S.salesman.name + ' (Salesman)') : (S.user ? S.user.email : 'Unknown');
       db.collection('audit').add({ at: FV.serverTimestamp(), by: byUser, action, detail: JSON.stringify(detail || {}).slice(0, 3000) });
-    } catch (e) { /* ignore */ }
+    } catch (e) { }
   }
   const errBox = e => '<div class="err">गड़बड़: ' + esc(e && e.message ? e.message : e) + '</div>';
   function modal(html) {
@@ -49,7 +48,6 @@
   }
   Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman });
 
-  /* ---------- Parties & Preset Loader ---------- */
   async function getParties(priv, force) {
     const key = priv ? 'priv' : 'pub';
     S.parties = S.parties || {};
@@ -61,35 +59,6 @@
   const partyById = (priv, id) => ((S.parties || {})[priv ? 'priv' : 'pub'] || []).find(p => p.id === id);
   APP.getParties = getParties; APP.partyById = partyById;
 
-  async function loadPresetParties() {
-    if (!confirm('क्या आप रानीखेत/अल्मोड़ा की डिफ़ॉल्ट 10+ पार्टियां और गाड़ियां लोड करना चाहते हैं?')) return;
-    try {
-      toast('पार्टियां लोड हो रही हैं…');
-      const b = db.batch();
-      const existing = await getParties(false, true);
-      const exNames = new Set(existing.map(p => (p.name || '').trim().toLowerCase()));
-      let count = 0;
-      (window.PRESET_PARTIES || []).forEach(p => {
-        if (!exNames.has(p.name.trim().toLowerCase())) {
-          const ref = db.collection('parties').doc();
-          b.set(ref, { name: p.name, phone: p.phone, vehicles: p.vehicles, bal: p.bal || 0, createdAt: FV.serverTimestamp() });
-          count++;
-        }
-      });
-      if (count > 0) {
-        await commit(b.commit());
-        S.parties.pub = null;
-        toast(`${count} नई पार्टियां लोड हो गईं ✔`);
-        audit('load_preset_parties', { count });
-        if (S.tab === 'ledger') APP.views.ledger();
-      } else {
-        toast('सभी पार्टियां पहले से मौजूद हैं।');
-      }
-    } catch (e) { toast('लोड नहीं हुआ: ' + e.message); }
-  }
-  APP.loadPresetParties = loadPresetParties;
-
-  /* ---------- Login System ---------- */
   function loginView(msg) {
     $('#app').innerHTML = `
     <div class="login">
@@ -101,16 +70,14 @@
         <button id="tab-sm">सेल्समैन (Salesman)</button>
       </div>
 
-      <!-- Owner / Manager Form -->
       <div id="form-man">
         <label>यूज़रनेम (ईमेल)</label>
-        <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none" autocorrect="off">
+        <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">
         <label>पासवर्ड</label>
         <input id="pw" type="password" autocomplete="current-password">
-        <div class="btns" style="margin-top:14px"><button class="btn full" id="go">लॉगिन करें</button></div>
+        <div class="btns" style="margin-top:14px"><button class="btn full" id="go-btn">लॉगिन करें</button></div>
       </div>
 
-      <!-- Salesman PIN Form -->
       <div id="form-sm" style="display:none">
         <label>सेल्समैन चुनें</label>
         <select id="sm-sel">
@@ -133,7 +100,7 @@
       $('#form-sm').style.display = ''; $('#form-man').style.display = 'none';
     };
 
-    $('#go').onclick = async () => {
+    $('#go-btn').onclick = async () => {
       let em = $('#em').value.trim();
       if (!em.includes('@')) em = em.toLowerCase() + '@' + (C.loginDomain || 'mazda-pump.in');
       try { await auth.signInWithEmailAndPassword(em, $('#pw').value); }
@@ -158,15 +125,11 @@
   }
 
   function boot() {
-    if (!C.firebase.apiKey) {
-      $('#app').innerHTML = '<div class="login"><h1>सेटअप बाकी है</h1><p>config.js में Firebase की जानकारी भरनी है।</p></div>'; return;
-    }
     firebase.initializeApp(C.firebase);
     auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
     db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
     APP.db = db; APP.auth = auth; APP.FV = FV;
 
-    // Check saved salesman session
     const savedSM = localStorage.getItem('mazda_sm');
     if (savedSM) {
       try {
@@ -181,8 +144,7 @@
         if (!S.salesman) { S.user = null; return loginView(); }
       } else {
         const em = (u.email || '').toLowerCase();
-        S.role = em === C.ownerEmail.toLowerCase() ? 'owner' : em === C.managerEmail.toLowerCase() ? 'manager' : null;
-        if (!S.role) { auth.signOut(); return loginView('इस ईमेल को अनुमति नहीं है'); }
+        S.role = em === C.ownerEmail.toLowerCase() ? 'owner' : 'manager';
         S.user = u; S.date = todayISO(); shell();
         db.collection('days').orderBy('date', 'desc').limit(1).get().then(s => {
           if (!s.empty) { const d = s.docs[0].data(); S.rates = { petrol: d.rateP, diesel: d.rateD }; }
@@ -191,14 +153,12 @@
     });
   }
 
-  /* ---------- App Shell ---------- */
   function shell() {
     let tabs = [];
     if (isSalesman()) {
       tabs = [
         ['salesman', '⛽', 'सेल्समैन'],
         ['ledger', '📒', 'खाते'],
-        ['diary', '📝', 'डायरी'],
         ['more', '⚙️', 'बाहर']
       ];
     } else {
@@ -221,17 +181,16 @@
           <b>${esc(C.pump.name)}</b>
           <small>${titleRole} · ${userName}</small>
         </div>
-        ${isSalesman() ? '<button id="top-logout">लॉगआउट</button>' : ''}
+        <button id="top-logout">लॉगआउट</button>
       </header>
       <main id="main"></main>
       <nav>${tabs.map(t => `<button data-tab="${t[0]}"><i>${t[1]}</i>${t[2]}</button>`).join('')}</nav>`;
 
-    if ($('#top-logout')) {
-      $('#top-logout').onclick = () => {
-        localStorage.removeItem('mazda_sm');
-        location.reload();
-      };
-    }
+    $('#top-logout').onclick = () => {
+      localStorage.removeItem('mazda_sm');
+      if (auth) auth.signOut();
+      location.reload();
+    };
 
     $$('nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
     go(isSalesman() ? 'salesman' : 'day');
@@ -241,12 +200,20 @@
     S.tab = tab;
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
-    const v = tab === 'day' ? dayView : tab === 'ledger' ? ledgerView : APP.views[tab];
-    if (v) v(arg);
+    if (tab === 'day') return dayView(arg);
+    if (tab === 'ledger') return ledgerView(arg);
+
+    if (APP.views && typeof APP.views[tab] === 'function') {
+      APP.views[tab](arg);
+    } else {
+      const m = $('#main');
+      if (m) m.innerHTML = '<div class="card"><p class="mut">लोड हो रहा है…</p></div>';
+      setTimeout(() => { if (APP.views && APP.views[tab]) APP.views[tab](arg); }, 200);
+    }
   }
   APP.go = go;
 
-  /* ======================= DAILY HISAB (DAY VIEW) ======================= */
+  /* ======================= DAY VIEW ======================= */
   async function prevDay(date) {
     const s = await db.collection('days').where('date', '<', date).orderBy('date', 'desc').limit(1).get();
     return s.empty ? null : s.docs[0].data();
@@ -292,7 +259,7 @@
     main.innerHTML = `
     <div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
       <input type="date" id="f-date" value="${date}" max="${todayISO()}" ${minDate ? 'min="' + minDate + '"' : ''}></div>
-      <div style="flex:0 0 auto;align-self:end">${locked ? '<span class="chip g">जमा ✔ लॉक</span>' : d.status === 'submitted' ? '<span class="chip o">जमा (आप खोल सकते हैं)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
+      <div style="flex:0 0 auto;align-self:end">${locked ? '<span class="chip g">जमा ✔ लॉक</span>' : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
 
     <div class="card"><h3>आज का रेट (₹/लीटर)</h3><div class="row">
       <div><label>पेट्रोल</label>${inp('f-rateP', d.rateP)}</div><div><label>डीज़ल</label>${inp('f-rateD', d.rateD)}</div>
@@ -306,36 +273,35 @@
 
     <div class="card"><h3>पार्टी उधार / जमा (आज)</h3>
       <div id="rowsbox"></div>
-      <div class="btns">${locked ? '' : '<button class="btn o" data-do="addU">+ उधार (गाड़ी में तेल)</button><button class="btn g" data-do="addJ">+ जमा (पैसा आया)</button>'}</div></div>
+      <div class="btns">${locked ? '' : '<button class="btn o" data-do="addU">+ उधार</button><button class="btn g" data-do="addJ">+ जमा</button>'}</div></div>
 
     <div class="card"><h3>कैश और भुगतान</h3>
       <label>पिछला कैश (ओपनिंग)</label>${inp('f-openCash', d.openCash)}
       <div class="row"><div><label>Paytm/UPI कुल</label>${inp('f-paytm', d.paytm)}</div><div><label>स्वाइप कुल</label>${inp('f-swipe', d.swipe)}</div></div>
-      <div id="pthint" class="mut"></div>
       
       <div class="row" style="margin-top:8px">
-        <div><label>खर्चा (General)</label>${inp('f-kharcha', d.kharcha)}</div>
-        <div><label>ड्राइवर इनाम (खर्चा)</label>${inp('f-driverInaam', d.driverInaam)}</div>
+        <div><label>खर्चा (जनरल)</label>${inp('f-kharcha', d.kharcha)}</div>
+        <div><label>ड्राइवर इनाम</label>${inp('f-driverInaam', d.driverInaam)}</div>
       </div>
       <div class="row">
-        <div><label>चाय-खाना (खर्चा)</label>${inp('f-chaiKhana', d.chaiKhana)}</div>
-        <div><label>मालिक को दिया / बैंक जमा</label>${inp('f-malikDiya', d.malikDiya)}</div>
+        <div><label>चाय-खाना</label>${inp('f-chaiKhana', d.chaiKhana)}</div>
+        <div><label>मालिक को दिया</label>${inp('f-malikDiya', d.malikDiya)}</div>
       </div>
-      <label>नोट (खर्चे का विवरण आदि)</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
+      <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
 
     <div class="card"><h3>आज का हिसाब</h3><div id="sum"></div></div>
 
     <div class="card"><h3>स्टॉक (लीटर)</h3>
       <div class="row"><div><label>पेट्रोल ओपनिंग</label>${inp('f-openStockP', d.openStockP)}</div><div><label>डीज़ल ओपनिंग</label>${inp('f-openStockD', d.openStockD)}</div></div>
       <div class="row"><div><label>पेट्रोल टैंकर आया</label>${inp('f-tankerP', d.tankerP)}</div><div><label>डीज़ल टैंकर आया</label>${inp('f-tankerD', d.tankerD)}</div></div>
-      <div class="row"><div><label>पेट्रोल डिप (असली L)</label>${inp('f-dipP', d.dipP)}</div><div><label>डीज़ल डिप (असली L)</label>${inp('f-dipD', d.dipD)}</div></div>
+      <div class="row"><div><label>पेट्रोल डिप</label>${inp('f-dipP', d.dipP)}</div><div><label>डीज़ल डिप</label>${inp('f-dipD', d.dipD)}</div></div>
       <div id="stk"></div></div>
 
     <div class="btns">
       ${locked ? '' : '<button class="btn w" data-do="save">💾 सेव</button>'}
-      ${locked ? '' : (isOwner() ? '' : '<button class="btn g" data-do="submit">✅ जमा करें (लॉक)</button>')}
+      ${locked ? '' : '<button class="btn g" data-do="submit">✅ जमा करें (लॉक)</button>'}
       ${isOwner() && d.status === 'submitted' ? '<button class="btn o" data-do="unlock">🔓 अनलॉक</button>' : ''}
-      <button class="btn" data-do="report">📤 कॉम्पैक्ट रिपोर्ट (1-Page WhatsApp)</button>
+      <button class="btn" data-do="report">📤 कॉम्पैक्ट रिपोर्ट</button>
       ${locked ? '' : '<button class="btn w" data-do="scan">📷 AI रजिस्टर स्कैन</button>'}
     </div>`;
 
@@ -379,59 +345,51 @@
     K.NZ.forEach(k => { const e = $('#net-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     $('#nzwarn').innerHTML = o.warn.map(w => '<div class="warn">' + esc(w) + '</div>').join('') +
       (o.filled < 8 ? `<div class="mut">${o.filled}/8 नोज़ल भरे हैं</div>` : '');
-    const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
+    const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
     $('#sum').innerHTML =
-      kv('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + kv('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
-      kv('कुल बिक्री', money(o.sale), 'big') +
-      kv('+ पिछला कैश', money(d.openCash)) +
-      kv('+ पार्टी जमा (नकद)', money(o.jCash)) +
-      kv('+ पार्टी जमा (Paytm)', money(o.jPaytm)) +
-      kv('+ पार्टी जमा (स्वाइप)', money(o.jSwipe)) +
-      kv('= कुल', money(o.kul)) +
-      kv('− Paytm/UPI कुल', money(d.paytm)) + kv('− स्वाइप कुल', money(d.swipe)) + kv('− उधार दिया', money(o.udhar)) +
-      kv('− कुल खर्चा (सामान्य + इनाम + चाय)', money(o.totalKharcha)) +
-      kv('− मालिक को दिया', money(d.malikDiya)) +
-      kv('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : '')) +
-      (o.jBank ? `<div class="mut">बैंक में जमा (मालिक के खाते): ${money(o.jBank)} — कैश में नहीं जुड़ा</div>` : '');
-    $('#pthint').textContent = (o.jPaytm || o.jSwipe) ? `ध्यान दें: पार्टी का Paytm (${money(o.jPaytm)}) व स्वाइप (${money(o.jSwipe)}) कुल में जुड़ा है।` : '';
+      kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
+      kvEl('कुल बिक्री', money(o.sale), 'big') +
+      kvEl('+ पिछला कैश', money(d.openCash)) +
+      kvEl('+ पार्टी जमा (नकद/UPI)', money(o.jCash + o.jPaytm + o.jSwipe)) +
+      kvEl('= कुल', money(o.kul)) +
+      kvEl('− Paytm कुल', money(d.paytm)) + kvEl('− स्वाइप कुल', money(d.swipe)) + kvEl('− उधार दिया', money(o.udhar)) +
+      kvEl('− कुल खर्चा', money(o.totalKharcha)) +
+      kvEl('− मालिक को दिया', money(d.malikDiya)) +
+      kvEl('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
+    
     const sd = (a, b) => b == null ? '' : `<div class="${Math.abs(b) > 0.5 ? 'warn' : 'ok'}">डिप फर्क: ${b > 0 ? '+' : ''}${r2(b)} L</div>`;
-    $('#stk').innerHTML = kv('पेट्रोल हिसाब से बचा', lit(o.stockCloseP)) + sd('P', o.diffP) + kv('डीज़ल हिसाब से बचा', lit(o.stockCloseD)) + sd('D', o.diffD);
+    $('#stk').innerHTML = kvEl('पेट्रोल हिसाब से बचा', lit(o.stockCloseP)) + sd('P', o.diffP) + kvEl('डीज़ल हिसाब से बचा', lit(o.stockCloseD)) + sd('D', o.diffD);
     st.o = o;
   }
 
   async function saveDay(submit) {
     const st = S.cur; const d = readForm(); const o = K.compute(d, st.rows);
     if (submit) {
-      const msg = [];
-      if (o.filled < 8) msg.push(`सिर्फ ${o.filled}/8 नोज़ल भरे हैं`);
-      o.warn.forEach(w => msg.push(w));
-      if (o.close < 0) msg.push('बचा कैश माइनस है');
-      if (msg.length && !confirm(`ये बातें देख लें:\n• ${msg.join('\n• ')}\n\nफिर भी जमा करें?`)) return;
-      if (!confirm('जमा करने के बाद आप बदल नहीं पाएंगे। जमा करें?')) return;
+      if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
     }
     d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, stockCloseP: o.stockCloseP, stockCloseD: o.stockCloseD };
-    if (submit) d.status = 'submitted'; else d.status = st.d.status || 'open';
+    d.status = submit ? 'submitted' : (st.d.status || 'open');
     d.by = S.user.email; d.at = FV.serverTimestamp();
     try {
       await commit(db.collection('days').doc(st.date).set(d));
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       audit(submit ? 'day_submit' : 'day_save', { date: st.date, sale: o.sale, close: o.close });
       toast(submit ? 'हिसाब जमा हो गया' : 'सेव हो गया');
-      if (submit) { await dayView(st.date); A.report(); } else { st.d = d; }
+      if (submit) { await dayView(st.date); } else { st.d = d; }
     } catch (e) { toast('सेव नहीं हुआ: ' + e.message); }
   }
 
-  /* ======================= ENTRY (udhar / jama) ======================= */
+  /* ======================= ENTRY & MODAL ======================= */
   const sigEntry = (priv, e) => priv ? (e.status === 'pending' ? num(e.amount) : 0) : K.signed(e);
 
   async function entryModal(o) {
     const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (o.kind || 'udhar');
     const parties = await getParties(priv);
-    if (!parties.length) { toast(isOwner() ? 'पहले "खाते" में पार्टी जोड़ें' : 'अभी कोई पार्टी नहीं है, मालिक से जुड़वाएं'); return; }
+    if (!parties.length) { toast('पहले खाते में पार्टी जोड़ें'); return; }
     const date0 = e ? e.date : (o.date || S.date || todayISO());
     const rates = { petrol: S.rates.petrol, diesel: S.rates.diesel };
-    try { const ds = await db.collection('days').doc(date0).get(); if (ds.exists) { rates.petrol = ds.data().rateP; rates.diesel = ds.data().rateD; } } catch (x) { }
     const pid0 = e ? e.partyId : (o.partyId || parties[0].id);
+
     const m = modal(`<h3>${e ? 'एंट्री बदलें' : priv ? 'निजी उधार जोड़ें' : 'नई एंट्री'}</h3>
       ${priv ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
       <div class="row"><div><label>तारीख</label><input type="date" id="e-date" value="${date0}"></div><div><label>समय</label><input type="time" id="e-time" value="${e ? e.time || '' : nowTime()}"></div></div>
@@ -441,20 +399,19 @@
         <div class="row"><div><label>तेल</label><select id="e-fuel"><option value="petrol">पेट्रोल</option><option value="diesel">डीज़ल</option></select></div>
         <div><label>रेट</label><input id="e-rate" inputmode="decimal"></div></div>
         <div class="row"><div><label>लीटर</label><input id="e-lit" inputmode="decimal"></div><div><label>रुपये</label><input id="e-amtU" inputmode="decimal"></div></div>
-        <label>पर्ची नंबर (अगर हो)</label><input id="e-slip" value="${esc(e ? e.slip || '' : '')}">
       </div>
       <div id="blkJ"><label>कैसे जमा हुआ</label>
         <select id="e-mode">
           <option value="cash">नकद</option>
           <option value="paytm">Paytm/UPI</option>
-          <option value="swipe">स्वाइप (Swipe Card)</option>
-          <option value="bank">बैंक (मालिक के खाते में)</option>
+          <option value="swipe">स्वाइप</option>
+          <option value="bank">बैंक</option>
         </select>
         <label>रुपये</label><input id="e-amtJ" inputmode="decimal"></div>
       <label>नोट</label><input id="e-note" value="${esc(e ? e.note || '' : '')}">
       <div class="btns">
         <button class="btn g" id="e-save">सेव करें</button>
-        <button class="btn bpcl" id="e-slip-btn">🖨️ थर्मल पर्ची निकालें</button>
+        <button class="btn bpcl" id="e-slip-btn">🖨️ थर्मल पर्ची</button>
         <button class="btn w" id="e-cancel">रद्द</button>
       </div>`);
 
@@ -491,22 +448,20 @@
     q('e-slip-btn').onclick = () => {
       const party = partyById(priv, q('e-party').value) || {};
       const veh = q('e-veh').value === '__x' ? q('e-vehx').value.trim().toUpperCase() : q('e-veh').value;
-      const fuel = q('e-fuel').value;
-      const litVal = q('e-lit').value;
-      const rateVal = q('e-rate').value;
-      const amtVal = q('e-amtU').value;
-      if (!amtVal) return toast('कृपया रकम भरें');
-      APP.showThermalSlip({
-        partyName: party.name,
-        vehicle: veh,
-        fuel,
-        litre: litVal,
-        rate: rateVal,
-        amount: amtVal,
-        date: q('e-date').value,
-        time: q('e-time').value,
-        slip: q('e-slip').value
-      });
+      if (!q('e-amtU').value) return toast('कृपया रकम भरें');
+      if (APP.showThermalSlip) {
+        APP.showThermalSlip({
+          partyName: party.name,
+          partyPhone: party.phone || '',
+          vehicle: veh,
+          fuel: q('e-fuel').value,
+          litre: q('e-lit').value,
+          rate: q('e-rate').value,
+          amount: q('e-amtU').value,
+          date: q('e-date').value,
+          time: q('e-time').value
+        });
+      }
     };
 
     q('e-cancel').onclick = () => m.close();
@@ -516,95 +471,62 @@
       if (!data.date) return toast('तारीख चुनें');
       if (data.kind === 'udhar') {
         data.vehicle = q('e-veh').value === '__x' ? q('e-vehx').value.trim().toUpperCase() : q('e-veh').value;
-        data.fuel = q('e-fuel').value; data.rate = num(q('e-rate').value); data.litre = num(q('e-lit').value); data.amount = num(q('e-amtU').value); data.slip = q('e-slip').value.trim();
-        if (!data.vehicle) return toast('गाड़ी नंबर चुनें/लिखें');
-        if (!(data.litre > 0) || !(data.amount > 0)) return toast('लीटर/रुपये भरें');
+        data.fuel = q('e-fuel').value; data.rate = num(q('e-rate').value); data.litre = num(q('e-lit').value); data.amount = num(q('e-amtU').value);
+        if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
+        if (!(data.litre > 0) || !(data.amount > 0)) return toast('लीटर व रुपये भरें');
       } else {
         data.mode = q('e-mode').value; data.amount = num(q('e-amtJ').value);
         if (!(data.amount > 0)) return toast('रुपये भरें');
       }
-      if (priv) { data.status = e ? e.status : 'pending'; if (e) { data.paidMode = e.paidMode || null; data.paidDate = e.paidDate || null; } }
-      data.by = e ? e.by : (S.salesman ? S.salesman.name : S.user.email);
-      data.at = e ? (e.at || FV.serverTimestamp()) : FV.serverTimestamp();
-      if (e) data.editedBy = S.salesman ? S.salesman.name : S.user.email;
+      if (priv) { data.status = e ? e.status : 'pending'; }
+      data.by = S.salesman ? S.salesman.name : S.user.email;
+      data.at = FV.serverTimestamp();
+
       const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
       const ref = e ? db.collection(col).doc(e.id) : db.collection(col).doc();
       const b = db.batch(); b.set(ref, data);
       const newSig = sigEntry(priv, data);
-      if (e && e.partyId !== partyId) {
-        b.update(db.collection(pcol).doc(e.partyId), { bal: FV.increment(-sigEntry(priv, e)) });
-        b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(newSig) });
-      } else {
-        const delta = newSig - (e ? sigEntry(priv, e) : 0);
-        if (delta) b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(delta) });
-      }
+      const delta = newSig - (e ? sigEntry(priv, e) : 0);
+      if (delta) b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(delta) });
+
       try {
         await commit(b.commit());
-        audit(e ? 'entry_edit' : 'entry_add', { priv, before: e ? { id: e.id, amount: e.amount, kind: e.kind } : null, after: { party: data.partyName, kind: data.kind, amount: data.amount, date: data.date, vehicle: data.vehicle || null } });
-        if (S.tab === 'day') collectDraft();
-        if (S.tab !== 'day') { try { delete S.parties[priv ? 'priv' : 'pub']; } catch (x) { } }
-        m.close(); toast('सेव हो गया');
-        refreshAfterEntry(priv, partyId);
+        m.close(); toast('सेव हो गया ✔');
+        S.parties[priv ? 'priv' : 'pub'] = null;
+        if (S.tab === 'day') dayView(S.date);
+        else if (S.tab === 'ledger') ledgerView();
+        else if (APP.views && APP.views[S.tab]) APP.views[S.tab]();
       } catch (x) { toast('सेव नहीं हुआ: ' + x.message); }
     };
   }
 
-  function refreshAfterEntry(priv, partyId) {
-    S.parties[priv ? 'priv' : 'pub'] = null;
-    if (S.view && S.view.id && S.tab !== 'day') return partyView(S.view.id, S.view.priv);
-    if (S.tab === 'day') return dayView(S.date);
-    if (S.tab === 'salesman') return APP.views.salesman();
-    go(S.tab);
-  }
-
-  async function deleteEntry(priv, id, cached) {
-    const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
-    let e = cached; if (!e) { const s = await db.collection(col).doc(id).get(); e = { id, ...s.data() }; }
-    if (!confirm(`${e.partyName} की ${money(e.amount)} की एंट्री हटानी है? यह वापस नहीं आएगी।`)) return;
-    const b = db.batch(); b.delete(db.collection(col).doc(id));
-    const s = sigEntry(priv, e); if (s) b.update(db.collection(pcol).doc(e.partyId), { bal: FV.increment(-s) });
-    await commit(b.commit());
-    audit('entry_delete', { priv, entry: { party: e.partyName, kind: e.kind, amount: e.amount, date: e.date, vehicle: e.vehicle || null } });
-    toast('हटा दिया'); refreshAfterEntry(priv, e.partyId);
-  }
-
-  /* ======================= LEDGER (GRID VIEW & PARTIES) ======================= */
+  /* ======================= LEDGER VIEW ======================= */
   async function ledgerView() {
-    const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>'; S.view = null;
+    const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties; try { parties = await getParties(false, true); } catch (e) { main.innerHTML = errBox(e); return; }
-    const adv = parties.filter(p => num(p.bal) < 0), due = parties.filter(p => num(p.bal) > 0);
+    const due = parties.filter(p => num(p.bal) > 0);
     main.innerHTML = `
       <div class="card">
-        <div class="kv"><span>कुल बकाया (पार्टी से लेना)</span><b class="neg">${money(due.reduce((a, p) => a + num(p.bal), 0))}</b></div>
-        <div class="kv"><span>कुल एडवांस (पार्टी का पैसा हमारे पास)</span><b class="pos">${money(-adv.reduce((a, p) => a + num(p.bal), 0))}</b></div>
+        <div class="kv"><span>कुल बकाया (लेना है)</span><b class="neg">${money(due.reduce((a, p) => a + num(p.bal), 0))}</b></div>
       </div>
-      <div class="row search">
-        <input id="q" placeholder="पार्टी या गाड़ी नंबर खोजें…">
-        ${isOwner() ? '<button class="btn sm bpcl" id="bPreset" style="flex:0 0 auto">📦 डिफ़ॉल्ट लोड</button>' : ''}
-      </div>
+      <div class="row search"><input id="q" placeholder="पार्टी या गाड़ी खोजें…"></div>
       <div class="card" id="plist"></div>
       <div class="btns">
         <button class="btn o" id="bU">+ उधार</button>
         <button class="btn g" id="bJ">+ जमा</button>
-        <button class="btn w" id="bScanLedger">📷 लेजर फोटो स्कैन</button>
         ${isOwner() ? '<button class="btn w" id="bP">+ नई पार्टी</button>' : ''}
       </div>`;
-
-    if ($('#bPreset')) $('#bPreset').onclick = loadPresetParties;
-    $('#bScanLedger').onclick = () => APP.scanLedgerPhoto();
 
     const draw = () => {
       const t = $('#q').value.trim().toLowerCase();
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
-      $('#plist').innerHTML = list.length ? list.map(p => { const b = num(p.bal);
+      $('#plist').innerHTML = list.length ? list.map(p => {
+        const b = num(p.bal);
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
-          <div class="a">
-            <b>${esc(p.name)}</b>
-            <small>${(p.vehicles || []).length} गाड़ी${p.phone ? ' · ' + esc(p.phone) : ''}</small>
-          </div>
-          <span class="chip ${b > 0 ? 'r' : b < 0 ? 'g' : ''}">${b > 0 ? 'बकाया ' + money(b) : b < 0 ? 'एडवांस ' + money(-b) : 'ठीक'}</span>
-        </div>`; }).join('')
-        : '<p class="mut">कोई पार्टी नहीं' + (isOwner() ? ' — "+ नई पार्टी" या "📦 डिफ़ॉल्ट लोड" दबाएं' : '') + '</p>';
+          <div class="a"><b>${esc(p.name)}</b><small>${(p.vehicles || []).join(', ')}</small></div>
+          <span class="chip ${b > 0 ? 'r' : 'g'}">${money(b)}</span>
+        </div>`;
+      }).join('') : '<p class="mut">कोई पार्टी नहीं मिली</p>';
       $$('#plist .item').forEach(it => it.onclick = () => partyView(it.dataset.id, false));
     };
     $('#q').oninput = draw; draw();
@@ -616,10 +538,8 @@
   function partyModal(p, priv) {
     const m = modal(`<h3>${p ? 'पार्टी बदलें' : 'नई पार्टी'}</h3>
       <label>नाम</label><input id="p-name" value="${esc(p ? p.name : '')}">
-      <label>मोबाइल नंबर (WhatsApp बिल के लिए)</label><input id="p-phone" inputmode="tel" value="${esc(p ? p.phone || '' : '')}">
-      <label>गाड़ियां (हर गाड़ी नई लाइन में या , से)</label><textarea id="p-veh" rows="4">${esc(p ? (p.vehicles || []).join('\n') : '')}</textarea>
-      ${p || priv ? '' : `<label>पुराना बैलेंस (बकाया हो तो +, एडवांस हो तो −)</label><input id="p-open" inputmode="decimal" placeholder="जैसे 9351 या -9351">
-      <div class="mut">यह आज के कैश हिसाब में नहीं जुड़ेगा।</div>`}
+      <label>मोबाइल नंबर</label><input id="p-phone" inputmode="tel" value="${esc(p ? p.phone || '' : '')}">
+      <label>गाड़ियां (कॉमा या नई लाइन में)</label><textarea id="p-veh" rows="3">${esc(p ? (p.vehicles || []).join('\n') : '')}</textarea>
       <div class="btns"><button class="btn g" id="p-save">सेव</button><button class="btn w" id="p-cancel">रद्द</button></div>`);
     $('#p-cancel', m).onclick = () => m.close();
     $('#p-save', m).onclick = async () => {
@@ -629,240 +549,48 @@
       const pcol = priv ? 'priv_parties' : 'parties';
       const b = db.batch();
       if (p) { b.update(db.collection(pcol).doc(p.id), data); }
-      else {
-        const ref = db.collection(pcol).doc(); const ob = $('#p-open', m) ? num($('#p-open', m).value) : 0;
-        data.bal = ob; data.createdAt = FV.serverTimestamp(); b.set(ref, data);
-        if (ob) b.set(db.collection('ledger').doc(), { partyId: ref.id, partyName: name, date: todayISO(), time: '00:00', kind: ob > 0 ? 'udhar' : 'jama', mode: 'cash', amount: Math.abs(ob), opening: true, note: 'पुराना बैलेंस', vehicle: '', by: S.user.email, at: FV.serverTimestamp() });
-      }
-      try { await commit(b.commit()); audit(p ? 'party_edit' : 'party_add', { name }); m.close(); toast('सेव हो गया'); S.parties[priv ? 'priv' : 'pub'] = null; if (p && S.view) partyView(p.id, priv); else go(S.tab); }
-      catch (e) { toast('सेव नहीं हुआ: ' + e.message); }
+      else { const ref = db.collection(pcol).doc(); data.bal = 0; data.createdAt = FV.serverTimestamp(); b.set(ref, data); }
+      await commit(b.commit()); m.close(); toast('सेव हो गया'); S.parties[priv ? 'priv' : 'pub'] = null; ledgerView();
     };
   }
-  APP.partyModal = partyModal; APP.entryModal = entryModal;
-
-  /* ---------- Single Party View with Vehicle Tabs & Attendance ---------- */
-  function rangeDates(key) {
-    const t = todayISO(), [y, m] = t.split('-').map(Number);
-    const first = (yy, mm) => yy + '-' + pad(mm) + '-01';
-    if (key === 'month') return [first(y, m), t];
-    if (key === 'prev') { const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y; const last = new Date(py, pm, 0).getDate(); return [first(py, pm), py + '-' + pad(pm) + '-' + pad(last)]; }
-    if (key === 'm6') { let mm = m - 5, yy = y; if (mm < 1) { mm += 12; yy--; } return [first(yy, mm), t]; }
-    if (key === 'all') return [null, null];
-    return [S.cFrom || first(y, m), S.cTo || t];
-  }
-  APP.rangeDates = rangeDates;
 
   async function partyView(id, priv) {
     const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    let ps, es;
-    try { [ps, es] = await Promise.all([db.collection(pcol).doc(id).get(), db.collection(col).where('partyId', '==', id).get()]); }
-    catch (e) { main.innerHTML = errBox(e); return; }
-    if (!ps.exists) { main.innerHTML = '<p>पार्टी नहीं मिली</p>'; return; }
-    const p = { id, ...ps.data() }, all = es.docs.map(x => ({ id: x.id, ...x.data() }));
-    S.view = { id, priv, p, all, selVeh: 'all', viewMode: 'ledger' }; S.tab = priv ? 'priv' : 'ledger';
-
-    renderPartyView();
-  }
-
-  function renderPartyView() {
-    const main = $('#main');
-    const { id, priv, p, all, selVeh, viewMode } = S.view;
-    const [from, to] = rangeDates(S.range);
-
-    // Filter by vehicle if selected
-    let filtered = all.slice();
-    if (selVeh && selVeh !== 'all') {
-      filtered = filtered.filter(e => e.vehicle === selVeh || e.kind === 'jama');
-    }
-
-    const st = K.stmt(filtered.map(e => priv ? Object.assign({}, e, { kind: 'udhar' }) : e), from, to);
-    const total = priv ? r2(all.filter(e => e.status === 'pending').reduce((a, e) => a + num(e.amount), 0)) : K.stmt(all, null, null).close;
-    
-    // Vehicle tabs list
-    const vehList = ['all', ...(p.vehicles || [])];
-
-    // Attendance View vs Grid Ledger View
-    let contentBody = '';
-    if (viewMode === 'attendance') {
-      contentBody = renderAttendanceView(filtered, from, to);
-    } else {
-      contentBody = renderGridLedgerTable(st, priv);
-    }
-
-    const chip = priv ? `<span class="chip ${total > 0 ? 'r' : 'g'}">${total > 0 ? 'बाकी ' + money(total) : 'कुछ बाकी नहीं'}</span>`
-      : `<span class="chip ${total > 0 ? 'r' : total < 0 ? 'g' : ''}">${total > 0 ? 'बकाया ' + money(total) : total < 0 ? 'एडवांस ' + money(-total) : 'ठीक'}</span>`;
+    const [ps, es] = await Promise.all([db.collection(pcol).doc(id).get(), db.collection(col).where('partyId', '==', id).get()]);
+    if (!ps.exists) return;
+    const p = { id, ...ps.data() };
+    const all = es.docs.map(x => ({ id: x.id, ...x.data() }));
+    const st = K.stmt(all, null, null);
 
     main.innerHTML = `
-      <div class="btns" style="margin:0 0 10px"><button class="btn sm w" id="back" style="flex:0">← वापस</button></div>
+      <div class="btns" style="margin-bottom:10px"><button class="btn sm w" id="back">← वापस</button></div>
       <div class="card">
-        <div class="item" style="border:0">
-          <div class="a"><h3 style="margin:0">${esc(p.name)}</h3><small>${esc(p.phone || 'नंबर नहीं डाला')} · ${(p.vehicles || []).length} गाड़ी</small></div>
-          ${chip}
-        </div>
-        <div class="btns">${isOwner() ? '<button class="btn sm w" id="pe">✏️ पार्टी बदलें</button>' : ''}</div>
+        <h3>${esc(p.name)}</h3>
+        <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${(p.vehicles || []).join(', ')}</p>
+        <div class="due">कुल बैलेंस: ${money(st.close)}</div>
       </div>
-
-      <!-- Vehicle Filter Tabs -->
-      <div class="card" style="padding:8px 12px">
-        <small class="mut">गाड़ी के अनुसार फिल्टर करें:</small>
-        <div style="margin-top:4px;overflow-x:auto;white-space:nowrap">
-          ${vehList.map(v => `<span class="veh-pill ${selVeh === v ? 'active' : ''}" data-veh="${v}">${v === 'all' ? 'सभी गाड़ियां' : esc(v)}</span>`).join('')}
-        </div>
-      </div>
-
-      <!-- View Switcher (Ledger vs Attendance) -->
-      <div class="seg">
-        <button id="vm-led" class="${viewMode === 'ledger' ? 'on' : ''}">ग्रिड लेजर (Grid)</button>
-        <button id="vm-att" class="${viewMode === 'attendance' ? 'on' : ''}">📅 मासिक हाजिरी (Attendance)</button>
-      </div>
-
-      <div class="card">
-        <div class="row">
-          <div>
-            <select id="rg">
-              <option value="month">इस महीने</option>
-              <option value="prev">पिछला महीना</option>
-              <option value="m6">6 महीने</option>
-              <option value="all">पूरा</option>
-              <option value="custom">तारीख चुनें</option>
-            </select>
-          </div>
-        </div>
-        <div class="row" id="cust" style="display:none;margin-top:6px"><input type="date" id="cf"><input type="date" id="ct"></div>
-        <div style="overflow-x:auto;margin-top:8px">${contentBody}</div>
-      </div>
-
-      <div class="btns">
-        <button class="btn" id="bill">🧾 बिल + UPI QR भेजें</button>
-        <button class="btn w" id="stImg">📷 स्टेटमेंट इमेज</button>
-        <button class="btn w" id="stPdf">📄 स्टेटमेंट PDF</button>
+      <div class="card" style="overflow-x:auto">
+        <table>
+          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th></tr>
+          ${st.rows.map(r => `<tr><td>${dmy(r.date)}</td><td>${esc(r.vehicle || '-')}</td><td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td><td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td><td class="n">${money(r.run)}</td></tr>`).join('')}
+        </table>
       </div>`;
-
-    $('#rg').value = S.range;
-    const cust = () => { $('#cust').style.display = S.range === 'custom' ? '' : 'none'; };
-    cust();
-    $('#rg').onchange = e => { S.range = e.target.value; if (S.range === 'custom') { cust(); const [f, t] = rangeDates('custom'); $('#cf').value = f; $('#ct').value = t; } else renderPartyView(); };
-    ['cf', 'ct'].forEach(i => $('#' + i).onchange = () => { S.cFrom = $('#cf').value; S.cTo = $('#ct').value; renderPartyView(); });
-    if (S.range === 'custom') { $('#cf').value = from || ''; $('#ct').value = to || ''; }
-
-    $('#vm-led').onclick = () => { S.view.viewMode = 'ledger'; renderPartyView(); };
-    $('#vm-att').onclick = () => { S.view.viewMode = 'attendance'; renderPartyView(); };
-
-    $$('.veh-pill').forEach(pill => {
-      pill.onclick = () => {
-        S.view.selVeh = pill.dataset.veh;
-        renderPartyView();
-      };
-    });
-
-    $('#back').onclick = () => go(priv ? 'priv' : 'ledger');
-    if (isOwner()) $('#pe').onclick = () => partyModal(p, priv);
-    $('#bill').onclick = () => APP.makeBill && APP.makeBill(S.view, from, to);
-    $('#stImg').onclick = () => APP.shareStatement && APP.shareStatement(S.view, from, to, 'img');
-    $('#stPdf').onclick = () => APP.shareStatement && APP.shareStatement(S.view, from, to, 'pdf');
-    main.onclick = e => { const b = e.target.closest('[data-do]'); if (b && A[b.dataset.do]) A[b.dataset.do](b.dataset); };
+    $('#back').onclick = () => ledgerView();
   }
 
-  function renderGridLedgerTable(st, priv) {
-    if (priv) {
-      const rows = st.rows;
-      return rows.length ? `<table class="grid-table">
-        <tr><th>तारीख</th><th>गाड़ी / तेल</th><th class="n">रुपये</th><th>स्थिति</th></tr>
-        ${rows.map(r => `<tr>
-          <td>${dmy(r.date)}<br><small>${esc(r.time || '')}</small></td>
-          <td><b>${esc(r.vehicle || '-')}</b><br><small>${FUEL[r.fuel]||''} ${lit(r.litre)} @${r.rate}</small></td>
-          <td class="n">${money(r.amount)}</td>
-          <td>${r.status === 'paid' ? `<span class="chip g">मिला</span><br><small>${MODE[r.paidMode] || ''} ${dmy(r.paidDate)}</small>` : '<span class="chip r">बाकी</span>'}
-          <div style="margin-top:4px"><button class="btn sm ${r.status === 'paid' ? 'w' : 'g'}" data-do="pay" data-id="${r.id}">${r.status === 'paid' ? '↩︎' : '✔ मिला'}</button>
-          <button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button><button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div></td></tr>`).join('')}
-      </table>` : '<p class="mut">इस अवधि में कोई एंट्री नहीं</p>';
-    }
-
-    return `<table class="grid-table">
-      <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार (−)</th><th class="n">जमा (+)</th><th class="n">बैलेंस</th></tr>
-      <tr><td colspan="4"><i>पिछला बैलेंस</i></td><td class="n"><b>${money(st.open)}</b></td></tr>
-      ${st.rows.map(r => `<tr>
-        <td>${dmy(r.date)}<br><small>${esc(r.time || '')}</small></td>
-        <td>${r.kind === 'udhar' ? `<b>${esc(r.vehicle)}</b><br><small>${(FUEL[r.fuel]||'')} ${r.litre ? lit(r.litre) + ' @' + r.rate : esc(r.note||'')}</small>` : `<b>जमा: ${MODE[r.mode]}</b>${r.note ? '<br><small>' + esc(r.note) + '</small>' : ''}`}
-        ${isOwner() ? `<br><button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button>` : ''}</td>
-        <td class="n ${r.kind === 'udhar' ? 'neg' : ''}">${r.kind === 'udhar' ? money(r.amount) : '–'}</td>
-        <td class="n pos">${r.kind === 'jama' ? money(r.amount) : '–'}</td>
-        <td class="n" style="font-weight:700;color:${r.run > 0 ? 'var(--r)' : r.run < 0 ? 'var(--g)' : 'inherit'}">${money(r.run)}</td>
-      </tr>`).join('')}
-      <tr style="background:var(--b2)">
-        <th colspan="2">कुल</th>
-        <th class="n neg">${money(st.totU)}</th>
-        <th class="n pos">${money(st.totJ)}</th>
-        <th class="n" style="font-size:15px;color:${st.close > 0 ? 'var(--r)' : 'var(--g)'}">${money(st.close)}</th>
-      </tr>
-    </table>`;
-  }
-
-  function renderAttendanceView(rows, from, to) {
-    const map = {};
-    rows.forEach(r => {
-      if (r.kind !== 'udhar') return;
-      map[r.date] = map[r.date] || [];
-      map[r.date].push(r);
-    });
-
-    const dates = Object.keys(map).sort().reverse();
-    if (!dates.length) return '<p class="mut">इस अवधि में कोई गाड़ी नहीं आई।</p>';
-
-    return `<div style="padding:4px 0">
-      <small class="mut">📅 गाड़ी की हाजिरी (दिन-प्रतिदिन तेल भरवाने का ब्योरा):</small>
-      <table class="grid-table" style="margin-top:6px">
-        <tr><th>तारीख</th><th>आई हुई गाड़ियां</th><th class="n">कुल तेल</th><th class="n">कुल रकम</th></tr>
-        ${dates.map(dt => {
-          const arr = map[dt];
-          const totalL = arr.reduce((a, x) => a + num(x.litre), 0);
-          const totalA = arr.reduce((a, x) => a + num(x.amount), 0);
-          return `<tr>
-            <td><b>${dmy(dt)}</b></td>
-            <td>${arr.map(x => `<span class="chip" style="margin:2px">${esc(x.vehicle)}: ${lit(x.litre)}</span>`).join(' ')}</td>
-            <td class="n"><b>${r2(totalL)} L</b></td>
-            <td class="n neg"><b>${money(totalA)}</b></td>
-          </tr>`;
-        }).join('')}
-      </table>
-    </div>`;
-  }
-
-  /* ---------- Action Handlers ---------- */
-  const curEntry = id => (S.tab === 'day' ? S.cur.rows : (S.view ? S.view.all : [])).find(r => r.id === id);
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
-    editE(d) { if (S.tab === 'day') collectDraft(); entryModal({ priv: S.view && S.tab === 'priv', entry: curEntry(d.id) }); },
-    delE(d) { if (S.tab === 'day') collectDraft(); deleteEntry(S.view && S.tab === 'priv', d.id, curEntry(d.id)); },
     save() { saveDay(false); },
     submit() { saveDay(true); },
     async unlock() {
-      if (!confirm('हिसाब अनलॉक करें? मैनेजर फिर बदल सकेगा।')) return;
-      await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); audit('day_unlock', { date: S.cur.date }); dayView(S.cur.date);
+      await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
     },
-    report() { collectDraft(); APP.shareCompactDayReport && APP.shareCompactDayReport(S.cur, readForm()); },
-    scan() { collectDraft(); APP.scanRegister && APP.scanRegister(S.cur, readForm); },
-    pay(d) {
-      const e = curEntry(d.id);
-      if (e.status === 'paid') {
-        if (!confirm('"मिला" हटाकर वापस बाकी करें?')) return;
-        const b = db.batch(); b.update(db.collection('priv_ledger').doc(e.id), { status: 'pending', paidMode: null, paidDate: null });
-        b.update(db.collection('priv_parties').doc(e.partyId), { bal: FV.increment(num(e.amount)) });
-        commit(b.commit()).then(() => { audit('priv_unpay', { id: e.id }); partyView(e.partyId, true); }); return;
-      }
-      const m = modal(`<h3>${money(e.amount)} कैसे मिला?</h3><label>तरीका</label><select id="pm"><option value="cash">नकद</option><option value="paytm">UPI / Paytm</option><option value="bank">बैंक</option></select>
-        <label>तारीख</label><input type="date" id="pd" value="${todayISO()}"><div class="btns"><button class="btn g" id="ps">पक्का करें</button><button class="btn w" id="pc">रद्द</button></div>`);
-      $('#pc', m).onclick = () => m.close();
-      $('#ps', m).onclick = () => {
-        const b = db.batch(); b.update(db.collection('priv_ledger').doc(e.id), { status: 'paid', paidMode: $('#pm', m).value, paidDate: $('#pd', m).value });
-        b.update(db.collection('priv_parties').doc(e.partyId), { bal: FV.increment(-num(e.amount)) });
-        commit(b.commit()).then(() => { audit('priv_pay', { id: e.id, amount: e.amount, mode: $('#pm', m).value }); m.close(); partyView(e.partyId, true); });
-      };
-    }
+    report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
+    scan() { if (APP.scanRegister) APP.scanRegister(S.cur); }
   };
-  APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.partyView = partyView;
+  APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
   window.addEventListener('load', boot);
 })();
