@@ -173,8 +173,7 @@
     };
   };
 
-  /* ======================= MULTI-DATE SMART PASTE SCANNER ======================= */
-  APP.scanRegister = async function (st) {
+   APP.scanRegister = async function (st) {
     let text = '';
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
@@ -201,35 +200,62 @@
         }
       }
 
+      // Universal field helper: chahe id ho, name ho ya data-attr, sabhi mein value bharega
+      const setVal = (selectors, val) => {
+        if (val === undefined || val === null || val === '') return false;
+        for (const s of selectors) {
+          const el = document.querySelector(s);
+          if (el) {
+            el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+        return false;
+      };
+
       let filledCount = 0;
 
-      // 1. DIPS AUR RATES (Petrol & Diesel)
+      // 1. RATES & DIPS (Petrol & Diesel)
       if (raw.petrol) {
-        if (raw.petrol.rate && $('#f-rateP')) { $('#f-rateP').value = raw.petrol.rate; filledCount++; }
-        if (raw.petrol.dip && $('#f-dipP')) { $('#f-dipP').value = raw.petrol.dip; filledCount++; }
+        if (setVal(['#f-rateP', '#rateP', '[name="rateP"]', '[name="petrol_rate"]', '#f-rate-petrol'], raw.petrol.rate)) filledCount++;
+        if (setVal(['#f-dipP', '#dipP', '[name="dipP"]', '[name="petrol_dip"]', '#f-dip-petrol'], raw.petrol.dip)) filledCount++;
       }
       if (raw.diesel) {
-        if (raw.diesel.rate && $('#f-rateD')) { $('#f-rateD').value = raw.diesel.rate; filledCount++; }
-        if (raw.diesel.dip && $('#f-dipD')) { $('#f-dipD').value = raw.diesel.dip; filledCount++; }
+        if (setVal(['#f-rateD', '#rateD', '[name="rateD"]', '[name="diesel_rate"]', '#f-rate-diesel'], raw.diesel.rate)) filledCount++;
+        if (setVal(['#f-dipD', '#dipD', '[name="dipD"]', '[name="diesel_dip"]', '#f-dip-diesel'], raw.diesel.dip)) filledCount++;
       }
 
-      // 2. NOZZLE METER READINGS (Closing / Testing)
+      // 2. NOZZLE READINGS (Closing & Testing)
       if (Array.isArray(raw.nozzles)) {
         raw.nozzles.forEach((noz, idx) => {
-          const closeInp = $(`#f-close-${idx}`) || $(`[name="noz_close_${idx}"]`);
-          const testInp = $(`#f-test-${idx}`) || $(`[name="noz_test_${idx}"]`);
-          if (closeInp && noz.closing) { closeInp.value = noz.closing; filledCount++; }
-          if (testInp && noz.testing !== undefined) { testInp.value = noz.testing; filledCount++; }
+          const nNum = noz.nozzle !== undefined ? noz.nozzle : (idx + 1);
+          const closeSelectors = [
+            `#f-close-${idx}`, `#f-close-${nNum}`,
+            `[name="noz_close_${idx}"]`, `[name="noz_close_${nNum}"]`,
+            `[data-noz-close="${idx}"]`, `[data-noz-close="${nNum}"]`,
+            `input[name*="close"][name*="${nNum}"]`
+          ];
+          const testSelectors = [
+            `#f-test-${idx}`, `#f-test-${nNum}`,
+            `[name="noz_test_${idx}"]`, `[name="noz_test_${nNum}"]`,
+            `[data-noz-test="${idx}"]`, `[data-noz-test="${nNum}"]`,
+            `input[name*="test"][name*="${nNum}"]`
+          ];
+
+          if (setVal(closeSelectors, noz.closing)) filledCount++;
+          if (noz.testing !== undefined && setVal(testSelectors, noz.testing)) filledCount++;
         });
       }
 
       // 3. CASH, PAYTM, SWIPE, KHARCHA & BANK
       if (raw.cash) {
-        if (raw.cash.paytm !== undefined && $('#f-paytm')) { $('#f-paytm').value = raw.cash.paytm; filledCount++; }
-        if (raw.cash.swipe !== undefined && $('#f-swipe')) { $('#f-swipe').value = raw.cash.swipe; filledCount++; }
-        if (raw.cash.kharcha !== undefined && $('#f-kharcha')) { $('#f-kharcha').value = raw.cash.kharcha; filledCount++; }
-        if (raw.cash.bank !== undefined && $('#f-bank')) { $('#f-bank').value = raw.cash.bank; filledCount++; }
-        if (raw.cash.cash2000 !== undefined && $('#f-cash')) { $('#f-cash').value = raw.cash.cash2000; filledCount++; }
+        if (setVal(['#f-paytm', '#paytm', '[name="paytm"]', '#upi', '[name="upi"]'], raw.cash.paytm)) filledCount++;
+        if (setVal(['#f-swipe', '#swipe', '[name="swipe"]', '#card', '[name="card"]'], raw.cash.swipe)) filledCount++;
+        if (setVal(['#f-kharcha', '#kharcha', '[name="kharcha"]', '#expense', '[name="expense"]'], raw.cash.kharcha)) filledCount++;
+        if (setVal(['#f-bank', '#bank', '[name="bank"]'], raw.cash.bank)) filledCount++;
+        if (setVal(['#f-cash', '#cash', '[name="cash"]', '[name="cash2000"]'], raw.cash.cash2000 || raw.cash.cash)) filledCount++;
       }
 
       // 4. UDHAR / LEDGER PARTIES
@@ -254,12 +280,21 @@
         toast(`${raw.ledger.length} पार्टी उधार (${targetDate}) में दर्ज हुए`);
       }
 
+      // Auto Recalculate
       if (APP.recalc) APP.recalc();
-      toast(`तारीख ${targetDate} का हिसाब ऑटो-अपडेट हो गया (${filledCount} एंट्रीज) ✔`);
+      if (APP.calc) APP.calc();
+
+      if (filledCount > 0) {
+        toast(`तारीख ${targetDate} का हिसाब ऑटो-अपडेट हो गया (${filledCount} बॉक्स भरे) ✔`);
+      } else {
+        alert('Data read hua par screen ke kisi box se match nahi hua. Day Form khula hona zaroori hai.');
+      }
+
     } catch (e) {
-      alert('Data match nahi hua! Kripya Gemini ka pura code sahi se copy karein.');
+      alert('Code parsing error! Kripya Gemini ka pura code sahi se copy karein.');
     }
   };
+
 
   APP.shareCompactDayReport = async function (st, d) {
     toast('कॉम्पैक्ट रिपोर्ट तैयार हो रही है…');
