@@ -62,8 +62,9 @@
   function loginView(msg) {
     $('#app').innerHTML = `
     <div class="login">
-      <h1>${esc(C.pump.name)}</h1>
-      <p class="mut">${esc(C.pump.address)}</p>
+      <img src="./logo.png" alt="" style="display:block;width:120px;height:120px;margin:0 auto 12px;border-radius:50%">
+      <h1 style="text-align:center">${esc(C.pump.name)}</h1>
+      <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
       
       <div class="seg" style="margin:16px 0">
         <button id="tab-man" class="on">मालिक / मैनेजर</button>
@@ -177,9 +178,12 @@
 
     $('#app').innerHTML = `
       <header>
-        <div>
-          <b>${esc(C.pump.name)}</b>
-          <small>${titleRole} · ${userName}</small>
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="./logo.png" alt="" style="width:38px;height:38px;border-radius:50%;background:#fff;flex:none">
+          <div>
+            <b>${esc(C.pump.name)}</b>
+            <small>${titleRole} · ${userName}</small>
+          </div>
         </div>
         <button id="top-logout">लॉगआउट</button>
       </header>
