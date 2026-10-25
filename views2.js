@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व फाइनल AI रजिस्टर स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व फाइनल AI स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -93,8 +93,8 @@
       </div>
       <div class="card">
         <h3>AI स्कैनर सेटिंग्स (Gemini API Key)</h3>
-        <label>Gemini API Key</label>
-        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="API Key यहाँ पेस्ट करें">
+        <label>API Key</label>
+        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="अपनी API Key यहाँ पेस्ट करें">
         <div class="btns" style="margin-top:8px">
           <button class="btn g full" id="save-key">API Key सुरक्षित करें</button>
         </div>
@@ -109,7 +109,7 @@
     $('#save-key').onclick = () => {
       const k = $('#gemini-key').value.trim();
       localStorage.setItem('mazda_gemini_key', k);
-      toast('API Key सेव हो गई ✔');
+      toast('API Key सुरक्षित हो गई ✔');
     };
   };
 
@@ -173,7 +173,7 @@
     };
   };
 
-  /* ======================= 100% BULLETPROOF AI SCAN ======================= */
+  /* ======================= OFFICIAL HEADER SCANNER ======================= */
   APP.scanRegister = function (st) {
     let k = localStorage.getItem('mazda_gemini_key') || '';
     if (!k) {
@@ -196,14 +196,14 @@
 
       try {
         const bmp = await createImageBitmap(file);
-        const sc = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+        const sc = Math.min(1, 1000 / Math.max(bmp.width, bmp.height));
         const c = document.createElement('canvas'); 
         c.width = Math.round(bmp.width * sc); 
         c.height = Math.round(bmp.height * sc);
         c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
         const b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        const promptText = 'Extract petrol and diesel meter rates, closing readings, cash, paytm, swipe, and expenses from this register photo. Return JSON strictly: {"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}';
+        const promptText = 'Extract petrol, diesel readings, and expenses from this register photo. Output valid JSON only: {"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}';
 
         const payload = {
           contents: [{
@@ -215,9 +215,9 @@
         };
 
         const endpoints = [
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
         ];
 
         let resData = null;
@@ -225,9 +225,12 @@
 
         for (const ep of endpoints) {
           try {
-            const resp = await fetch(`${ep}?key=${k.trim()}`, {
+            const resp = await fetch(ep, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': k.trim()
+              },
               body: JSON.stringify(payload)
             });
             const d = await resp.json();
@@ -243,7 +246,7 @@
         }
 
         if (!resData) {
-          throw new Error(lastErrorMsg || 'AI server se connect nahi ho saka');
+          throw new Error(lastErrorMsg || 'API call fail ho gayi');
         }
 
         const candidateText = resData.candidates[0].content.parts[0].text;
