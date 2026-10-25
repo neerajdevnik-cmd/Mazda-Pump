@@ -1,0 +1,82 @@
+:root{--b:#0b3d91;--b2:#e8eefb;--g:#0a7d33;--r:#c62828;--o:#b26a00;--t:#1b1f27;--m:#6b7280;--l:#e5e7eb;--bg:#f4f6fa;--bpcl-yellow:#fdb813}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,"Noto Sans Devanagari","Devanagari Sangam MN",system-ui,sans-serif;background:var(--bg);color:var(--t);font-size:16px}
+header{position:sticky;top:0;z-index:5;background:var(--b);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;justify-content:space-between;align-items:center}
+header b{display:block;font-size:17px}header small{opacity:.85}
+header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:14px}
+main{padding:12px 12px 90px;max-width:780px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--l);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;border:0;background:none;padding:9px 2px 8px;font-size:12px;color:var(--m)}
+nav button i{display:block;font-style:normal;font-size:20px}
+nav button.on{color:var(--b);font-weight:700}
+.card{background:#fff;border-radius:12px;padding:12px;margin:0 0 12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.card h3{margin:0 0 8px;font-size:16px;color:var(--b);display:flex;justify-content:space-between;align-items:center}
+label{display:block;font-size:13px;color:var(--m);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:11px 10px;border:1px solid #cfd5df;border-radius:9px;font-size:16px;background:#fff;font-family:inherit}
+input:disabled,select:disabled{background:#f1f3f6;color:#555}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
+.btn{display:inline-block;border:0;border-radius:10px;padding:11px 14px;font-size:15px;background:var(--b);color:#fff;font-weight:600;font-family:inherit;cursor:pointer}
+.btn.g{background:var(--g)}.btn.r{background:var(--r)}.btn.o{background:var(--o)}.btn.w{background:#fff;color:var(--b);border:1px solid var(--b)}
+.btn.bpcl{background:#003399;border:1px solid var(--bpcl-yellow);color:#fff}
+.btn.sm{padding:6px 9px;font-size:13px;border-radius:7px}
+.btn.full{width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btns .btn{flex:1;min-width:120px;text-align:center}
+.nz{display:grid;grid-template-columns:38px 1fr 1fr 62px;gap:6px;align-items:center;margin-bottom:6px}
+.nz.h{font-size:12px;color:var(--m)}
+.nz input{padding:9px 6px;font-size:15px}
+.nz span{font-size:14px;text-align:right;font-weight:600}
+.kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--l)}
+.kv:last-child{border:0}.kv b{font-variant-numeric:tabular-nums}
+.big{font-size:20px;color:var(--g)}
+.neg{color:var(--r)}.pos{color:var(--g)}.mut{color:var(--m);font-size:13px}
+.warn{background:#fff4e5;color:#8a4b00;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:14px}
+.err{background:#fdecea;color:#8a1c1c;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:14px}
+.ok{background:#e7f6ec;color:#0a5a25;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:14px}
+.chip{display:inline-block;padding:3px 9px;border-radius:99px;font-size:13px;font-weight:600;background:var(--b2);color:var(--b)}
+.chip.r{background:#fdecea;color:var(--r)}.chip.g{background:#e7f6ec;color:var(--g)}.chip.o{background:#fff4e5;color:var(--o)}
+.item{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--l);gap:8px}
+.item:last-child{border:0}.item .a{flex:1;min-width:0}.item .a small{display:block;color:var(--m)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--l);text-align:left;vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:14px 14px calc(20px + env(safe-area-inset-bottom))}
+.sheet h3{margin:0 0 6px}
+.seg{display:flex;border:1px solid var(--b);border-radius:9px;overflow:hidden;margin:6px 0}
+.seg button{flex:1;border:0;background:#fff;color:var(--b);padding:10px;font-size:14px;font-family:inherit;cursor:pointer}
+.seg button.on{background:var(--b);color:#fff;font-weight:600}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;opacity:0;transition:.25s;z-index:50;pointer-events:none;max-width:90%;text-align:center}
+#toast.on{opacity:1}
+.login{max-width:380px;margin:8vh auto;padding:0 18px}
+.login h1{font-size:22px;color:var(--b);margin:0}
+.search{margin-bottom:10px}
+
+/* Salesman Dashboard & Grid Ledger */
+.quick-btns{display:flex;gap:6px;margin:8px 0}
+.quick-btns .btn{padding:8px 10px;font-size:14px}
+.grid-table{width:100%;border:1px solid var(--l);margin-top:8px}
+.grid-table th{background:var(--b2);color:var(--b);font-weight:600;padding:8px}
+.grid-table td{padding:8px;border:1px solid var(--l)}
+.veh-pill{display:inline-block;padding:2px 7px;background:#e9ecef;border-radius:6px;font-size:12px;margin:2px;font-weight:600}
+.veh-pill.active{background:var(--b);color:#fff}
+
+/* Thermal BPCL Slip Styling */
+.thermal-slip{width:300px;margin:0 auto;padding:16px;background:#fff;font-family:'Courier New',Courier,monospace;font-size:13px;color:#000;border:1px dashed #999;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.thermal-slip.vintage{background:#fdf6e2;color:#332b1d}
+.thermal-slip.blue{background:#eef4fb;color:#05254e}
+.slip-center{text-align:center}
+.slip-line{border-top:1px dashed #000;margin:6px 0}
+
+/* One-Page Report Side-by-Side Grid */
+.report-nz-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.report-nz-box{background:#f8f9fc;border:1px solid #dde2ec;border-radius:8px;padding:8px}
+.report-nz-box h4{margin:0 0 4px;font-size:13px;color:var(--b)}
+
+/* Offscreen Canvas Container */
+.off{position:fixed;left:-9999px;top:0;width:720px;background:#fff;color:#111;padding:26px;font-size:15px;line-height:1.45}
+.off h1{margin:0;font-size:24px;color:#0b3d91}
+.off .hd{border-bottom:3px solid #0b3d91;padding-bottom:8px;margin-bottom:10px}
+.off table{font-size:13px}.off th{background:#e8eefb}
+.off .tot{font-size:18px;font-weight:700}
+.off .due{background:#fff4e5;border:2px solid #b26a00;border-radius:8px;padding:10px;font-size:18px;font-weight:700;text-align:center;margin:10px 0}
+.off .qr{text-align:center;margin:10px 0}
