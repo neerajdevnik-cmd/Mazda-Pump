@@ -173,129 +173,235 @@
     };
   };
 
-  /* ======================= 100% BULLETPROOF AI SCANNER ======================= */
+  /* ======================= AI REGISTER SCANNER (v2) =======================
+     Photo -> Gemini/Claude -> JSON -> yahan paste.
+     Pehle PREVIEW dikhata hai, tabhi kuch bharta hai. Kuch chhoot jaye to batata hai.
+     Naya format (nz / udhar / jama) aur purana format (nozzles / cash / ledger) dono chalte hain. */
   APP.scanRegister = async function (st) {
-    let text = '';
-    try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        text = await navigator.clipboard.readText();
-      }
-    } catch (e) {}
+    const esc = APP.esc;
+    const NZ = K.NZ;
+    const clean = s => String(s == null ? '' : s).replace(/[\u200b-\u200d\ufeff]/g, '').trim();
+    const nrm = s => clean(s).toLowerCase().replace(/[\s.\-_(),]+/g, '');
+    const nrmVeh = s => clean(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const numOrNull = v => {
+      if (v === undefined || v === null) return null;
+      const t = String(v).replace(/[,₹\s]/g, '');
+      if (t === '') return null;
+      const n = Number(t);
+      return isNaN(n) ? null : n;
+    };
 
-    if (!text || !text.includes('{')) {
-      text = prompt('Gemini se copy kiya hua code yahan paste karein:');
-    }
+    /* ---------- 1. paste box (textarea) ---------- */
+    const text = await new Promise(resolve => {
+      const m = modal(`
+        <h3>📷 AI कोड पेस्ट करें</h3>
+        <p class="mut" style="margin:4px 0 8px">Gemini / Claude का दिया JSON यहाँ पेस्ट करें</p>
+        <textarea id="scan-ta" rows="9" style="width:100%;font-size:13px" placeholder='{ "date": "..." }'></textarea>
+        <div class="btns" style="margin-top:10px">
+          <button class="btn w" id="scan-clip">📋 क्लिपबोर्ड से लें</button>
+          <button class="btn g" id="scan-ok">आगे बढ़ें</button>
+          <button class="btn w" id="scan-no">रद्द</button>
+        </div>`);
+      const ta = $('#scan-ta', m);
+      $('#scan-clip', m).onclick = async () => {
+        try { ta.value = await navigator.clipboard.readText(); }
+        catch (e) { toast('क्लिपबोर्ड नहीं मिला — बॉक्स में दबाकर पेस्ट करें'); }
+      };
+      $('#scan-ok', m).onclick = () => { const v = ta.value; m.close(); resolve(v); };
+      $('#scan-no', m).onclick = () => { m.close(); resolve(null); };
+    });
     if (!text || !text.trim()) return;
 
+    /* ---------- 2. parse ---------- */
+    let raw;
     try {
-      const cleanJson = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const raw = JSON.parse(cleanJson);
-
-      let targetDate = raw.date || (st && st.date ? st.date : ($('#f-date') ? $('#f-date').value : APP.todayISO()));
-
-      if (raw.date && st && st.date && raw.date !== st.date) {
-        const confirmSwitch = confirm(`Yeh code ${raw.date} tareekh ka hai. Kya aap is din ka hisaab update karna chahte hain?`);
-        if (!confirmSwitch) return;
-        if (APP.loadDay) await APP.loadDay(raw.date);
-      }
-
-      // Input value setter with event triggers for live calculations
-      const setVal = (el, val) => {
-        if (!el || val === undefined || val === null || val === '') return false;
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      };
-
-      const setBySel = (selectors, val) => {
-        for (const s of selectors) {
-          const el = document.querySelector(s);
-          if (el && setVal(el, val)) return true;
-        }
-        return false;
-      };
-
-      let filledCount = 0;
-
-      // 1. RATES, DIPS & TESTING
-      if (raw.petrol) {
-        if (setBySel(['#f-rateP', '#rateP', '[name="rateP"]', '[name="petrol_rate"]', '#f-rate-petrol'], raw.petrol.rate)) filledCount++;
-        if (setBySel(['#f-dipP', '#dipP', '[name="dipP"]', '[name="petrol_dip"]', '#f-dip-petrol'], raw.petrol.dip)) filledCount++;
-      }
-      if (raw.diesel) {
-        if (setBySel(['#f-rateD', '#rateD', '[name="rateD"]', '[name="diesel_rate"]', '#f-rate-diesel'], raw.diesel.rate)) filledCount++;
-        if (setBySel(['#f-dipD', '#dipD', '[name="dipD"]', '[name="diesel_dip"]', '#f-dip-diesel'], raw.diesel.dip)) filledCount++;
-      }
-      if (raw.testing !== undefined) {
-        if (setBySel(['#f-test', '#testing', '[name="test"]', '[name="testing"]', '#f-testing'], raw.testing)) filledCount++;
-      }
-
-      // 2. NOZZLE CLOSING (P1-P4 & D1-D4 Grid Matching)
-      if (Array.isArray(raw.nozzles) && raw.nozzles.length > 0) {
-        // Meter reading section ke saare inputs dhundhna
-        const meterSection = document.querySelector('#sec-meter') || document.querySelector('.card:has(table)') || document.body;
-        
-        // Saare input fields jo table ya meter card ke andar hain
-        const allMeterInputs = Array.from(meterSection.querySelectorAll('input:not([id*="rate"]):not([id*="paytm"]):not([id*="swipe"]):not([id*="cash"])'));
-
-        // Closing boxes filter karna
-        const closingInputs = allMeterInputs.filter((inp, i) => {
-          const p = (inp.placeholder || '').toLowerCase();
-          const n = (inp.name || '').toLowerCase();
-          const id = (inp.id || '').toLowerCase();
-          if (p.includes('क्लोज़िंग') || p.includes('क्लोजिंग') || n.includes('close') || id.includes('close')) return true;
-          // Grid pattern mein har pair ka doosra input closing hota hai
-          return i % 2 === 1;
-        });
-
-        raw.nozzles.forEach((noz, idx) => {
-          if (!noz || noz.closing === undefined) return;
-          if (closingInputs[idx]) {
-            if (setVal(closingInputs[idx], noz.closing)) filledCount++;
-          }
-        });
-      }
-
-      // 3. CASH, PAYTM, SWIPE, KHARCHA & BANK
-      if (raw.cash) {
-        if (setBySel(['#f-paytm', '#paytm', '[name="paytm"]', '#upi', '[name="upi"]'], raw.cash.paytm)) filledCount++;
-        if (setBySel(['#f-swipe', '#swipe', '[name="swipe"]', '#card', '[name="card"]'], raw.cash.swipe)) filledCount++;
-        if (setBySel(['#f-kharcha', '#kharcha', '[name="kharcha"]', '#expense', '[name="expense"]'], raw.cash.kharcha)) filledCount++;
-        if (setBySel(['#f-bank', '#bank', '[name="bank"]'], raw.cash.bank)) filledCount++;
-        if (setBySel(['#f-cash', '#cash', '[name="cash"]', '[name="cash2000"]'], raw.cash.cash2000 || raw.cash.cash)) filledCount++;
-      }
-
-      // 4. UDHAR / LEDGER PARTIES
-      if (Array.isArray(raw.ledger) && raw.ledger.length > 0) {
-        for (const item of raw.ledger) {
-          if (item.party && item.amount > 0 && db()) {
-            try {
-              await db().collection('entries').add({
-                partyName: item.party.trim(),
-                vehicle: (item.vehicle || '').toUpperCase().trim(),
-                amount: num(item.amount),
-                fuel: item.fuel || 'diesel',
-                date: targetDate,
-                time: APP.nowTime(),
-                type: 'credit',
-                createdAt: APP.FV.serverTimestamp()
-              });
-              filledCount++;
-            } catch (err) {}
-          }
-        }
-        toast(`${raw.ledger.length} पार्टी उधार दर्ज हुए`);
-      }
-
-      // Live Recalculate
-      if (APP.recalc) APP.recalc();
-      if (APP.calc) APP.calc();
-
-      toast(`तारीख ${targetDate} का हिसाब ऑटो-अपडेट हो गया (${filledCount} बॉक्स भरे) ✔`);
+      let t = text.replace(/```json/gi, '').replace(/```/g, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}');
+      if (a < 0 || b < a) throw new Error('{ } नहीं मिला');
+      t = t.slice(a, b + 1)
+        .replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'")
+        .replace(/,\s*([}\]])/g, '$1');            // extra comma hatao
+      raw = JSON.parse(t);
     } catch (e) {
-      alert('Code parsing error! Kripya Gemini ka pura code sahi se copy karein.');
+      alert('कोड पढ़ नहीं पाया (' + e.message + ').\nGemini/Claude का पूरा JSON, पहले { से आख़िरी } तक, कॉपी करें।');
+      return;
     }
+
+    /* ---------- 3. normalise (naya + purana format) ---------- */
+    const f = {};            // form field id -> value
+    const put = (id, v) => { const n = numOrNull(v); if (n !== null) f[id] = n; };
+    const putTxt = (id, v) => { const s = clean(v); if (s) f[id] = s; };
+    const pick = (...vals) => vals.find(v => v !== undefined && v !== null && clean(v) !== '');
+
+    put('f-rateP', pick(raw.rateP, raw.petrol && raw.petrol.rate));
+    put('f-rateD', pick(raw.rateD, raw.diesel && raw.diesel.rate));
+    put('f-dipP', pick(raw.dipP, raw.petrol && raw.petrol.dip));
+    put('f-dipD', pick(raw.dipD, raw.diesel && raw.diesel.dip));
+    put('f-testing', pick(raw.testing, raw.test));
+    put('f-openCash', pick(raw.openCash, raw.cash && raw.cash.openCash));
+    put('f-paytm', pick(raw.paytm, raw.cash && raw.cash.paytm));
+    put('f-swipe', pick(raw.swipe, raw.cash && raw.cash.swipe));
+    put('f-kharcha', pick(raw.kharcha, raw.cash && raw.cash.kharcha));
+    put('f-driverInaam', pick(raw.driverInaam, raw.cash && raw.cash.driverInaam));
+    put('f-chaiKhana', pick(raw.chaiKhana, raw.cash && raw.cash.chaiKhana));
+    put('f-malikDiya', pick(raw.malikDiya, raw.cash && raw.cash.malikDiya));
+    put('f-openStockP', raw.openStockP); put('f-openStockD', raw.openStockD);
+    put('f-tankerP', raw.tankerP); put('f-tankerD', raw.tankerD);
+    putTxt('f-note', raw.note);
+
+    const nz = {};           // k -> {o, c}
+    if (raw.nz && typeof raw.nz === 'object') {
+      NZ.forEach(k => {
+        const x = raw.nz[k] || raw.nz[k.toUpperCase()];
+        if (!x) return;
+        const o = numOrNull(x.o !== undefined ? x.o : x.open !== undefined ? x.open : x.opening);
+        const c = numOrNull(x.c !== undefined ? x.c : x.close !== undefined ? x.close : x.closing);
+        if (o !== null || c !== null) nz[k] = { o, c };
+      });
+    } else if (Array.isArray(raw.nozzles)) {   // purana format: order p1..p4,d1..d4
+      raw.nozzles.forEach((x, i) => {
+        if (!x || !NZ[i]) return;
+        const c = numOrNull(x.closing !== undefined ? x.closing : x.c);
+        const o = numOrNull(x.opening !== undefined ? x.opening : x.o);
+        if (o !== null || c !== null) nz[NZ[i]] = { o, c };
+      });
+    }
+
+    const udharIn = Array.isArray(raw.udhar) ? raw.udhar : (Array.isArray(raw.ledger) ? raw.ledger : []);
+    const jamaIn = Array.isArray(raw.jama) ? raw.jama : [];
+
+    /* ---------- 4. date ---------- */
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(clean(raw.date)) ? clean(raw.date) : (st && st.date) || APP.todayISO();
+    const switching = st && st.date && date !== st.date;
+
+    /* ---------- 5. parties match ---------- */
+    let parties = [];
+    try { parties = await APP.getParties(false, true); } catch (e) { parties = []; }
+    const findParty = (name, veh) => {
+      const nn = nrm(name), vv = nrmVeh(veh);
+      let p = null;
+      if (vv) p = parties.find(x => (x.vehicles || []).some(v => nrmVeh(v) === vv));
+      if (!p && nn) p = parties.find(x => nrm(x.name) === nn);
+      if (!p && nn.length >= 3) p = parties.find(x => nrm(x.name).includes(nn) || nn.includes(nrm(x.name)));
+      return p || null;
+    };
+
+    let existing = (st && !switching && st.rows) ? st.rows : [];
+    if (switching) {
+      try { const rs = await db().collection('ledger').where('date', '==', date).get(); existing = rs.docs.map(x => x.data()); } catch (e) { existing = []; }
+    }
+    const rateNow = fuel => {
+      const id = fuel === 'petrol' ? 'f-rateP' : 'f-rateD';
+      const n = f[id] !== undefined ? f[id] : numOrNull(($('#' + id) || {}).value);
+      return n || (APP.S.rates && APP.S.rates[fuel]) || 0;
+    };
+
+    const U = [], J = [], bad = [];
+    udharIn.forEach((it, i) => {
+      if (!it) return;
+      const fuel = /petrol|पेट्रोल|^p$/i.test(clean(it.fuel)) ? 'petrol' : 'diesel';
+      const veh = clean(it.vehicle || it.gaadi).toUpperCase();
+      let amount = numOrNull(it.amount), litre = numOrNull(it.litre), rate = numOrNull(it.rate) || rateNow(fuel);
+      if (amount === null && litre !== null && rate) amount = K.r2(litre * rate);
+      if (litre === null && amount !== null && rate) litre = K.r2(amount / rate);
+      const label = `उधार #${i + 1}: ${clean(it.party) || '?'} ${veh}`;
+      if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
+      const p = findParty(it.party, veh);
+      if (!p) { bad.push(label + ' — पार्टी/गाड़ी app में नहीं मिली'); return; }
+      const dup = existing.some(r => r.kind === 'udhar' && r.partyId === p.id && nrmVeh(r.vehicle) === nrmVeh(veh) && Math.abs(num(r.amount) - amount) < 0.01);
+      U.push({ p, veh, fuel, rate, litre: litre || 0, amount, time: clean(it.time), note: clean(it.note), dup });
+    });
+    jamaIn.forEach((it, i) => {
+      if (!it) return;
+      const amount = numOrNull(it.amount);
+      const label = `जमा #${i + 1}: ${clean(it.party) || '?'}`;
+      if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
+      const p = findParty(it.party, '');
+      if (!p) { bad.push(label + ' — पार्टी app में नहीं मिली'); return; }
+      const md = clean(it.mode).toLowerCase();
+      const mode = /paytm|upi/.test(md) ? 'paytm' : /swipe|card/.test(md) ? 'swipe' : /bank/.test(md) ? 'bank' : 'cash';
+      const dup = existing.some(r => r.kind === 'jama' && r.partyId === p.id && r.mode === mode && Math.abs(num(r.amount) - amount) < 0.01);
+      J.push({ p, mode, amount, time: clean(it.time), note: clean(it.note), dup });
+    });
+
+    /* ---------- 6. preview ---------- */
+    const fieldCount = Object.keys(f).length + Object.values(nz).reduce((a, x) => a + (x.o !== null ? 1 : 0) + (x.c !== null ? 1 : 0), 0);
+    const nzTxt = NZ.filter(k => nz[k]).map(k => `${k.toUpperCase()}: ${nz[k].o !== null ? nz[k].o : '–'} → ${nz[k].c !== null ? nz[k].c : '–'}`).join('<br>');
+    const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
+    const dupN = (U.length - newU.length) + (J.length - newJ.length);
+
+    const go = await new Promise(resolve => {
+      const m = modal(`
+        <h3>जाँच लें, फिर भरें</h3>
+        <div class="kv"><span>तारीख</span><b>${esc(APP.dmy(date))}${switching ? ' ⚠️ (दूसरा दिन)' : ''}</b></div>
+        <div class="kv"><span>हिसाब के बॉक्स</span><b>${fieldCount}</b></div>
+        ${nzTxt ? `<div class="mut" style="font-size:12px;margin:4px 0">${nzTxt}</div>` : ''}
+        <div class="kv"><span>नई उधार एंट्री</span><b>${newU.length}</b></div>
+        ${newU.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${esc(x.veh)} · ${money(x.amount)}</div>`).join('')}
+        <div class="kv"><span>नई जमा एंट्री</span><b>${newJ.length}</b></div>
+        ${newJ.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${money(x.amount)}</div>`).join('')}
+        ${dupN ? `<div class="mut" style="margin-top:6px">पहले से मौजूद (छोड़ दी जाएँगी): ${dupN}</div>` : ''}
+        ${bad.length ? `<div class="warn" style="margin-top:8px"><b>❌ ये नहीं भरी जा सकीं (${bad.length}):</b><br>${bad.map(esc).join('<br>')}</div>` : ''}
+        <div class="btns" style="margin-top:12px">
+          <button class="btn g" id="pv-ok">✅ भर दो</button>
+          <button class="btn w" id="pv-no">रद्द</button>
+        </div>`);
+      $('#pv-ok', m).onclick = () => { m.close(); resolve(true); };
+      $('#pv-no', m).onclick = () => { m.close(); resolve(false); };
+    });
+    if (!go) return;
+
+    /* ---------- 7. sahi din kholo ---------- */
+    if (switching) {
+      try { APP.collectDraft(); } catch (e) { }
+      await APP.dayView(date);
+    }
+
+    /* ---------- 8. form bharo (DB mein tab tak kuch nahi jata jab tak 💾 सेव na dabe) ---------- */
+    const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+    let filled = 0; const missing = [];
+    Object.keys(f).forEach(id => {
+      const el = $('#' + id);
+      if (!el || el.disabled) { missing.push(id); return; }
+      el.value = f[id]; fire(el); filled++;
+    });
+    NZ.forEach(k => {
+      const x = nz[k]; if (!x) return;
+      const oEl = $(`.nzi[data-k="${k}"][data-f="o"]`), cEl = $(`.nzi[data-k="${k}"][data-f="c"]`);
+      if (x.c !== null) { if (cEl && !cEl.disabled) { cEl.value = x.c; fire(cEl); filled++; } else missing.push(k + ' closing'); }
+      if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); filled++; }  // opening sirf khali ho tab
+    });
+    try { APP.recalc(); } catch (e) { }
+
+    /* ---------- 9. udhar / jama sidha ledger mein (app ke apne format mein) ---------- */
+    let wrote = 0; const failed = [];
+    const by = APP.S.salesman ? APP.S.salesman.name : (APP.S.user ? APP.S.user.email : '');
+    const writeEntry = async (data, delta, pid) => {
+      const ref = db().collection('ledger').doc();
+      const b = db().batch();
+      b.set(ref, data);
+      if (delta) b.update(db().collection('parties').doc(pid), { bal: APP.FV.increment(delta) });
+      await b.commit();
+    };
+    for (const x of newU) {
+      const data = { partyId: x.p.id, partyName: x.p.name, date, time: x.time || APP.nowTime(), kind: 'udhar', note: x.note, vehicle: x.veh, fuel: x.fuel, rate: x.rate, litre: x.litre, amount: x.amount, by, at: APP.FV.serverTimestamp() };
+      try { await writeEntry(data, K.signed(data), x.p.id); wrote++; } catch (e) { failed.push(x.p.name + ' ' + x.veh + ': ' + e.message); }
+    }
+    for (const x of newJ) {
+      const data = { partyId: x.p.id, partyName: x.p.name, date, time: x.time || APP.nowTime(), kind: 'jama', note: x.note, mode: x.mode, amount: x.amount, by, at: APP.FV.serverTimestamp() };
+      try { await writeEntry(data, K.signed(data), x.p.id); wrote++; } catch (e) { failed.push(x.p.name + ': ' + e.message); }
+    }
+
+    /* ---------- 10. screen taaza karo (bhare hue box draft se wapas aa jayenge) ---------- */
+    try { APP.collectDraft(); } catch (e) { }
+    if (wrote) { APP.S.parties = null; }
+    try { await APP.dayView(date); } catch (e) { }
+
+    const tail = [];
+    if (missing.length) tail.push('नहीं भरे: ' + missing.join(', '));
+    if (failed.length) tail.push('एंट्री फेल: ' + failed.join(' | '));
+    if (tail.length) alert(tail.join('\n'));
+    toast(`${filled} बॉक्स भरे · ${wrote} एंट्री जुड़ीं — अब 💾 सेव दबाएँ`);
   };
 
   APP.shareCompactDayReport = async function (st, d) {
