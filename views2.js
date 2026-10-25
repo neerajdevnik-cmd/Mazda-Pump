@@ -173,7 +173,7 @@
     };
   };
 
-   APP.scanRegister = async function (st) {
+     APP.scanRegister = async function (st) {
     let text = '';
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
@@ -195,10 +195,99 @@
       if (raw.date && st && st.date && raw.date !== st.date) {
         const confirmSwitch = confirm(`Yeh code ${raw.date} tareekh ka hai. Kya aap is din ka hisaab update karna chahte hain?`);
         if (!confirmSwitch) return;
-        if (APP.loadDay) {
-          await APP.loadDay(raw.date);
-        }
+        if (APP.loadDay) await APP.loadDay(raw.date);
       }
+
+      const setVal = (el, val) => {
+        if (!el || val === undefined || val === null || val === '') return false;
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      };
+
+      const setBySel = (selectors, val) => {
+        for (const s of selectors) {
+          const el = document.querySelector(s);
+          if (el && setVal(el, val)) return true;
+        }
+        return false;
+      };
+
+      let filledCount = 0;
+
+      // 1. RATES & DIPS
+      if (raw.petrol) {
+        if (setBySel(['#f-rateP', '#rateP', '[name="rateP"]', '[name="petrol_rate"]', '#f-rate-petrol', 'input[data-fuel="petrol"][data-type="rate"]'], raw.petrol.rate)) filledCount++;
+        if (setBySel(['#f-dipP', '#dipP', '[name="dipP"]', '[name="petrol_dip"]', '#f-dip-petrol', 'input[data-fuel="petrol"][data-type="dip"]'], raw.petrol.dip)) filledCount++;
+      }
+      if (raw.diesel) {
+        if (setBySel(['#f-rateD', '#rateD', '[name="rateD"]', '[name="diesel_rate"]', '#f-rate-diesel', 'input[data-fuel="diesel"][data-type="rate"]'], raw.diesel.rate)) filledCount++;
+        if (setBySel(['#f-dipD', '#dipD', '[name="dipD"]', '[name="diesel_dip"]', '#f-dip-diesel', 'input[data-fuel="diesel"][data-type="dip"]'], raw.diesel.dip)) filledCount++;
+      }
+
+      // 2. NOZZLE READINGS
+      if (Array.isArray(raw.nozzles) && raw.nozzles.length > 0) {
+        const allCloseInputs = document.querySelectorAll('input[name*="close"], input[data-f="close"], input[id*="close"], input[placeholder*="क्लोजिंग"]');
+        const allTestInputs = document.querySelectorAll('input[name*="test"], input[data-f="test"], input[id*="test"], input[placeholder*="टेस्टिंग"]');
+
+        raw.nozzles.forEach((noz, idx) => {
+          if (noz.closing && allCloseInputs[idx]) {
+            if (setVal(allCloseInputs[idx], noz.closing)) filledCount++;
+          } else if (noz.closing) {
+            const nNum = noz.nozzle !== undefined ? noz.nozzle : (idx + 1);
+            if (setBySel([`#f-close-${idx}`, `#f-close-${nNum}`, `[name="noz_close_${idx}"]`, `[name="noz_close_${nNum}"]`], noz.closing)) filledCount++;
+          }
+
+          if (noz.testing !== undefined && allTestInputs[idx]) {
+            if (setVal(allTestInputs[idx], noz.testing)) filledCount++;
+          } else if (noz.testing !== undefined) {
+            const nNum = noz.nozzle !== undefined ? noz.nozzle : (idx + 1);
+            if (setBySel([`#f-test-${idx}`, `#f-test-${nNum}`, `[name="noz_test_${idx}"]`, `[name="noz_test_${nNum}"]`], noz.testing)) filledCount++;
+          }
+        });
+      }
+
+      // 3. CASH, PAYTM, SWIPE, KHARCHA & BANK
+      if (raw.cash) {
+        if (setBySel(['#f-paytm', '#paytm', '[name="paytm"]', '#upi', '[name="upi"]'], raw.cash.paytm)) filledCount++;
+        if (setBySel(['#f-swipe', '#swipe', '[name="swipe"]', '#card', '[name="card"]'], raw.cash.swipe)) filledCount++;
+        if (setBySel(['#f-kharcha', '#kharcha', '[name="kharcha"]', '#expense', '[name="expense"]'], raw.cash.kharcha)) filledCount++;
+        if (setBySel(['#f-bank', '#bank', '[name="bank"]'], raw.cash.bank)) filledCount++;
+        if (setBySel(['#f-cash', '#cash', '[name="cash"]', '[name="cash2000"]'], raw.cash.cash2000 || raw.cash.cash)) filledCount++;
+      }
+
+      // 4. UDHAR / LEDGER
+      if (Array.isArray(raw.ledger) && raw.ledger.length > 0) {
+        for (const item of raw.ledger) {
+          if (item.party && item.amount > 0 && db()) {
+            try {
+              await db().collection('entries').add({
+                partyName: item.party.trim(),
+                vehicle: (item.vehicle || '').toUpperCase().trim(),
+                amount: num(item.amount),
+                fuel: item.fuel || 'diesel',
+                date: targetDate,
+                time: APP.nowTime(),
+                type: 'credit',
+                createdAt: APP.FV.serverTimestamp()
+              });
+              filledCount++;
+            } catch (err) {}
+          }
+        }
+        toast(`${raw.ledger.length} पार्टी उधार (${targetDate}) में दर्ज हुए`);
+      }
+
+      if (APP.recalc) APP.recalc();
+      if (APP.calc) APP.calc();
+
+      toast(`तारीख ${targetDate} का हिसाब ऑटो-अपडेट हो गया (${filledCount} बॉक्स भरे) ✔`);
+    } catch (e) {
+      alert('Code parsing error! Kripya Gemini ka pura code sahi se copy karein.');
+    }
+  };
+
 
       // Universal field helper: chahe id ho, name ho ya data-attr, sabhi mein value bharega
       const setVal = (selectors, val) => {
