@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व यूनिवर्सल AI स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व यूनिवर्सल ऑटो-मॉडल AI स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -173,7 +173,7 @@
     };
   };
 
-  /* ======================= UNIVERSAL GEMINI AI SCAN (FLASH / PRO) ======================= */
+  /* ======================= AUTO-DISCOVERY GEMINI SCAN ======================= */
   APP.scanRegister = function (st) {
     let k = localStorage.getItem('mazda_gemini_key') || '';
     if (!k) {
@@ -211,36 +211,26 @@
           generationConfig: { responseMimeType: 'application/json' }
         };
 
-        // Models to try in sequence: Flash-Latest -> Pro -> Standard Flash
-        const models = [
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent',
-          'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent'
-        ];
-
-        let j = null;
-        let lastErr = '';
-
-        for (let endpoint of models) {
-          try {
-            const res = await fetch(`${endpoint}?key=${k}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (res.ok && !data.error) {
-              j = data;
-              break;
-            } else if (data.error) {
-              lastErr = data.error.message;
-            }
-          } catch (netErr) {
-            lastErr = netErr.message;
+        // Auto-detect exact model supported by user's key
+        let targetModel = 'models/gemini-1.5-flash-latest';
+        try {
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k}`);
+          const listData = await listRes.json();
+          if (listData.models && listData.models.length > 0) {
+            const found = listData.models.find(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && (m.name.includes('flash') || m.name.includes('pro')));
+            if (found) targetModel = found.name;
           }
-        }
+        } catch (e) { }
 
-        if (!j) throw new Error(lastErr || 'API से कनेक्शन नहीं हो सका');
+        const url = `https://generativelanguage.googleapis.com/v1beta/${targetModel}:generateContent?key=${k}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const j = await res.json();
+        if (j.error) throw new Error(j.error.message || 'API Error');
 
         const raw = JSON.parse(j.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim());
 
@@ -255,7 +245,7 @@
         if (APP.recalc) APP.recalc();
         toast('रजिस्टर डेटा फॉर्म में भर गया ✔');
       } catch (e) {
-        alert('Scan Error: ' + e.message);
+        alert('Scan Report: ' + e.message);
       }
     };
     inp.click();
