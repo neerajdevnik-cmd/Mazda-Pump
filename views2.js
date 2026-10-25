@@ -11,14 +11,7 @@
   APP.views = APP.views || {};
 
   /* ======================= MOC BPCL VECTOR EMBLEM ======================= */
-  const MOC_BPCL_LOGO = `
-    <svg width="44" height="44" viewBox="0 0 100 100" style="display:block;margin:0 auto 6px auto;">
-      <circle cx="50" cy="50" r="47" fill="#003399" stroke="#FFCC00" stroke-width="4"/>
-      <circle cx="50" cy="50" r="39" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="2,2"/>
-      <path d="M50 24 C50 24 36 40 36 50 C36 58 42 64 50 64 C58 64 64 58 64 50 C64 40 50 24 50 24 Z" fill="#FFCC00"/>
-      <text x="50" y="56" font-family="'Arial Black',Impact,sans-serif" font-size="14" font-weight="900" fill="#003399" text-anchor="middle">MOC</text>
-      <text x="50" y="82" font-family="'Helvetica Neue',Arial,sans-serif" font-size="8" font-weight="bold" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">BPCL DEALER</text>
-    </svg>`;
+  const MOC_BPCL_LOGO = `<img src="./logo.png" alt="" width="64" height="64" style="display:block;width:64px;height:64px;margin:0 auto 6px auto;border-radius:50%">`;
 
   /* ======================= GAADI CASH ======================= */
   APP.views.gaadicash = async function () {
