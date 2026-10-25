@@ -191,6 +191,37 @@
       return isNaN(n) ? null : n;
     };
 
+
+    /* ---------- naam/gaadi yaad rakhne ka store (is phone mein) ---------- */
+    const AL_KEY = 'mazda_scan_alias';
+    const alias = (() => { try { const a = JSON.parse(localStorage.getItem(AL_KEY) || '{}'); return { n: a.n || {}, v: a.v || {} }; } catch (e) { return { n: {}, v: {} }; } })();
+    const saveAlias = () => { try { localStorage.setItem(AL_KEY, JSON.stringify(alias)); } catch (e) { } };
+    const nrmHi = s => clean(s).toLowerCase().replace(/[\u093c\u200d\u200c]/g, '').replace(/\u0901/g, '\u0902').replace(/[\s.\-_(),]+/g, '');
+    const sim = (a, b) => {
+      if (!a || !b) return 0;
+      if (a === b) return 1;
+      const m = a.length, n = b.length;
+      let prev = Array.from({ length: n + 1 }, (_, j) => j);
+      for (let i = 1; i <= m; i++) {
+        const cur = [i];
+        for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = cur;
+      }
+      return 1 - prev[n] / Math.max(m, n);
+    };
+    const digitsOf = s => String(s || '').replace(/\D/g, '');
+    const BASE_PROMPT = `Ye petrol pump ke daily hisab register ki photo hai. Photo padhkar SIRF ek JSON do (koi explanation, koi code-fence, koi extra text nahi). Format:
+{"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
+"nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
+"openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"malikDiya":0,
+"openStockP":0,"openStockD":0,"tankerP":0,"tankerD":0,"dipP":0,"dipD":0,"note":"",
+"udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
+"jama":[{"party":"","mode":"cash","amount":0}]}
+Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.`;
+    const buildPrompt = parties => BASE_PROMPT +
+      '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
+      parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
+
     /* ---------- 1. paste box (textarea) ---------- */
     const text = await new Promise(resolve => {
       const m = modal(`
@@ -199,6 +230,7 @@
         <textarea id="scan-ta" rows="9" style="width:100%;font-size:13px" placeholder='{ "date": "..." }'></textarea>
         <div class="btns" style="margin-top:10px">
           <button class="btn w" id="scan-clip">📋 क्लिपबोर्ड से लें</button>
+          <button class="btn w" id="scan-prompt">🧾 Gemini के लिए प्रॉम्प्ट कॉपी (पार्टी लिस्ट के साथ)</button>
           <button class="btn g" id="scan-ok">आगे बढ़ें</button>
           <button class="btn w" id="scan-no">रद्द</button>
         </div>`);
@@ -206,6 +238,12 @@
       $('#scan-clip', m).onclick = async () => {
         try { ta.value = await navigator.clipboard.readText(); }
         catch (e) { toast('क्लिपबोर्ड नहीं मिला — बॉक्स में दबाकर पेस्ट करें'); }
+      };
+      $('#scan-prompt', m).onclick = async () => {
+        let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
+        const pr = buildPrompt(ps);
+        try { await navigator.clipboard.writeText(pr); toast('प्रॉम्प्ट कॉपी हो गया — Gemini में फोटो के साथ पेस्ट करें'); }
+        catch (e) { ta.value = pr; ta.select(); toast('ऊपर बॉक्स में प्रॉम्प्ट है — कॉपी कर लें'); }
       };
       $('#scan-ok', m).onclick = () => { const v = ta.value; m.close(); resolve(v); };
       $('#scan-no', m).onclick = () => { m.close(); resolve(null); };
@@ -277,13 +315,36 @@
     /* ---------- 5. parties match ---------- */
     let parties = [];
     try { parties = await APP.getParties(false, true); } catch (e) { parties = []; }
+    const byId = id => parties.find(x => x.id === id) || null;
     const findParty = (name, veh) => {
-      const nn = nrm(name), vv = nrmVeh(veh);
+      const nn = nrm(name), vv = nrmVeh(veh), hn = nrmHi(name);
       let p = null;
-      if (vv) p = parties.find(x => (x.vehicles || []).some(v => nrmVeh(v) === vv));
-      if (!p && nn) p = parties.find(x => nrm(x.name) === nn);
-      if (!p && nn.length >= 3) p = parties.find(x => nrm(x.name).includes(nn) || nn.includes(nrm(x.name)));
-      return p || null;
+      if (vv && alias.v[vv] && (p = byId(alias.v[vv]))) return p;
+      if (hn && alias.n[hn] && (p = byId(alias.n[hn]))) return p;
+      if (vv) {
+        p = parties.find(x => (x.vehicles || []).some(v => nrmVeh(v) === vv));
+        if (p) return p;
+        const dg = digitsOf(veh);
+        if (dg.length >= 3) {
+          const hits = parties.filter(x => (x.vehicles || []).some(v => { const d2 = digitsOf(v); return d2.length >= 3 && (d2.endsWith(dg) || dg.endsWith(d2)); }));
+          if (hits.length === 1) return hits[0];
+        }
+      }
+      if (nn) {
+        p = parties.find(x => nrm(x.name) === nn);
+        if (p) return p;
+        const sc = parties.map(x => ({ x, s: sim(hn, nrmHi(x.name)) })).sort((a, b) => b.s - a.s);
+        if (sc.length && sc[0].s >= 0.88 && (sc.length < 2 || sc[0].s - sc[1].s >= 0.08)) return sc[0].x;
+      }
+      return null;
+    };
+    const suggest = (name, veh) => {
+      const hn = nrmHi(name), dg = digitsOf(veh);
+      return parties.map(x => {
+        let sc = sim(hn, nrmHi(x.name));
+        if (dg.length >= 3 && (x.vehicles || []).some(v => { const d2 = digitsOf(v); return d2.length >= 3 && (d2.endsWith(dg) || dg.endsWith(d2)); })) sc += 1;
+        return { x, sc };
+      }).sort((a, b) => b.sc - a.sc);
     };
 
     let existing = (st && !switching && st.rows) ? st.rows : [];
@@ -296,7 +357,7 @@
       return n || (APP.S.rates && APP.S.rates[fuel]) || 0;
     };
 
-    const U = [], J = [], bad = [];
+    const U = [], J = [], bad = [], pend = [];
     udharIn.forEach((it, i) => {
       if (!it) return;
       const fuel = /petrol|पेट्रोल|^p$/i.test(clean(it.fuel)) ? 'petrol' : 'diesel';
@@ -307,49 +368,77 @@
       const label = `उधार #${i + 1}: ${clean(it.party) || '?'} ${veh}`;
       if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
       const p = findParty(it.party, veh);
-      if (!p) { bad.push(label + ' — पार्टी/गाड़ी app में नहीं मिली'); return; }
+      const base = { veh, fuel, rate, litre: litre || 0, amount, time: clean(it.time), note: clean(it.note) };
+      if (!p) { pend.push({ kind: 'udhar', label, nameRaw: clean(it.party), base }); return; }
       const dup = existing.some(r => r.kind === 'udhar' && r.partyId === p.id && nrmVeh(r.vehicle) === nrmVeh(veh) && Math.abs(num(r.amount) - amount) < 0.01);
-      U.push({ p, veh, fuel, rate, litre: litre || 0, amount, time: clean(it.time), note: clean(it.note), dup });
+      U.push(Object.assign({ p, dup }, base));
     });
     jamaIn.forEach((it, i) => {
       if (!it) return;
       const amount = numOrNull(it.amount);
+      // "AD" = purane din ka cash -> party nahi, "पिछला कैश" box
+      if (/^(ad|a\.?d\.?|एड|ए\.?डी\.?)$/i.test(nrm(it.party)) && amount > 0) {
+        if (f['f-openCash'] === undefined) f['f-openCash'] = amount;
+        return;
+      }
       const label = `जमा #${i + 1}: ${clean(it.party) || '?'}`;
       if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
       const p = findParty(it.party, '');
-      if (!p) { bad.push(label + ' — पार्टी app में नहीं मिली'); return; }
       const md = clean(it.mode).toLowerCase();
       const mode = /paytm|upi/.test(md) ? 'paytm' : /swipe|card/.test(md) ? 'swipe' : /bank/.test(md) ? 'bank' : 'cash';
+      const base = { mode, amount, time: clean(it.time), note: clean(it.note) };
+      if (!p) { pend.push({ kind: 'jama', label, nameRaw: clean(it.party), base }); return; }
       const dup = existing.some(r => r.kind === 'jama' && r.partyId === p.id && r.mode === mode && Math.abs(num(r.amount) - amount) < 0.01);
-      J.push({ p, mode, amount, time: clean(it.time), note: clean(it.note), dup });
+      J.push(Object.assign({ p, dup }, base));
     });
 
     /* ---------- 6. preview ---------- */
     const fieldCount = Object.keys(f).length + Object.values(nz).reduce((a, x) => a + (x.o !== null ? 1 : 0) + (x.c !== null ? 1 : 0), 0);
     const nzTxt = NZ.filter(k => nz[k]).map(k => `${k.toUpperCase()}: ${nz[k].o !== null ? nz[k].o : '–'} → ${nz[k].c !== null ? nz[k].c : '–'}`).join('<br>');
-    const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
-    const dupN = (U.length - newU.length) + (J.length - newJ.length);
+    const newU0 = U.filter(x => !x.dup), newJ0 = J.filter(x => !x.dup);
+    const dupN = (U.length - newU0.length) + (J.length - newJ0.length);
 
-    const go = await new Promise(resolve => {
+    const picks = await new Promise(resolve => {
       const m = modal(`
         <h3>जाँच लें, फिर भरें</h3>
         <div class="kv"><span>तारीख</span><b>${esc(APP.dmy(date))}${switching ? ' ⚠️ (दूसरा दिन)' : ''}</b></div>
         <div class="kv"><span>हिसाब के बॉक्स</span><b>${fieldCount}</b></div>
         ${nzTxt ? `<div class="mut" style="font-size:12px;margin:4px 0">${nzTxt}</div>` : ''}
-        <div class="kv"><span>नई उधार एंट्री</span><b>${newU.length}</b></div>
-        ${newU.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${esc(x.veh)} · ${money(x.amount)}</div>`).join('')}
-        <div class="kv"><span>नई जमा एंट्री</span><b>${newJ.length}</b></div>
-        ${newJ.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${money(x.amount)}</div>`).join('')}
+        <div class="kv"><span>नई उधार एंट्री</span><b>${newU0.length}</b></div>
+        ${newU0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${esc(x.veh)} · ${money(x.amount)}</div>`).join('')}
+        <div class="kv"><span>नई जमा एंट्री</span><b>${newJ0.length}</b></div>
+        ${newJ0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${money(x.amount)}</div>`).join('')}
         ${dupN ? `<div class="mut" style="margin-top:6px">पहले से मौजूद (छोड़ दी जाएँगी): ${dupN}</div>` : ''}
+        ${pend.length ? `<div class="warn" style="margin-top:8px"><b>❓ ये पार्टी नहीं पहचानी — सही पार्टी चुनें (${pend.length}):</b>
+          ${pend.map((x, i) => { const sg = suggest(x.nameRaw, x.base.veh); return `<div style="margin-top:8px"><small>${esc(x.label)} · ${money(x.base.amount)}</small>
+            <select data-pi="${i}" style="width:100%;margin-top:3px"><option value="">— छोड़ दो —</option>${sg.map((o, j) => `<option value="${o.x.id}">${j < 3 && o.sc > 0.5 ? '⭐ ' : ''}${esc(o.x.name)}</option>`).join('')}</select></div>`; }).join('')}
+          <small class="mut">एक बार चुनने पर app ये नाम/गाड़ी याद रखेगा।</small></div>` : ''}
         ${bad.length ? `<div class="warn" style="margin-top:8px"><b>❌ ये नहीं भरी जा सकीं (${bad.length}):</b><br>${bad.map(esc).join('<br>')}</div>` : ''}
         <div class="btns" style="margin-top:12px">
           <button class="btn g" id="pv-ok">✅ भर दो</button>
           <button class="btn w" id="pv-no">रद्द</button>
         </div>`);
-      $('#pv-ok', m).onclick = () => { m.close(); resolve(true); };
-      $('#pv-no', m).onclick = () => { m.close(); resolve(false); };
+      $('#pv-ok', m).onclick = () => { const r = {}; $$('select[data-pi]', m).forEach(el => { if (el.value) r[el.dataset.pi] = el.value; }); m.close(); resolve(r); };
+      $('#pv-no', m).onclick = () => { m.close(); resolve(null); };
     });
-    if (!go) return;
+    if (!picks) return;
+
+    pend.forEach((x, i) => {
+      const p = picks[i] ? byId(picks[i]) : null;
+      if (!p) return;
+      const hn = nrmHi(x.nameRaw), vv = nrmVeh(x.base.veh);
+      if (hn && hn !== nrmHi('?')) alias.n[hn] = p.id;
+      if (vv) alias.v[vv] = p.id;
+      if (x.kind === 'udhar') {
+        const dup = existing.some(r => r.kind === 'udhar' && r.partyId === p.id && nrmVeh(r.vehicle) === vv && Math.abs(num(r.amount) - x.base.amount) < 0.01);
+        U.push(Object.assign({ p, dup }, x.base));
+      } else {
+        const dup = existing.some(r => r.kind === 'jama' && r.partyId === p.id && r.mode === x.base.mode && Math.abs(num(r.amount) - x.base.amount) < 0.01);
+        J.push(Object.assign({ p, dup }, x.base));
+      }
+    });
+    saveAlias();
+    const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
 
     /* ---------- 7. sahi din kholo ---------- */
     if (switching) {
