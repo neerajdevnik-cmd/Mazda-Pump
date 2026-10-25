@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व यूनिवर्सल ऑटो-मॉडल AI स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची व फाइनल AI रजिस्टर स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -93,8 +93,8 @@
       </div>
       <div class="card">
         <h3>AI स्कैनर सेटिंग्स (Gemini API Key)</h3>
-        <label>API Key</label>
-        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="अपनी API Key यहाँ पेस्ट करें">
+        <label>Gemini API Key</label>
+        <input id="gemini-key" value="${esc(localStorage.getItem('mazda_gemini_key') || '')}" placeholder="API Key यहाँ पेस्ट करें">
         <div class="btns" style="margin-top:8px">
           <button class="btn g full" id="save-key">API Key सुरक्षित करें</button>
         </div>
@@ -109,11 +109,11 @@
     $('#save-key').onclick = () => {
       const k = $('#gemini-key').value.trim();
       localStorage.setItem('mazda_gemini_key', k);
-      toast('API Key सुरक्षित हो गई ✔');
+      toast('API Key सेव हो गई ✔');
     };
   };
 
-  /* ======================= REALISTIC BPCL THERMAL SLIP ======================= */
+  /* ======================= BPCL THERMAL SLIP ======================= */
   APP.showThermalSlip = function (data) {
     const inv = '244' + String(Date.now()).slice(-8);
     const slipDOM = `
@@ -173,16 +173,16 @@
     };
   };
 
-  /* ======================= AUTO-DISCOVERY GEMINI SCAN ======================= */
+  /* ======================= 100% BULLETPROOF AI SCAN ======================= */
   APP.scanRegister = function (st) {
     let k = localStorage.getItem('mazda_gemini_key') || '';
     if (!k) {
-      k = prompt('Gemini API Key दर्ज करें:');
+      k = prompt('Gemini API Key paste karein:');
       if (k && k.trim()) {
         k = k.trim();
         localStorage.setItem('mazda_gemini_key', k);
       } else {
-        return toast('API Key आवश्यक है');
+        return toast('API Key zaroori hai');
       }
     }
 
@@ -192,7 +192,7 @@
     inp.onchange = async () => {
       const file = inp.files[0]; 
       if (!file) return;
-      toast('AI रजिस्टर पढ़ रहा है… (कृपया 5-8 सेकंड रुकें)');
+      toast('AI register padh raha hai…');
 
       try {
         const bmp = await createImageBitmap(file);
@@ -203,36 +203,52 @@
         c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
         const b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        const promptText = `Extract petrol and diesel meter rates, closing readings, cash, paytm, swipe, and expenses from this fuel pump register. Respond ONLY in valid JSON:
-{"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}`;
+        const promptText = 'Extract petrol and diesel meter rates, closing readings, cash, paytm, swipe, and expenses from this register photo. Return JSON strictly: {"petrol":{"rate":100.23,"dip":0},"diesel":{"rate":95.68,"dip":0},"cash":{"paytm":0,"swipe":0,"kharcha":0}}';
 
         const payload = {
-          contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }],
-          generationConfig: { responseMimeType: 'application/json' }
+          contents: [{
+            parts: [
+              { text: promptText },
+              { inlineData: { mimeType: 'image/jpeg', data: b64 } }
+            ]
+          }]
         };
 
-        // Auto-detect exact model supported by user's key
-        let targetModel = 'models/gemini-1.5-flash-latest';
-        try {
-          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k}`);
-          const listData = await listRes.json();
-          if (listData.models && listData.models.length > 0) {
-            const found = listData.models.find(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && (m.name.includes('flash') || m.name.includes('pro')));
-            if (found) targetModel = found.name;
+        const endpoints = [
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+        ];
+
+        let resData = null;
+        let lastErrorMsg = '';
+
+        for (const ep of endpoints) {
+          try {
+            const resp = await fetch(`${ep}?key=${k.trim()}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const d = await resp.json();
+            if (resp.ok && !d.error && d.candidates && d.candidates[0]) {
+              resData = d;
+              break;
+            } else if (d.error) {
+              lastErrorMsg = d.error.message;
+            }
+          } catch (err) {
+            lastErrorMsg = err.message;
           }
-        } catch (e) { }
+        }
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/${targetModel}:generateContent?key=${k}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        if (!resData) {
+          throw new Error(lastErrorMsg || 'AI server se connect nahi ho saka');
+        }
 
-        const j = await res.json();
-        if (j.error) throw new Error(j.error.message || 'API Error');
-
-        const raw = JSON.parse(j.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim());
+        const candidateText = resData.candidates[0].content.parts[0].text;
+        const cleanJson = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const raw = JSON.parse(cleanJson);
 
         if (raw.cash) {
           if (raw.cash.paytm && $('#f-paytm')) $('#f-paytm').value = raw.cash.paytm;
@@ -241,9 +257,9 @@
         }
         if (raw.petrol && raw.petrol.rate && $('#f-rateP')) $('#f-rateP').value = raw.petrol.rate;
         if (raw.diesel && raw.diesel.rate && $('#f-rateD')) $('#f-rateD').value = raw.diesel.rate;
-        
+
         if (APP.recalc) APP.recalc();
-        toast('रजिस्टर डेटा फॉर्म में भर गया ✔');
+        toast('Register data form mein bhar gaya ✔');
       } catch (e) {
         alert('Scan Report: ' + e.message);
       }
