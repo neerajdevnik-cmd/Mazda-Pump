@@ -1,6 +1,5 @@
-/* ====== YAHAN APNI JAANKARI BHARNI HAI ====== */
+/* ====== माज़दा पंप कॉन्फ़िगरेशन ====== */
 window.CFG = {
-  // Firebase configuration
   firebase: {
     apiKey: "AIzaSyA48iKeSn1lEAw6WBdKI2tuViGY9H8DWcs",
     authDomain: "mazda---pump.firebaseapp.com",
@@ -11,11 +10,9 @@ window.CFG = {
     measurementId: "G-W4FED5NHJD"
   },
 
-  // Logins & Roles
   ownerEmail: "neeraj@mazda-pump.in",
   managerEmail: "manager@mazda-pump.in",
 
-  // Salesmen credentials (Salesman PIN login supported directly)
   salesmen: [
     { id: "manoj", name: "Manoj", pin: "1234", phone: "9876543211", active: true },
     { id: "rohit", name: "Rohit", pin: "1104", phone: "8077083874", active: true },
@@ -32,7 +29,6 @@ window.CFG = {
     phone: "8077083874",
     fssai: "12345678901234",
     gstin: "05AAAAA0000A1Z5",
-    // UPI & Merchant Settings
     upi: "paytmqr621vlg@ptys",
     upiName: "Mazda Oil Company",
     merchant: {
@@ -45,10 +41,7 @@ window.CFG = {
   },
 
   loginDomain: "mazda-pump.in",
-  testing: 5,             // litre, har nozzle par roz
+  testing: 5,
   defaultRateP: 100.23,
-  defaultRateD: 95.68,
-
-  // Netlify AI scan service endpoint
-  scanEndpoint: "/.netlify/functions/scan"
+  defaultRateD: 95.68
 };
