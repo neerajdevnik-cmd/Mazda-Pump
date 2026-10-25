@@ -515,6 +515,7 @@
         <button class="btn o" id="bU">+ उधार</button>
         <button class="btn g" id="bJ">+ जमा</button>
         ${isOwner() ? '<button class="btn w" id="bP">+ नई पार्टी</button>' : ''}
+        ${isOwner() ? '<button class="btn w" id="bBulk">📥 लिस्ट से जोड़ें</button>' : ''}
       </div>`;
 
     const draw = () => {
@@ -533,6 +534,7 @@
     $('#bU').onclick = () => entryModal({ kind: 'udhar', date: todayISO() });
     $('#bJ').onclick = () => entryModal({ kind: 'jama', date: todayISO() });
     if (isOwner()) $('#bP').onclick = () => partyModal(null, false);
+    if (isOwner()) $('#bBulk').onclick = () => bulkPartyModal();
   }
 
   function partyModal(p, priv) {
@@ -554,6 +556,55 @@
     };
   }
 
+
+  /* ---- लिस्ट से कई पार्टी/गाड़ियाँ एक साथ जोड़ना (पुराना बैलेंस/डेटा नहीं छूता) ---- */
+  async function bulkPartyModal() {
+    const m = modal(`<h3>📥 पार्टी लिस्ट जोड़ें</h3>
+      <p class="mut" style="margin:4px 0 8px">हर लाइन में एक पार्टी: <b>नाम : गाड़ी1, गाड़ी2</b><br>पार्टी पहले से हो तो सिर्फ नई गाड़ियाँ जुड़ेंगी।</p>
+      <textarea id="bk-ta" rows="10" style="width:100%;font-size:13px" placeholder="लक्ष्मण सिंह भराड़ा : 4488, 3388&#10;पारस सती : 2002 CB, 2002 CC"></textarea>
+      <div id="bk-pv" style="margin-top:8px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn w" id="bk-check">जाँचें</button>
+        <button class="btn g" id="bk-save" style="display:none">✅ जोड़ दो</button>
+        <button class="btn w" id="bk-no">रद्द</button>
+      </div>`);
+    let plan = [];
+    $('#bk-no', m).onclick = () => m.close();
+    const key = s => String(s || '').toLowerCase().replace(/[\s.\-_(),]+/g, '');
+    $('#bk-check', m).onclick = async () => {
+      let ps; try { ps = await getParties(false, true); } catch (e) { return toast('लिस्ट नहीं मिली: ' + e.message); }
+      plan = [];
+      $('#bk-ta', m).value.split('\n').forEach(line => {
+        line = line.trim(); if (!line) return;
+        const i = line.search(/[:|\t]/);
+        const name = (i < 0 ? line : line.slice(0, i)).trim();
+        const vehicles = (i < 0 ? '' : line.slice(i + 1)).split(/[,;/]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+        if (!name) return;
+        const ex = ps.find(p => key(p.name) === key(name));
+        if (ex) {
+          const have = (ex.vehicles || []).map(v => key(v));
+          const add = vehicles.filter(v => !have.includes(key(v)));
+          plan.push({ ex, name: ex.name, add, all: (ex.vehicles || []).concat(add) });
+        } else plan.push({ ex: null, name, add: vehicles, all: vehicles });
+      });
+      const newN = plan.filter(x => !x.ex).length, upN = plan.filter(x => x.ex && x.add.length).length;
+      $('#bk-pv', m).innerHTML = plan.length
+        ? `<div class="kv"><span>नई पार्टी</span><b>${newN}</b></div><div class="kv"><span>गाड़ी जुड़ेंगी (पुरानी पार्टी में)</span><b>${upN}</b></div>` +
+          plan.map(x => `<div class="mut" style="font-size:12px">${x.ex ? (x.add.length ? '➕' : '＝') : '🆕'} ${esc(x.name)} ${x.add.length ? '· ' + esc(x.add.join(', ')) : x.ex ? '· कुछ नया नहीं' : ''}</div>`).join('')
+        : '<div class="warn">कोई लाइन नहीं मिली</div>';
+      $('#bk-save', m).style.display = plan.some(x => !x.ex || x.add.length) ? '' : 'none';
+    };
+    $('#bk-save', m).onclick = async () => {
+      const b = db.batch(); let n = 0;
+      plan.forEach(x => {
+        if (x.ex) { if (x.add.length) { b.update(db.collection('parties').doc(x.ex.id), { vehicles: x.all }); n++; } }
+        else { b.set(db.collection('parties').doc(), { name: x.name, phone: '', vehicles: x.all, bal: 0, createdAt: FV.serverTimestamp() }); n++; }
+      });
+      try { await commit(b.commit()); m.close(); toast(n + ' पार्टी अपडेट हुईं ✔'); S.parties.pub = null; ledgerView(); }
+      catch (e) { toast('सेव नहीं हुआ: ' + e.message); }
+    };
+  }
+
   async function partyView(id, priv) {
     const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
@@ -564,7 +615,7 @@
     const st = K.stmt(all, null, null);
 
     main.innerHTML = `
-      <div class="btns" style="margin-bottom:10px"><button class="btn sm w" id="back">← वापस</button></div>
+      <div class="btns" style="margin-bottom:10px"><button class="btn sm w" id="back">← वापस</button> ${isOwner() ? '<button class="btn sm o" id="editP">✏️ नाम / गाड़ी बदलें</button>' : ''}</div>
       <div class="card">
         <h3>${esc(p.name)}</h3>
         <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${(p.vehicles || []).join(', ')}</p>
@@ -577,6 +628,7 @@
         </table>
       </div>`;
     $('#back').onclick = () => ledgerView();
+    if (isOwner() && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
   }
 
   const A = {
