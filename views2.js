@@ -226,11 +226,12 @@
     const BASE_PROMPT = `Ye petrol pump ke daily hisab register ki photo hai. Photo padhkar SIRF ek JSON do (koi explanation, koi code-fence, koi extra text nahi). Format:
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
 "nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
-"openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"malikDiya":0,
+"openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"kharchaItems":[{"label":"","amount":0}],"malikDiya":0,
 "openStockP":0,"openStockD":0,"tankerP":0,"tankerD":0,"dipP":0,"dipD":0,"note":"",
 "udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
 "jama":[{"party":"","mode":"cash","amount":0}]}
-Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.`;
+Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.
+Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath. Agar register mein sirf ek total kharcha likha hai aur kis cheez ka hai ye samajh nahi aa raha, to usko kharchaItems mein "label":"" ke saath likho (apni taraf se mat bantna).`;
     const buildPrompt = parties => BASE_PROMPT +
       '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
       parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
@@ -421,6 +422,27 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       });
     }
 
+    /* ---- खर्चा की लाइनें (हर लाइन: कौन सा खाना, नाम, रकम) — preview में एडिट/बाँटने के लिए ---- */
+    const expL = [];
+    [['kharcha', 'f-kharcha'], ['driverInaam', 'f-driverInaam'], ['chaiKhana', 'f-chaiKhana']].forEach(([k, id]) => {
+      if (f[id] > 0) { expL.push({ cat: k, label: '', amount: f[id] }); delete f[id]; }
+    });
+    const exIn = Array.isArray(raw.kharchaItems) ? raw.kharchaItems : Array.isArray(raw.expenses) ? raw.expenses : Array.isArray(raw.kharchaList) ? raw.kharchaList : [];
+    exIn.forEach(it => {
+      if (!it) return;
+      const a = numOrNull(it.amount !== undefined ? it.amount : it.rs);
+      if (!(a > 0)) return;
+      const lb = clean(it.label || it.name || it.item || it.for);
+      let cat = 'other';
+      if (/\bdg\b|जनरेटर|generator/i.test(lb)) cat = 'kharcha';
+      else if (/ड्राइवर|driver|इनाम/i.test(lb)) cat = 'driverInaam';
+      else if (/चाय|खाना|chai|khana|nasta|नाश्ता/i.test(lb)) cat = 'chaiKhana';
+      expL.push({ cat, label: cat === 'other' ? lb : '', amount: a });
+    });
+    const expOrig = K.r2(expL.reduce((a, x) => a + x.amount, 0));
+    const KHN = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
+    const expName = x => x.cat === 'other' ? (x.label || '❓ नाम नहीं पता') : KHN[x.cat];
+
     const udharIn = Array.isArray(raw.udhar) ? raw.udhar : (Array.isArray(raw.ledger) ? raw.ledger : []);
     const jamaIn = Array.isArray(raw.jama) ? raw.jama : [];
 
@@ -524,6 +546,7 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
         ${newU0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${esc(x.veh)} · ${money(x.amount)}</div>`).join('')}
         <div class="kv"><span>नई जमा एंट्री</span><b>${newJ0.length}</b></div>
         ${newJ0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${money(x.amount)}</div>`).join('')}
+        <div id="pv-exp"></div>
         ${dupN ? `<div class="mut" style="margin-top:6px">पहले से मौजूद (छोड़ दी जाएँगी): ${dupN}</div>` : ''}
         ${pend.length ? `<div class="warn" style="margin-top:8px"><b>❓ ये पार्टी नहीं पहचानी — सही पार्टी चुनें (${pend.length}):</b>
           ${pend.map((x, i) => { const sg = suggest(x.nameRaw, x.base.veh); return `<div style="margin-top:8px"><small>${esc(x.label)} · ${money(x.base.amount)}</small>
@@ -534,6 +557,25 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
           <button class="btn g" id="pv-ok">✅ भर दो</button>
           <button class="btn w" id="pv-no">रद्द</button>
         </div>`);
+      const renderExp = () => {
+        const box = $('#pv-exp', m); if (!box) return;
+        if (!expL.length) { box.innerHTML = ''; return; }
+        const tot = K.r2(expL.reduce((a, x) => a + x.amount, 0));
+        const unk = expL.filter(x => x.cat === 'other' && !x.label).length;
+        box.innerHTML = `<div class="${unk ? 'warn' : ''}" style="margin-top:8px;${unk ? '' : 'background:#f8f9fc;border-radius:8px;padding:8px 10px'}">
+          <div class="kv" style="border:0"><span><b>💸 खर्चा</b></span><b>${money(tot)}</b></div>
+          ${expL.map(x => `<div class="mut" style="font-size:12px">• ${esc(expName(x))} · ${money(x.amount)}</div>`).join('')}
+          ${unk ? `<div style="font-size:13px;margin-top:4px">❓ ${unk} खर्चा किस चीज़ का है, समझ नहीं आया — नीचे बटन से बता दें।</div>` : ''}
+          <div class="btns"><button class="btn w sm" type="button" id="pv-exp-ed">✏️ खर्चा एडिट / अलग-अलग बाँटें</button></div></div>`;
+        $('#pv-exp-ed', m).onclick = () => APP.expEditor({
+          title: '💸 खर्चा — किस चीज़ में कितना',
+          note: `पेस्ट में कुल खर्चा <b>${money(expOrig)}</b> आया है। चाहें तो एक खर्चे को अलग-अलग हिस्सों में बाँटें (जोड़ बराबर रहना चाहिए), नाम सुधारें या हटाएँ।`,
+          mustTotal: expOrig, soft: true,
+          lines: expL.map(x => ({ cat: x.cat, label: x.label, amount: x.amount })),
+          onOk: lines => { expL.length = 0; lines.forEach(l => expL.push(l)); renderExp(); }
+        });
+      };
+      renderExp();
       $('#pv-ok', m).onclick = () => { const r = {}; $$('select[data-pi]', m).forEach(el => { if (el.value) r[el.dataset.pi] = el.value; }); m.close(); resolve(r); };
       $('#pv-no', m).onclick = () => { m.close(); resolve(null); };
     });
@@ -554,6 +596,12 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       }
     });
     saveAlias();
+    // खर्चा: DG/ड्राइवर/चाय के बॉक्स में जोड़, बाकी "और खर्चे" की अलग पंक्तियों में
+    ['kharcha', 'driverInaam', 'chaiKhana'].forEach(k => {
+      const ls = expL.filter(x => x.cat === k);
+      if (ls.length) f['f-' + k] = K.r2(ls.reduce((a, x) => a + x.amount, 0));
+    });
+    const newExp = expL.filter(x => x.cat === 'other').map(x => ({ label: x.label, amount: x.amount }));
     const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
 
     /* ---------- 7. sahi din kholo ---------- */
@@ -565,6 +613,7 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
     /* ---------- 8. form bharo (DB mein tab tak kuch nahi jata jab tak 💾 सेव na dabe) ---------- */
     const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
     let filled = 0; const missing = [];
+    const S_cur_locked = () => !!(APP.S.cur && APP.S.cur.locked);
     Object.keys(f).forEach(id => {
       const el = $('#' + id);
       if (!el || el.disabled) { missing.push(id); return; }
@@ -576,6 +625,10 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       if (x.c !== null) { if (cEl && !cEl.disabled) { cEl.value = x.c; fire(cEl); filled++; } else missing.push(k + ' closing'); }
       if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); filled++; }  // opening sirf khali ho tab
     });
+    if (newExp.length) {
+      if (S_cur_locked()) missing.push('और खर्चे (लॉक)');
+      else { try { APP.mergeExpItems(newExp); filled += newExp.length; } catch (e) { missing.push('और खर्चे'); } }
+    }
     try { APP.recalc(); } catch (e) { }
 
     /* ---------- 9. udhar / jama sidha ledger mein (app ke apne format mein) ---------- */
