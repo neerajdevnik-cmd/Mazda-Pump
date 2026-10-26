@@ -276,7 +276,6 @@
       driverInaam: 0, chaiKhana: 0, status: 'open', opening_locked: true
     };
     
-    // Check local draft first to prevent zero readings
     let prev = null;
     const prevDateStr = shiftDate(date, -1);
     const draftStr = localStorage.getItem('mazda_draft_' + prevDateStr);
@@ -293,19 +292,18 @@
       d.openStockP = K.has(prev.dipP) ? num(prev.dipP) : pc.stockCloseP;
       d.openStockD = K.has(prev.dipD) ? num(prev.dipD) : pc.stockCloseD;
     } else {
-      d.opening_locked = false; // First day, allow manual entry
+      d.opening_locked = false;
     }
     return d;
   }
 
-  // Auto-Save Timer
   let autoSaveTimer = null;
   function triggerAutoSave() {
     if (S.cur && !S.cur.locked && !isViewer()) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => {
-        saveDay(false, true); // Silent auto-save
-      }, 2500); // 2.5 seconds baad save hoga
+        saveDay(false, true);
+      }, 2500);
     }
   }
 
@@ -326,7 +324,6 @@
     const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date);
     
-    // Auto-sync opening from previous day if locked
     if (prev && d.opening_locked !== false) {
       if (!d.nz) d.nz = {};
       K.NZ.forEach(k => {
@@ -389,12 +386,12 @@
       <div class="row"><div><label>Paytm/UPI कुल</label>${inp('f-paytm', d.paytm)}</div><div><label>स्वाइप कुल</label>${inp('f-swipe', d.swipe)}</div></div>
       
       <div class="row" style="margin-top:8px">
-        <div><label>खर्चा (जनरल)</label>${inp('f-kharcha', d.kharcha)}</div>
+        <div><label>खर्चा DG (जनरेटर)</label>${inp('f-kharcha', d.kharcha)}</div>
         <div><label>ड्राइवर इनाम</label>${inp('f-driverInaam', d.driverInaam)}</div>
       </div>
       <div class="row">
         <div><label>चाय-खाना</label>${inp('f-chaiKhana', d.chaiKhana)}</div>
-        <div><label>मालिक को दिया</label>${inp('f-malikDiya', d.malikDiya)}</div>
+        <div><label>मालिक को दिया (SBI जमा)</label>${inp('f-malikDiya', d.malikDiya)}</div>
       </div>
       <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
 
@@ -421,7 +418,6 @@
     
     $('#f-date').onchange = e => { collectDraft(); dayView(e.target.value || todayISO()); };
     
-    // Toggle opening edit logic
     if ($('#toggle-open')) {
       $('#toggle-open').onclick = () => {
         if (S.cur.d.opening_locked !== false) {
@@ -455,7 +451,6 @@
       };
     }
 
-    // Auto-save trigger on inputs
     $$('#main input').forEach(i => {
       if (i.id !== 'f-date') {
         i.addEventListener('input', () => { recalc(); triggerAutoSave(); });
@@ -506,7 +501,7 @@
       kvEl('= कुल', money(o.kul)) +
       kvEl('− Paytm कुल', money(d.paytm)) + kvEl('− स्वाइप कुल', money(d.swipe)) + kvEl('− उधार दिया', money(o.udhar)) +
       kvEl('− कुल खर्चा', money(o.totalKharcha)) +
-      kvEl('− मालिक को दिया', money(d.malikDiya)) +
+      kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
       kvEl('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
     
     const sd = (a, b) => b == null ? '' : `<div class="${Math.abs(b) > 0.5 ? 'warn' : 'ok'}">डिप फर्क: ${b > 0 ? '+' : ''}${r2(b)} L</div>`;
@@ -525,13 +520,32 @@
     d.status = submit ? 'submitted' : (st.d.status || 'open');
     d.by = S.user.email; d.at = FV.serverTimestamp();
     
-    // Update local draft immediately
     S.draft[st.date] = d;
 
     try {
       await commit(db.collection('days').doc(st.date).set(d));
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       
+      // --- SBI Bank Deposit Auto Sync ---
+      try {
+        const bankRef = db.collection('bank_deposits');
+        const q = await bankRef.where('date', '==', st.date).where('note', '==', 'मालिक को दिया (SBI जमा)').get();
+        const mdAmt = num(d.malikDiya);
+        if (mdAmt > 0) {
+          if (q.empty) {
+            await bankRef.add({
+              bank: 'SBI', date: st.date, amount: mdAmt, mode: 'cash',
+              note: 'मालिक को दिया (SBI जमा)', by: S.user.email, at: FV.serverTimestamp()
+            });
+          } else {
+            await bankRef.doc(q.docs[0].id).update({ amount: mdAmt, at: FV.serverTimestamp() });
+          }
+        } else if (!q.empty) {
+          await bankRef.doc(q.docs[0].id).delete();
+        }
+      } catch (bankErr) { console.error('Bank sync error:', bankErr); }
+      // ----------------------------------
+
       if (!silent) {
         audit(submit ? 'day_submit' : 'day_save', { date: st.date, sale: o.sale, close: o.close });
         toast(submit ? 'हिसाब जमा हो गया' : 'सेव हो गया');
