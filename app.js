@@ -53,7 +53,7 @@
   const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
   const EXP_HINTS = ['पंचर', 'सफाई', 'बिजली', 'मरम्मत', 'स्टेशनरी', 'पानी', 'ट्रांसपोर्ट', 'स्टाफ'];
   const KHF = { kharcha: 'f-kharcha', driverInaam: 'f-driverInaam', chaiKhana: 'f-chaiKhana' };
-  // o = { title, note, lines:[{cat,label,amount}], mustTotal (कुल बराबर रहना चाहिए), soft (true = सिर्फ़ चेतावनी), onOk(lines) }
+  
   function expEditor(o) {
     const must = (o.mustTotal === undefined || o.mustTotal === null) ? null : r2(o.mustTotal);
     let lines = (o.lines || []).map(x => ({ cat: x.cat || 'other', label: x.label || '', amount: x.amount == null ? '' : x.amount }));
@@ -118,7 +118,6 @@
     };
   }
 
-  // दिन के फॉर्म में "और खर्चे" की पंक्तियाँ
   function getExpItems() { return $$('#expbox .exr').map(r => ({ label: $('.exl', r).value.trim(), amount: $('.exa', r).value })); }
   function setExpItems(items, locked) {
     const box = $('#expbox'); if (!box) return;
@@ -131,7 +130,6 @@
       </div>`).join('') : '<div class="mut" style="font-size:12px;margin:4px 0">अभी कोई और खर्चा नहीं — नीचे "+ और खर्चा जोड़ें" दबाएँ</div>';
     $$('#expbox input').forEach(i => i.addEventListener('input', () => { recalc(); triggerAutoSave(); }));
   }
-  // lines को फॉर्म में लगाओ: DG/ड्राइवर/चाय वाले उनके बॉक्स में जुड़ते हैं, बाकी अलग पंक्ति बनते हैं
   function applyExpLines(items, lines) {
     lines.forEach(l => {
       if (KHF[l.cat]) { const el = $('#' + KHF[l.cat]); if (el) el.value = r2(num(el.value) + num(l.amount)) || ''; }
@@ -347,7 +345,6 @@
   }
 
   function go(tab, arg) {
-    // सेल्समैन को खाते/पार्टी बैलेंस/मालिक का हिसाब नहीं दिखेगा
     if (isSalesman() && !['salesman', 'sm_udhar', 'more'].includes(tab)) tab = 'salesman';
     S.tab = tab;
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -386,11 +383,15 @@
     if (prev) {
       const rs = prev.date ? await db.collection('ledger').where('date', '==', prev.date).get() : { docs: [] };
       const pc = K.compute(prev, rs.docs.map(x => x.data()));
+      
       K.NZ.forEach(k => { d.nz[k] = { o: prev.nz && prev.nz[k] ? prev.nz[k].c : '', c: '' }; });
       d.rateP = prev.rateP || d.rateP; d.rateD = prev.rateD || d.rateD;
       d.openCash = pc.close;
-      d.openStockP = K.has(prev.dipP) ? num(prev.dipP) : pc.stockCloseP;
-      d.openStockD = K.has(prev.dipD) ? num(prev.dipD) : pc.stockCloseD;
+      
+      // New Stock Opening calculation based on previous day's Dip
+      d.openStockP = pc.actStockP !== null ? pc.actStockP : (prev.openStockP || 0);
+      d.openStockD = pc.actStockD !== null ? pc.actStockD : (prev.openStockD || 0);
+      
     } else {
       d.opening_locked = false;
     }
@@ -478,6 +479,30 @@
       </div>` : ''}
     </div>
 
+    <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
+      <div class="row">
+        <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockP" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockP || '')}"></div>
+        <div><label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label>आज की डिप</label>${inp('f-dipP', d.dipP)}</div>
+        <div><label>डिप के हिसाब से (L)</label><input id="f-actStockP" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
+      </div>
+      <div id="stkP" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card"><h3>🛢️ डीज़ल स्टॉक (लीटर)</h3>
+      <div class="row">
+        <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockD" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockD || '')}"></div>
+        <div><label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label>आज की डिप</label>${inp('f-dipD', d.dipD)}</div>
+        <div><label>डिप के हिसाब से (L)</label><input id="f-actStockD" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
+      </div>
+      <div id="stkD" style="margin-top:8px"></div>
+    </div>
+
     <div class="card"><h3>पार्टी उधार / जमा (आज)</h3>
       <div id="rowsbox"></div>
       <div class="btns">${locked ? '' : '<button class="btn o" data-do="addU">+ उधार</button><button class="btn g" data-do="addJ">+ जमा</button>'}</div></div>
@@ -500,12 +525,6 @@
       <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
 
     <div class="card"><h3>आज का हिसाब</h3><div id="sum"></div></div>
-
-    <div class="card"><h3>स्टॉक (लीटर)</h3>
-      <div class="row"><div><label>पेट्रोल ओपनिंग</label>${inp('f-openStockP', d.openStockP)}</div><div><label>डीज़ल ओपनिंग</label>${inp('f-openStockD', d.openStockD)}</div></div>
-      <div class="row"><div><label>पेट्रोल टैंकर आया</label>${inp('f-tankerP', d.tankerP)}</div><div><label>डीज़ल टैंकर आया</label>${inp('f-tankerD', d.tankerD)}</div></div>
-      <div class="row"><div><label>पेट्रोल डिप</label>${inp('f-dipP', d.dipP)}</div><div><label>डीज़ल डिप</label>${inp('f-dipD', d.dipD)}</div></div>
-      <div id="stk"></div></div>
 
     <div class="btns">
       ${locked ? '' : '<button class="btn w" data-do="save">💾 सेव</button>'}
@@ -573,7 +592,8 @@
       kharcha: g('f-kharcha'), driverInaam: g('f-driverInaam'), chaiKhana: g('f-chaiKhana'),
       malikDiya: g('f-malikDiya'), note: g('f-note'),
       openStockP: g('f-openStockP'), openStockD: g('f-openStockD'),
-      tankerP: g('f-tankerP'), tankerD: g('f-tankerD'), dipP: g('f-dipP'), dipD: g('f-dipD'), nz: {},
+      tankerP: g('f-tankerP'), tankerD: g('f-tankerD'), 
+      dipP: g('f-dipP'), dipD: g('f-dipD'), nz: {},
       opening_locked: st.d.opening_locked !== false,
       kharchaItems: $('#expbox')
         ? getExpItems().filter(x => x.label || num(x.amount)).map(x => ({ label: x.label, amount: num(x.amount) }))
@@ -598,9 +618,38 @@
   function recalc() {
     const st = S.cur; if (!st) return;
     const d = readForm(), o = K.compute(d, st.rows);
+    
+    // Update Meter Net Liters
     K.NZ.forEach(k => { const e = $('#net-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     $('#nzwarn').innerHTML = o.warn.map(w => '<div class="warn">' + esc(w) + '</div>').join('') +
       (o.filled < 8 ? `<div class="mut">${o.filled}/8 नोज़ल भरे हैं</div>` : '');
+      
+    // Update Stock Section (Petrol & Diesel)
+    const setStkHtml = (prefix, exp, act, diff, tanker, sale) => {
+      const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
+      let warnStock = '';
+      if (act !== null && act < (prefix==='P'?1200:1000)) warnStock = `<div class="warn" style="margin-top:6px">⚠️ स्टॉक खत्म होने वाला है! (${act} L बचा है)</div>`;
+      
+      let html = kvEl('कुल उपलब्ध (ओपनिंग + टैंकर)', lit(num(d['openStock'+prefix]) + num(tanker))) +
+                 kvEl('आज की बिक्री (मीटर से)', lit(sale)) +
+                 kvEl('होना चाहिए (Expected)', lit(exp)) +
+                 kvEl('डिप के हिसाब से है (Actual)', act !== null ? lit(act) : '-', 'big');
+                 
+      if (diff !== null) {
+        html += `<div class="${Math.abs(diff) > 0.5 ? (diff < 0 ? 'err' : 'warn') : 'ok'}" style="margin-top:6px">फर्क (Variation): <b>${diff > 0 ? '+' : ''}${r2(diff)} L</b></div>`;
+      }
+      if (warnStock) html += warnStock;
+      return html;
+    };
+
+    const elP = $('#stkP'); if (elP) elP.innerHTML = setStkHtml('P', o.expStockP, o.actStockP, o.diffP, d.tankerP, o.litP);
+    const elD = $('#stkD'); if (elD) elD.innerHTML = setStkHtml('D', o.expStockD, o.actStockD, o.diffD, d.tankerD, o.litD);
+
+    // Update Actual Stock Input boxes directly
+    const actInpP = $('#f-actStockP'); if(actInpP) actInpP.value = o.actStockP !== null ? r2(o.actStockP) : '';
+    const actInpD = $('#f-actStockD'); if(actInpD) actInpD.value = o.actStockD !== null ? r2(o.actStockD) : '';
+
+    // Update Cash Summary
     const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
     $('#sum').innerHTML =
       kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
@@ -614,8 +663,6 @@
       kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
       kvEl('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
     
-    const sd = (a, b) => b == null ? '' : `<div class="${Math.abs(b) > 0.5 ? 'warn' : 'ok'}">डिप फर्क: ${b > 0 ? '+' : ''}${r2(b)} L</div>`;
-    $('#stk').innerHTML = kvEl('पेट्रोल हिसाब से बचा', lit(o.stockCloseP)) + sd('P', o.diffP) + kvEl('डीज़ल हिसाब से बचा', lit(o.stockCloseD)) + sd('D', o.diffD);
     st.o = o;
   }
 
@@ -626,7 +673,7 @@
     if (submit && !silent) {
       if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
     }
-    d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, stockCloseP: o.stockCloseP, stockCloseD: o.stockCloseD };
+    d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, expStockP: o.expStockP, expStockD: o.expStockD, actStockP: o.actStockP, actStockD: o.actStockD, diffP: o.diffP, diffD: o.diffD };
     d.status = submit ? 'submitted' : (st.d.status || 'open');
     d.by = S.user.email; d.at = FV.serverTimestamp();
     
@@ -636,7 +683,7 @@
       await commit(db.collection('days').doc(st.date).set(d));
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       
-      // --- SBI Bank Deposit Auto Sync (Fixed & Error Proof) ---
+      // --- SBI Bank Deposit Auto Sync ---
       try {
         const bankRef = db.collection('bank_deposits');
         const docId = 'sbi_auto_' + st.date;
@@ -645,7 +692,7 @@
         const exSnap = await bankRef.doc(docId).get();
         const exd = exSnap.exists ? exSnap.data() : null;
         if (exd && (exd.removed || exd.edited)) {
-          // मालिक ने इसे हाथ से बदला / हटाया है — अपने-आप दोबारा नहीं छेड़ना
+          // मालिक ने इसे हाथ से बदला / हटाया है
         } else if (mdAmt > 0) {
           await bankRef.doc(docId).set({
             bank: 'SBI', 
@@ -670,7 +717,6 @@
     } catch (e) { if (!silent) toast('सेव नहीं हुआ: ' + e.message); }
   }
 
-  // वही पार्टी + वही गाड़ी + वही रकम उसी दिन पहले से दर्ज है? (सेल्समैन/मालिक/AI स्कैन — सब की एंट्री में मिलान)
   async function findDupEntry(d) {
     try {
       const nv = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -784,7 +830,6 @@
       if (priv) { data.status = e ? e.status : 'pending'; }
       const who = S.salesman ? S.salesman.name : S.user.email;
       if (e) {
-        // बदलाव करने पर पुराना "किसने किया" मिटना नहीं चाहिए (क्रॉस-चेक के लिए)
         ['by', 'src', 'sid', 'uid', 'verified', 'verifiedBy'].forEach(k => { if (e[k] !== undefined) data[k] = e[k]; });
         data.editedBy = who;
       } else {
@@ -795,7 +840,7 @@
       data.at = FV.serverTimestamp();
 
       const sbtn = q('e-save');
-      if (sbtn.disabled) return;                       // दो बार दबाने से डबल एंट्री नहीं
+      if (sbtn.disabled) return;                       
       if (!e && data.kind === 'udhar' && !priv) {
         const dup = await findDupEntry(data);
         if (dup) {
@@ -1002,7 +1047,6 @@
     };
   }
 
-  // 🔄 पुराने सारे दिनों का डेटा बैंक जमा में सिंक करने का फंक्शन
   APP.syncOldBankData = async function() {
     if(!confirm('क्या आप पुराने सारे हिसाब को SBI बैंक जमा में सिंक करना चाहते हैं? इसमें 1 मिनट लग सकता है।')) return;
     toast('पुराना डेटा सिंक हो रहा है...');
@@ -1028,8 +1072,6 @@
       if (S.tab === 'bank') APP.views.bank();
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
-
-  // (सिंक बटन अब views2.js के "और" टैब में जुड़ता है, क्योंकि वहीं more बनता है)
 
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
