@@ -110,8 +110,18 @@
         </div>
       </div>`;
 
+    if (APP.isOwner() && APP.syncOldBankData) {
+      const btns = main.querySelector('.btns');
+      const sb = document.createElement('button');
+      sb.id = 'm-sync-bank'; sb.className = 'btn w full'; sb.style.marginBottom = '10px';
+      sb.textContent = '🔄 पुराना डेटा SBI बैंक में सिंक करें';
+      sb.onclick = () => APP.syncOldBankData();
+      if (btns) btns.insertBefore(sb, btns.firstChild);
+    }
+
     $('#m-logout').onclick = () => {
       localStorage.removeItem('mazda_sm');
+      localStorage.removeItem('mazda_viewer');
       if (APP.auth) APP.auth.signOut();
       location.reload();
     };
