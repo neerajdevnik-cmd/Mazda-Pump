@@ -49,6 +49,104 @@
   }
   Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer });
 
+  /* ================= खर्चा: अलग-अलग चीज़ों में बाँटने / एडिट करने वाला एडिटर ================= */
+  const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
+  const EXP_HINTS = ['पंचर', 'सफाई', 'बिजली', 'मरम्मत', 'स्टेशनरी', 'पानी', 'ट्रांसपोर्ट', 'स्टाफ'];
+  const KHF = { kharcha: 'f-kharcha', driverInaam: 'f-driverInaam', chaiKhana: 'f-chaiKhana' };
+  // o = { title, note, lines:[{cat,label,amount}], mustTotal (कुल बराबर रहना चाहिए), soft (true = सिर्फ़ चेतावनी), onOk(lines) }
+  function expEditor(o) {
+    const must = (o.mustTotal === undefined || o.mustTotal === null) ? null : r2(o.mustTotal);
+    let lines = (o.lines || []).map(x => ({ cat: x.cat || 'other', label: x.label || '', amount: x.amount == null ? '' : x.amount }));
+    if (!lines.length) lines = [{ cat: 'other', label: '', amount: '' }];
+    const m = modal(`<h3>${esc(o.title || 'खर्चा')}</h3>
+      <div class="mut" style="margin-bottom:6px">${o.note || ''}</div>
+      <datalist id="xe-dl">${EXP_HINTS.map(h => `<option value="${esc(h)}">`).join('')}</datalist>
+      <div id="xe-rows"></div>
+      <div class="btns"><button class="btn w sm" id="xe-add" type="button">+ और हिस्सा</button></div>
+      <div id="xe-tot" style="margin-top:8px"></div>
+      <div class="btns" style="margin-top:10px"><button class="btn g" id="xe-ok">✅ ठीक है</button><button class="btn w" id="xe-no">रद्द</button></div>`);
+    const rowsEl = $('#xe-rows', m);
+    const read = () => {
+      lines = $$('.xe-r', m).map(r => ({
+        cat: $('.xe-c', r).value, label: $('.xe-l', r).value.trim(), amount: $('.xe-a', r).value
+      }));
+    };
+    const total = () => r2(lines.reduce((a, x) => a + num(x.amount), 0));
+    const upd = () => {
+      const t = total();
+      let h = `<div class="kv"><span>अभी का जोड़</span><b>${money(t)}</b></div>`;
+      if (must !== null) {
+        const left = r2(must - t);
+        h = `<div class="kv"><span>बाँटना है (कुल)</span><b>${money(must)}</b></div>` + h +
+          `<div class="${Math.abs(left) < 0.01 ? 'ok' : 'warn'}" style="margin-top:6px">${Math.abs(left) < 0.01 ? '✔ कुल बराबर है' : (left > 0 ? 'अभी बाकी: ' + money(left) : 'ज़्यादा हो गया: ' + money(-left))}</div>`;
+      }
+      $('#xe-tot', m).innerHTML = h;
+    };
+    const draw = () => {
+      rowsEl.innerHTML = lines.map((x, i) => `<div class="xe-r" data-i="${i}">
+        <div class="xe-top">
+          <select class="xe-c">${EXP_CATS.map(c => `<option value="${c[0]}" ${c[0] === x.cat ? 'selected' : ''}>${c[1]}</option>`).join('')}</select>
+          <input class="xe-a" inputmode="decimal" placeholder="रुपये" value="${esc(x.amount)}">
+          <button class="btn sm r xe-d" type="button">🗑</button>
+        </div>
+        <input class="xe-l" list="xe-dl" placeholder="किस चीज़ का खर्चा है? (नाम लिखें)" value="${esc(x.label)}" style="margin-top:6px;${x.cat === 'other' ? '' : 'display:none'}">
+        ${must !== null ? '<button class="btn sm w xe-f" type="button" style="margin-top:6px">= बाकी रकम यहाँ डालें</button>' : ''}
+      </div>`).join('');
+      $$('.xe-r', m).forEach(r => {
+        const i = +r.dataset.i;
+        $('.xe-c', r).onchange = () => { read(); draw(); upd(); };
+        $('.xe-a', r).oninput = () => { read(); upd(); };
+        $('.xe-l', r).oninput = () => read();
+        $('.xe-d', r).onclick = () => { read(); lines.splice(i, 1); if (!lines.length) lines.push({ cat: 'other', label: '', amount: '' }); draw(); upd(); };
+        const f = $('.xe-f', r);
+        if (f) f.onclick = () => { read(); const others = lines.reduce((a, x, j) => a + (j === i ? 0 : num(x.amount)), 0); lines[i].amount = Math.max(0, r2(must - others)) || ''; draw(); upd(); };
+      });
+    };
+    draw(); upd();
+    $('#xe-add', m).onclick = () => { read(); lines.push({ cat: 'other', label: '', amount: '' }); draw(); upd(); };
+    $('#xe-no', m).onclick = () => m.close();
+    $('#xe-ok', m).onclick = () => {
+      read();
+      const out = lines.filter(x => num(x.amount) !== 0).map(x => ({ cat: x.cat, label: x.cat === 'other' ? x.label : '', amount: r2(x.amount) }));
+      if (out.some(x => x.cat === 'other' && !x.label)) return toast('जिस खर्चे का "अन्य" चुना है, उसका नाम लिखें');
+      const t = r2(out.reduce((a, x) => a + x.amount, 0));
+      if (must !== null && Math.abs(t - must) >= 0.01) {
+        if (!o.soft) return toast('कुल बराबर होना चाहिए — ' + (t < must ? 'अभी बाकी ' + money(must - t) : 'ज़्यादा है ' + money(t - must)));
+        if (!confirm('जोड़ ' + money(t) + ' है, पहले कुल ' + money(must) + ' था। फिर भी यही रखें?')) return;
+      }
+      m.close(); o.onOk(out);
+    };
+  }
+
+  // दिन के फॉर्म में "और खर्चे" की पंक्तियाँ
+  function getExpItems() { return $$('#expbox .exr').map(r => ({ label: $('.exl', r).value.trim(), amount: $('.exa', r).value })); }
+  function setExpItems(items, locked) {
+    const box = $('#expbox'); if (!box) return;
+    const lk = locked === undefined ? !!(S.cur && S.cur.locked) : locked;
+    const dis = lk ? 'disabled' : '';
+    box.innerHTML = items.length ? items.map((it, i) => `<div class="exr item" style="padding:6px 0">
+        <div class="a"><input class="exl" placeholder="किस चीज़ का खर्चा?" value="${esc(it.label || '')}" ${dis}></div>
+        <input class="exa" inputmode="decimal" placeholder="रुपये" value="${esc(it.amount == null ? '' : it.amount)}" style="width:96px" ${dis}>
+        ${lk ? '' : `<button class="btn sm w" type="button" data-do="splitX" data-i="${i}">✂️</button><button class="btn sm r" type="button" data-do="delX" data-i="${i}">🗑</button>`}
+      </div>`).join('') : '<div class="mut" style="font-size:12px;margin:4px 0">अभी कोई और खर्चा नहीं — नीचे "+ और खर्चा जोड़ें" दबाएँ</div>';
+    $$('#expbox input').forEach(i => i.addEventListener('input', () => { recalc(); triggerAutoSave(); }));
+  }
+  // lines को फॉर्म में लगाओ: DG/ड्राइवर/चाय वाले उनके बॉक्स में जुड़ते हैं, बाकी अलग पंक्ति बनते हैं
+  function applyExpLines(items, lines) {
+    lines.forEach(l => {
+      if (KHF[l.cat]) { const el = $('#' + KHF[l.cat]); if (el) el.value = r2(num(el.value) + num(l.amount)) || ''; }
+      else items.push({ label: l.label, amount: l.amount });
+    });
+    setExpItems(items); recalc(); triggerAutoSave();
+  }
+  function mergeExpItems(newItems) {
+    const cur = getExpItems();
+    newItems.forEach(n => {
+      if (!cur.some(c => c.label.trim() === String(n.label).trim() && Math.abs(num(c.amount) - num(n.amount)) < 0.01)) cur.push({ label: n.label, amount: n.amount });
+    });
+    setExpItems(cur); recalc(); triggerAutoSave();
+  }
+
   async function getParties(priv, force) {
     const key = priv ? 'priv' : 'pub';
     S.parties = S.parties || {};
@@ -358,6 +456,7 @@
         <span id="net-${k}">–</span></div>`; 
     };
     const minDate = isOwner() ? '' : shiftDate(todayISO(), -2);
+    const splitBtn = f => locked ? '' : `<button class="btn sm w" type="button" data-do="splitF" data-f="${f}" style="padding:2px 8px;font-size:12px">✂️ बाँटें</button>`;
 
     main.innerHTML = `
     <div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
@@ -388,13 +487,16 @@
       <div class="row"><div><label>Paytm/UPI कुल</label>${inp('f-paytm', d.paytm)}</div><div><label>स्वाइप कुल</label>${inp('f-swipe', d.swipe)}</div></div>
       
       <div class="row" style="margin-top:8px">
-        <div><label>खर्चा DG (जनरेटर)</label>${inp('f-kharcha', d.kharcha)}</div>
-        <div><label>ड्राइवर इनाम</label>${inp('f-driverInaam', d.driverInaam)}</div>
+        <div><div class="lh"><label>खर्चा DG (जनरेटर)</label>${splitBtn('kharcha')}</div>${inp('f-kharcha', d.kharcha)}</div>
+        <div><div class="lh"><label>ड्राइवर इनाम</label>${splitBtn('driverInaam')}</div>${inp('f-driverInaam', d.driverInaam)}</div>
       </div>
       <div class="row">
-        <div><label>चाय-खाना</label>${inp('f-chaiKhana', d.chaiKhana)}</div>
-        <div><label>मालिक को दिया (SBI जमा)</label>${inp('f-malikDiya', d.malikDiya)}</div>
+        <div><div class="lh"><label>चाय-खाना</label>${splitBtn('chaiKhana')}</div>${inp('f-chaiKhana', d.chaiKhana)}</div>
+        <div><div class="lh"><label>मालिक को दिया (SBI जमा)</label></div>${inp('f-malikDiya', d.malikDiya)}</div>
       </div>
+      <div class="lh" style="margin-top:10px"><label>और खर्चे (हर चीज़ अलग लिखें)</label></div>
+      <div id="expbox"></div>
+      ${locked ? '' : '<button class="btn sm w" type="button" data-do="addX">+ और खर्चा जोड़ें</button>'}
       <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
 
     <div class="card"><h3>आज का हिसाब</h3><div id="sum"></div></div>
@@ -413,6 +515,7 @@
       ${locked ? '' : '<button class="btn w" data-do="scan">📷 AI रजिस्टर स्कैन</button>'}
     </div>`;
 
+    setExpItems(Array.isArray(d.kharchaItems) ? d.kharchaItems : [], locked);
     const state = { d, rows, date, locked };
     S.cur = state;
     renderRows(state);
@@ -454,7 +557,7 @@
     }
 
     $$('#main input').forEach(i => {
-      if (i.id !== 'f-date') {
+      if (i.id !== 'f-date' && !i.closest('#expbox')) {
         i.addEventListener('input', () => { recalc(); triggerAutoSave(); });
       }
     });
@@ -471,7 +574,10 @@
       malikDiya: g('f-malikDiya'), note: g('f-note'),
       openStockP: g('f-openStockP'), openStockD: g('f-openStockD'),
       tankerP: g('f-tankerP'), tankerD: g('f-tankerD'), dipP: g('f-dipP'), dipD: g('f-dipD'), nz: {},
-      opening_locked: st.d.opening_locked !== false
+      opening_locked: st.d.opening_locked !== false,
+      kharchaItems: $('#expbox')
+        ? getExpItems().filter(x => x.label || num(x.amount)).map(x => ({ label: x.label, amount: num(x.amount) }))
+        : (st.d.kharchaItems || [])
     });
     K.NZ.forEach(k => { d.nz[k] = { o: '', c: '' }; });
     $$('.nzi').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
@@ -504,6 +610,7 @@
       kvEl('= कुल', money(o.kul)) +
       kvEl('− Paytm कुल', money(d.paytm)) + kvEl('− स्वाइप कुल', money(d.swipe)) + kvEl('− उधार दिया', money(o.udhar)) +
       kvEl('− कुल खर्चा', money(o.totalKharcha)) +
+      K.khList(d).map(x => `<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ${esc(x.label)}</span><span class="mut">${money(x.amount)}</span></div>`).join('') +
       kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
       kvEl('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
     
@@ -535,7 +642,11 @@
         const docId = 'sbi_auto_' + st.date;
         const mdAmt = num(d.malikDiya);
         
-        if (mdAmt > 0) {
+        const exSnap = await bankRef.doc(docId).get();
+        const exd = exSnap.exists ? exSnap.data() : null;
+        if (exd && (exd.removed || exd.edited)) {
+          // मालिक ने इसे हाथ से बदला / हटाया है — अपने-आप दोबारा नहीं छेड़ना
+        } else if (mdAmt > 0) {
           await bankRef.doc(docId).set({
             bank: 'SBI', 
             date: st.date, 
@@ -897,12 +1008,15 @@
     toast('पुराना डेटा सिंक हो रहा है...');
     try {
       const daysSnap = await db.collection('days').get();
+      const bankSnap0 = await db.collection('bank_deposits').get();
+      const bankEx = {}; bankSnap0.docs.forEach(x => { bankEx[x.id] = x.data(); });
       let count = 0;
       for (const doc of daysSnap.docs) {
         const d = doc.data();
         const mdAmt = num(d.malikDiya);
         if (mdAmt > 0) {
           const docId = 'sbi_auto_' + d.date;
+          if (bankEx[docId] && (bankEx[docId].removed || bankEx[docId].edited)) continue;
           await db.collection('bank_deposits').doc(docId).set({
             bank: 'SBI', date: d.date, amount: mdAmt, mode: 'cash',
             note: 'मालिक को दिया (SBI जमा)', by: d.by || 'system', at: FV.serverTimestamp()
@@ -920,6 +1034,29 @@
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
+    addX() { const it = getExpItems(); it.push({ label: '', amount: '' }); setExpItems(it); const ls = $$('#expbox .exl'); if (ls.length) ls[ls.length - 1].focus(); },
+    delX(ds) { const it = getExpItems(); it.splice(+ds.i, 1); setExpItems(it); recalc(); triggerAutoSave(); },
+    splitX(ds) {
+      const it = getExpItems(), x = it[+ds.i], tot = num(x && x.amount);
+      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
+      expEditor({
+        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
+        note: `<b>${esc(x.label || 'यह खर्चा')}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
+        lines: [{ cat: 'other', label: x.label, amount: tot }, { cat: 'other', label: '', amount: '' }],
+        onOk: lines => { it.splice(+ds.i, 1); applyExpLines(it, lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
+      });
+    },
+    splitF(ds) {
+      const id = KHF[ds.f], el = $('#' + id), tot = num(el && el.value);
+      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
+      const name = (EXP_CATS.find(c => c[0] === ds.f) || [])[1] || '';
+      expEditor({
+        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
+        note: `<b>${esc(name)}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
+        lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
+        onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
+      });
+    },
     save() { saveDay(false); },
     submit() { saveDay(true); },
     async unlock() {
@@ -956,7 +1093,7 @@
       } catch (e) { toast('नहीं हटा: ' + e.message); }
     }
   };
-  APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
+  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
   window.addEventListener('load', boot);
 })();
