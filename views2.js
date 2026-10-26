@@ -236,9 +236,19 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
         : code === 503 ? 'Gemini abhi busy hai — dobara try karein.' : '';
       return 'Gemini error (' + code + '): ' + m + (hint ? '\n' + hint : '');
     };
+    const gfetch = async (path, init, key, stage) => {
+      const tries = [
+        () => fetch(GBASE + path, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, { 'x-goog-api-key': key }) })),
+        () => fetch(GBASE + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(key), init)
+      ];
+      let last;
+      for (const t of tries) { try { return await t(); } catch (e) { last = e; } }
+      const err = new Error('इंटरनेट / ब्लॉक की दिक्कत (' + stage + '): ' + ((last && last.message) || '') + '\nजाँचें: नेट चालू हो, VPN / Private Relay / ad-blocker बंद हो, फिर दोबारा करें।');
+      err.status = -1; throw err;
+    };
     // chalu (retired nahi) flash model khud dhoondhta hai, isliye purana model band hone par bhi nahi tootega
     const listModels = async key => {
-      const r = await fetch(GBASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+      const r = await gfetch('/models?pageSize=200', {}, key, 'model list');
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
       const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
@@ -250,26 +260,26 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       if (all.includes('gemini-flash-latest')) out.push('gemini-flash-latest');
       return out;
     };
-    const toJpegB64 = file => new Promise((res, rej) => {
+    const toJpegB64 = (file, maxPx, q) => new Promise((res, rej) => {
       const url = URL.createObjectURL(file), img = new Image();
       img.onload = () => {
-        const sc = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+        const sc = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
         const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
         const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
         cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
-        res(cv.toDataURL('image/jpeg', 0.88).split(',')[1]);
+        res(cv.toDataURL('image/jpeg', q).split(',')[1]);
       };
       img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई — कैमरे से सीधी फोटो लें')); };
       img.src = url;
     });
-    const geminiRead = async file => {
+    const geminiReadOnce = async (file, maxPx, q) => {
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
-      const b64 = await toJpegB64(file);
+      const b64 = await toJpegB64(file, maxPx, q);
       let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
       const ask = buildPrompt(ps) + '\n\nAaj ki tareekh ' + ((st && st.date) || APP.todayISO()) + ' hai; photo mein tareekh na dikhe to yahi use karo.';
       const body = JSON.stringify({ contents: [{ parts: [{ text: ask }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
       const tryModel = async model => {
-        const r = await fetch(GBASE + '/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body });
+        const r = await gfetch('/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, key, 'फोटो भेजना');
         const j = await r.json().catch(() => ({}));
         if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
         const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
@@ -289,6 +299,11 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
         }
       }
       throw lastErr;
+    };
+
+    const geminiRead = async file => {
+      try { return await geminiReadOnce(file, 1600, 0.88); }
+      catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }   // kamzor net par chhoti photo
     };
 
     /* ---------- 1. paste box (textarea) ---------- */
