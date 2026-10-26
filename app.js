@@ -218,27 +218,37 @@
       catch (e) { loginView('यूज़रनेम या पासवर्ड गलत है: ' + e.message); }
     };
 
-    $('#go-sm').onclick = () => {
+   $('#go-sm').onclick = async () => {
       localStorage.removeItem('mazda_viewer'); S.role = null;
       const smId = $('#sm-sel').value;
       const pin = $('#sm-pin').value.trim();
       const s = (C.salesmen || []).find(x => x.id === smId);
       if (s && s.pin === pin) {
-        localStorage.setItem('mazda_sm', JSON.stringify(s));
-        S.salesman = s;
-        S.role = 'salesman';
-        S.user = { email: s.id + '@salesman.mazda' };
-        S.date = todayISO();
-        shell();
+        try {
+          if (!auth.currentUser) await auth.signInAnonymously();
+          localStorage.setItem('mazda_sm', JSON.stringify(s));
+          S.salesman = s;
+          S.role = 'salesman';
+          S.user = { email: s.id + '@salesman.mazda' };
+          S.date = todayISO();
+          shell();
+        } catch (e) {
+          loginView('लॉगिन नहीं हो पाया (इंटरनेट चेक करें): ' + e.message);
+        }
       } else {
         loginView('गलत PIN दर्ज किया गया है!');
       }
-    };
+    }; 
 
     $('#go-vw').onclick = async () => {
       const code = $('#vw-code').value.trim();
       if (code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
-      try { if (auth) await auth.signOut(); } catch (e) {}
+      try {
+        if (auth) {
+          if (!auth.currentUser) await auth.signInAnonymously();
+        }
+      } catch (e) { console.error('Auth error:', e); }
+      
       localStorage.removeItem('mazda_sm');
       localStorage.setItem('mazda_viewer', 'Mazda@123');
       S.salesman = null;
@@ -248,6 +258,7 @@
       shell();
     };
   }
+
 
   function boot() {
     firebase.initializeApp(C.firebase);
