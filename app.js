@@ -253,7 +253,7 @@
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
-    if (tab === 'ledger')]) return ledgerView(arg);
+    if (tab === 'ledger') return ledgerView(arg);
 
     if (APP.views && typeof APP.views[tab] === 'function') {
       APP.views[tab](arg);
@@ -325,14 +325,14 @@
     if (!d) d = await newDay(date);
     
     if (prev && d.opening_locked !== false) {
-      if (!d.nz) d.nz = {};
+      if (!d[.nz) d.nz = {};
       K.NZ.forEach(k => {
         if (!d.nz[k]) d.nz[k] = {};
         d.nz[k].o = prev.nz && prev.nz[k] ? prev.nz[k].c : '';
       });
     }
 
-    if (S.draft[date {
+    if (S.draftdate]) {
       d = Object.assign({}, d, S.draft[date]);
       if (d.opening_locked !== false && prev) {
         K.NZ.forEach(k => {
@@ -878,26 +878,6 @@
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
 
-  // मालिक के "और" (More) टैब में सिंक बटन जोड़ना
-  const origMore = APP.views.more;
-  APP.views.more = async function() {
-    if(origMore) await origMore();
-    const main = $('#main');
-    const card = main.querySelector('.card');
-    if(card && isOwner()) {
-       const btns = card.querySelector('.btns');
-       if(btns && !document.getElementById('m-sync-bank')) {
-          const btn = document.createElement('button');
-          btn.id = 'm-sync-bank';
-          btn.className = 'btn w full';
-          btn.style.marginBottom = '10px';
-          btn.innerHTML = '🔄 पुराना डेटा SBI बैंक में सिंक करें';
-          btns.insertBefore(btn, btns.firstChild);
-          btn.onclick = () => APP.syncOldBankData();
-       }
-    }
-  };
-
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
@@ -932,5 +912,29 @@
   };
   APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
-  window.addEventListener('load', boot);
+  window.addEventListener('load', () => {
+    boot();
+    // views2.js load hone ke baad button inject karega taaki app crash na ho
+    setTimeout(() => {
+      const origMore = APP.views.more;
+      if (origMore) {
+        APP.views.more = async function(arg) {
+          await origMore.apply(this, arguments);
+          const main = document.getElementById('main');
+          if (main && isOwner()) {
+            const btns = main.querySelector('.btns');
+            if (btns && !document.getElementById('m-sync-bank')) {
+              const btn = document.createElement('button');
+              btn.id = 'm-sync-bank';
+              btn.className = 'btn w full';
+              btn.style.marginBottom = '10px';
+              btn.innerHTML = '🔄 पुराना डेटा SBI बैंक में सिंक करें';
+              btns.insertBefore(btn, btns.firstChild);
+              btn.onclick = () => APP.syncOldBankData();
+            }
+          }
+        };
+      }
+    }, 1000);
+  });
 })();
