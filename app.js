@@ -493,7 +493,10 @@
     <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
       <div class="row">
         <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockP" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockP || '')}"></div>
-        <div><label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}</div>
+        <div>
+          <label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}
+          ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="petrol" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
+        </div>
       </div>
       <div class="row" style="margin-top:8px">
         <div><label>आज की डिप</label>${inp('f-dipP', d.dipP)}</div>
@@ -505,7 +508,10 @@
     <div class="card"><h3>🛢️ डीज़ल स्टॉक (लीटर)</h3>
       <div class="row">
         <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockD" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockD || '')}"></div>
-        <div><label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}</div>
+        <div>
+          <label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}
+          ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="diesel" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
+        </div>
       </div>
       <div class="row" style="margin-top:8px">
         <div><label>आज की डिप</label>${inp('f-dipD', d.dipD)}</div>
@@ -1084,6 +1090,65 @@
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
 
+  // 🚛 टैंकर रिपोर्ट जनरेट करने का फंक्शन
+  APP.openTankerReportModal = function(fuelType, liters) {
+    const fuelName = fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल';
+    const m = modal(`
+      <h3>🚛 टैंकर रिपोर्ट (${fuelName})</h3>
+      <div class="mut" style="margin-bottom:8px;">यह रिपोर्ट सीधे ओनर को WhatsApp पर जाएगी।</div>
+      <label>टैंकर में कितना लीटर आया? (L)</label>
+      <input id="tr-lit" inputmode="decimal" value="${liters || ''}">
+      <div class="row">
+        <div><label>Before Dip</label><input id="tr-bdip" inputmode="decimal"></div>
+        <div><label>After Dip</label><input id="tr-adip" inputmode="decimal"></div>
+      </div>
+      <div class="row">
+        <div><label>Start Time</label><input type="time" id="tr-st" value="${APP.nowTime()}"></div>
+        <div><label>End Time</label><input type="time" id="tr-et" value="${APP.nowTime()}"></div>
+      </div>
+      <div class="btns" style="margin-top:12px;">
+        <button class="btn g" id="tr-share">📤 WhatsApp पर भेजें</button>
+        <button class="btn w" id="tr-cancel">रद्द</button>
+      </div>
+    `);
+    
+    $('#tr-cancel', m).onclick = () => m.close();
+    
+    $('#tr-share', m).onclick = () => {
+      const lit = $('#tr-lit', m).value;
+      const bDip = $('#tr-bdip', m).value;
+      const aDip = $('#tr-adip', m).value;
+      const st = $('#tr-st', m).value;
+      const et = $('#tr-et', m).value;
+      
+      if (!lit) return toast('लीटर भरें');
+      
+      let timeTaken = '';
+      if (st && et) {
+        const [sh, sm] = st.split(':').map(Number);
+        const [eh, em] = et.split(':').map(Number);
+        let mins = (eh * 60 + em) - (sh * 60 + sm);
+        if (mins < 0) mins += 1440; 
+        const h = Math.floor(mins / 60);
+        const mnt = mins % 60;
+        timeTaken = `${h} घंटे ${mnt} मिनट`;
+      }
+      
+      const text = `*माज़दा ऑयल कंपनी* 🚛\n*टैंकर रिपोर्ट (${fuelName})*\n\n` +
+                   `📅 तारीख: ${APP.dmy(APP.todayISO())}\n` +
+                   `🛢️ टैंकर लीटर: ${lit} L\n` +
+                   `📉 Before Dip: ${bDip || '-'}\n` +
+                   `📈 After Dip: ${aDip || '-'}\n` +
+                   `⏱️ Start Time: ${st || '-'}\n` +
+                   `⏱️ End Time: ${et || '-'}\n` +
+                   `⌛ कुल समय: ${timeTaken || '-'}\n\n` +
+                   `कृपया जाँच लें।`;
+                   
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+      m.close();
+    };
+  };
+
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
@@ -1109,6 +1174,12 @@
         lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
         onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
       });
+    },
+    tankerRep(ds) {
+      const fuelType = ds.f;
+      const inputId = fuelType === 'petrol' ? 'f-tankerP' : 'f-tankerD';
+      const currentLiters = num($('#' + inputId).value);
+      APP.openTankerReportModal(fuelType, currentLiters);
     },
     save() { saveDay(false); },
     submit() { saveDay(true); },
