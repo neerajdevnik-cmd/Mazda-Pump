@@ -67,19 +67,29 @@
       </div>`;
   };
 
-  /* ======================= NIJI UDHAR (PRIV) ======================= */
+  /* ======================= NIJI UDHAR (PRIV) - UPDATED ======================= */
   APP.views.priv = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties = []; try { parties = await APP.getParties(true, true); } catch (e) { }
     const pend = parties.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
+    
     main.innerHTML = `
       <div class="card"><div class="kv"><span>कुल निजी उधार</span><b class="neg">${money(pend)}</b></div></div>
       <div class="btns" style="margin-bottom:12px"><button class="btn o" id="pv-add">+ नया निजी उधार</button></div>
       <div class="card">
-        ${parties.length ? parties.map(p => `<div class="item"><div class="a"><b>${esc(p.name)}</b></div><span class="chip r">${money(p.bal)}</span></div>`).join('') : '<p class="mut">कोई निजी खाता नहीं</p>'}
+        ${parties.length ? parties.map(p => `
+          <div class="item" style="cursor:pointer" data-pid="${p.id}">
+            <div class="a"><b>${esc(p.name)}</b></div>
+            <span class="chip r">${money(p.bal)}</span>
+          </div>
+        `).join('') : '<p class="mut">कोई निजी खाता नहीं</p>'}
       </div>`;
+      
     $('#pv-add').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
+    
+    // Party par click karne par uska pura account khulega (Edit/Delete/Opening Bal ke liye)
+    $$('[data-pid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.pid, true));
   };
 
   /* ======================= MORE / SETTINGS ======================= */
