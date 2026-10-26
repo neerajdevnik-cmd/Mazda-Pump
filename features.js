@@ -207,7 +207,7 @@
       const s = d.sum || {};
       const sale = num(s.sale);
       tot.sale += sale; tot.litP += num(s.litP); tot.litD += num(s.litD); tot.close += num(s.close);
-      tot.kharcha += num(d.kharcha) + num(d.driverInaam) + num(d.chaiKhana);
+      tot.kharcha += K.khTotal(d);
       const cc = costs[d.date] || {};
       const cg = num(s.litP) * num(cc.costP) + num(s.litD) * num(cc.costD);
       tot.cost += cg; tot.profit += (sale - cg);
@@ -229,6 +229,7 @@
         kv('पेट्रोल', APP.lit(tot.litP)) +
         kv('डीज़ल', APP.lit(tot.litD)) +
         kv('कुल खर्चा', money(tot.kharcha)) +
+        K.khSummary(days).map(x => '<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ' + esc(x.label) + '</span><span class="mut">' + money(x.amount) + '</span></div>').join('') +
         kv('कुल बचा कैश', money(tot.close)) +
         kv('खरीद लागत', money(tot.cost)) +
         kv('कुल मुनाफा', money(tot.profit), pc + ' big') +
@@ -447,44 +448,84 @@
   };
 
   /* ============ BANK DEPOSITS ============ */
+  const isOwnerF = () => APP.isOwner && APP.isOwner();
+  const isAutoBank = id => String(id || '').indexOf('sbi_auto_') === 0;   // "मालिक को दिया" से अपने-आप बनी
+
+  function bankModal(x, done) {
+    const e = x || null;
+    const banks = ['SBI', 'HDFC', 'PNB', 'BOB', 'अन्य'];
+    if (e && e.bank && banks.indexOf(e.bank) < 0) banks.unshift(e.bank);
+    const modes = [['cash', 'नकद'], ['cheque', 'चेक'], ['upi', 'UPI']];
+    const m = modal('<h3>' + (e ? '✏️ बैंक जमा बदलें' : 'बैंक जमा') + '</h3>' +
+      (e && isAutoBank(e.id) ? '<div class="warn">ये एंट्री दिन के "मालिक को दिया (SBI जमा)" से अपने-आप बनी थी। बदलने के बाद वो दिन दोबारा सेव करने पर भी ये एंट्री अपने-आप नहीं बदलेगी।</div>' : '') +
+      '<label>बैंक</label><select id="bn-b">' + banks.map(b => '<option' + (e && e.bank === b ? ' selected' : '') + '>' + esc(b) + '</option>').join('') + '</select>' +
+      '<label>तारीख</label><input type="date" id="bn-d" value="' + esc(e ? e.date : today()) + '">' +
+      '<label>रकम (₹)</label><input id="bn-a" inputmode="decimal" value="' + esc(e ? e.amount : '') + '">' +
+      '<label>माध्यम</label><select id="bn-m">' + modes.map(o => '<option value="' + o[0] + '"' + (e && e.mode === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<label>चेक नंबर</label><input id="bn-c" value="' + esc(e ? e.cheque || '' : '') + '">' +
+      '<label>नोट</label><input id="bn-n" value="' + esc(e ? e.note || '' : '') + '">' +
+      '<div class="btns"><button class="btn g" id="bn-sv">सेव</button>' +
+      (e ? '<button class="btn r" id="bn-rm">🗑 हटाएँ</button>' : '') +
+      '<button class="btn w" id="bn-cl">रद्द</button></div>');
+    $('#bn-cl', m).onclick = () => m.close();
+    if (e) $('#bn-rm', m).onclick = () => { m.close(); bankRemove(e, done); };
+    $('#bn-sv', m).onclick = async () => {
+      const a = num($('#bn-a', m).value); if (!(a > 0)) return toast('रकम भरें');
+      if (!$('#bn-d', m).value) return toast('तारीख चुनें');
+      const who = S.salesman ? S.salesman.name : (S.user && S.user.email) || '';
+      const data = {
+        bank: $('#bn-b', m).value, date: $('#bn-d', m).value, amount: a,
+        mode: $('#bn-m', m).value, cheque: $('#bn-c', m).value.trim(), note: $('#bn-n', m).value.trim()
+      };
+      try {
+        if (e) {
+          Object.assign(data, { edited: true, editedBy: who, editedAt: APP.FV.serverTimestamp() });
+          await db().collection('bank_deposits').doc(e.id).update(data);
+          if (APP.audit) APP.audit('bank_edit', { id: e.id, was: num(e.amount), now: a, date: data.date });
+        } else {
+          Object.assign(data, { by: who, at: APP.FV.serverTimestamp() });
+          await db().collection('bank_deposits').add(data);
+        }
+        m.close(); toast('सेव ✔'); done();
+      } catch (er) { toast('सेव नहीं हुआ: ' + er.message); }
+    };
+  }
+
+  async function bankRemove(x, done) {
+    const auto = isAutoBank(x.id);
+    if (!confirm('इस बैंक जमा को हटाएँ?\n\n' + money(x.amount) + ' · ' + (x.bank || 'SBI') + ' · ' + dmy(x.date) +
+      (auto ? '\n\nये एंट्री "मालिक को दिया" से अपने-आप बनी थी — हटाने पर दोबारा अपने-आप नहीं बनेगी।' : ''))) return;
+    try {
+      const who = (S.user && S.user.email) || '';
+      if (auto) await db().collection('bank_deposits').doc(x.id).update({ removed: true, removedBy: who, removedAt: APP.FV.serverTimestamp() });
+      else await db().collection('bank_deposits').doc(x.id).delete();
+      if (APP.audit) APP.audit('bank_delete', { id: x.id, amount: num(x.amount), date: x.date });
+      toast('हट गया ✔'); done();
+    } catch (er) { toast('हटा नहीं पाया: ' + er.message); }
+  }
+
   APP.views.bank = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let snap;
     try { snap = await db().collection('bank_deposits').orderBy('date', 'desc').limit(50).get(); } catch (e) { snap = { docs: [] }; }
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => !x.removed);
     const tot = list.reduce((a, b) => a + num(b.amount), 0);
+    const canEdit = isOwnerF();
     main.innerHTML =
       '<div class="card"><h3>🏦 बैंक जमा</h3>' + kv('कुल जमा', money(tot), 'pos') + kv('जमा संख्या', list.length) + '</div>' +
       (isViewer() ? '' : '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="bn-add">+ नई जमा</button></div>') +
       '<div class="card">' +
-        (list.length ? list.map(x => '<div class="item"><div class="a"><b>' + money(x.amount) + ' · ' + esc(x.bank || 'SBI') + '</b><small>' +
+        (list.length ? list.map((x, i) => '<div class="item"><div class="a"><b>' + money(x.amount) + ' · ' + esc(x.bank || 'SBI') + '</b><small>' +
           dmy(x.date) + ' · ' + esc(x.mode || 'नकद') + (x.cheque ? ' · चेक ' + esc(x.cheque) : '') +
-          (x.note ? ' · ' + esc(x.note) : '') + '</small></div></div>').join('') : '<p class="mut">कोई जमा नहीं</p>') +
+          (x.note ? ' · ' + esc(x.note) : '') + (x.edited ? ' · ✏️ बदली हुई' : '') + '</small></div>' +
+          (canEdit ? '<div style="white-space:nowrap"><button class="btn sm w" data-bn-e="' + i + '">✏️</button> <button class="btn sm r" data-bn-d="' + i + '">🗑</button></div>' : '') +
+          '</div>').join('') : '<p class="mut">कोई जमा नहीं</p>') +
       '</div><div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
-    if (!isViewer() && $('#bn-add')) $('#bn-add').onclick = () => {
-      const m = modal('<h3>बैंक जमा</h3>' +
-        '<label>बैंक</label><select id="bn-b"><option>SBI</option><option>HDFC</option><option>PNB</option><option>BOB</option><option>अन्य</option></select>' +
-        '<label>तारीख</label><input type="date" id="bn-d" value="' + today() + '">' +
-        '<label>रकम (₹)</label><input id="bn-a" inputmode="decimal">' +
-        '<label>माध्यम</label><select id="bn-m"><option value="cash">नकद</option><option value="cheque">चेक</option><option value="upi">UPI</option></select>' +
-        '<label>चेक नंबर</label><input id="bn-c">' +
-        '<label>नोट</label><input id="bn-n">' +
-        '<div class="btns"><button class="btn g" id="bn-sv">सेव</button><button class="btn w" id="bn-cl">रद्द</button></div>');
-      $('#bn-cl', m).onclick = () => m.close();
-      $('#bn-sv', m).onclick = async () => {
-        const a = num($('#bn-a', m).value); if (!(a > 0)) return toast('रकम भरें');
-        try {
-          await db().collection('bank_deposits').add({
-            bank: $('#bn-b', m).value, date: $('#bn-d', m).value, amount: a,
-            mode: $('#bn-m', m).value, cheque: $('#bn-c', m).value.trim(), note: $('#bn-n', m).value.trim(),
-            by: S.salesman ? S.salesman.name : (S.user && S.user.email) || '',
-            at: APP.FV.serverTimestamp()
-          });
-          m.close(); toast('सेव ✔'); APP.views.bank();
-        } catch (e) { toast('सेव नहीं हुआ: ' + e.message); }
-      };
-    };
+    const again = () => APP.views.bank();
+    if (!isViewer() && $('#bn-add')) $('#bn-add').onclick = () => bankModal(null, again);
+    $$('[data-bn-e]', main).forEach(b => b.onclick = () => bankModal(list[+b.dataset.bnE], again));
+    $$('[data-bn-d]', main).forEach(b => b.onclick = () => bankRemove(list[+b.dataset.bnD], again));
   };
 
   /* ============ PARTY VIEW BUTTONS (call/WA/statement) ============ */
