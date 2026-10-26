@@ -125,28 +125,28 @@
 
         <div class="card">
           <h3>⛽ पेट्रोल का हिसाब</h3>
-          ${kvEl('टैंकर से आया (कुल)', lit(totTankerP))}
-          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitP), 'big')}
-          ${kvEl('टेस्टिंग (कुल)', lit(totTestP))}
+          ${kvEl('टैंकर से आया (कुल)', APP.lit(totTankerP))}
+          ${kvEl('मीटर से बिक्री (कुल)', APP.lit(totLitP), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', APP.lit(totTestP))}
           ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffP) + r2(totDiffP) + ' L', color(totDiffP))}
         </div>
 
         <div class="card">
           <h3>⛽ डीज़ल का हिसाब</h3>
-          ${kvEl('टैंकर से आया (कुल)', lit(totTankerD))}
-          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitD), 'big')}
-          ${kvEl('टेस्टिंग (कुल)', lit(totTestD))}
+          ${kvEl('टैंकर से आया (कुल)', APP.lit(totTankerD))}
+          ${kvEl('मीटर से बिक्री (कुल)', APP.lit(totLitD), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', APP.lit(totTestD))}
           ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffD) + r2(totDiffD) + ' L', color(totDiffD))}
         </div>
 
         <div class="card">
           <h3>⛽ नोज़ल-वाइज पेट्रोल बिक्री</h3>
-          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
+          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
         </div>
 
         <div class="card">
           <h3>🛢️ नोज़ल-वाइज डीज़ल बिक्री</h3>
-          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
+          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
         </div>
 
         <div class="card" style="overflow-x:auto">
@@ -185,28 +185,48 @@
     
     renderView(defaultMonth);
   };
-  /* ======================= NIJI UDHAR (PRIV) - UPDATED ======================= */
-  APP.views.priv = async function () {
+
+  /* ======================= NIJI UDHAR (PRIV) - WITH HISTORY ======================= */
+  APP.views.priv = async function (mode) {
+    mode = mode || 'active';
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties = []; try { parties = await APP.getParties(true, true); } catch (e) { }
-    const pend = parties.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
     
+    const activeParties = parties.filter(p => num(p.bal) > 0.01); 
+    const historyParties = parties.filter(p => num(p.bal) <= 0.01); 
+    
+    const list = mode === 'active' ? activeParties : historyParties;
+    const pend = activeParties.reduce((a, p) => a + num(p.bal), 0);
+
     main.innerHTML = `
-      <div class="card"><div class="kv"><span>कुल निजी उधार</span><b class="neg">${money(pend)}</b></div></div>
-      <div class="btns" style="margin-bottom:12px"><button class="btn o" id="pv-add">+ नया निजी उधार</button></div>
+      <div class="card" style="background:#0b3d91;color:#fff;">
+        <div class="row" style="align-items:center;">
+          <div style="flex:1">
+            <h3 style="color:#fff;margin:0;">🔒 निजी उधार</h3>
+            <div style="font-size:12px;opacity:.85;margin-top:4px;">कुल बाकी: ${money(pend)}</div>
+          </div>
+          <div style="flex:0 0 auto;">
+            <button class="btn sm w" id="pv-toggle">${mode === 'active' ? '📜 हिस्ट्री देखें' : '⬅️ वापस'}</button>
+          </div>
+        </div>
+      </div>
+      <div class="btns" style="margin-bottom:12px">
+        ${mode === 'active' ? '<button class="btn o" id="pv-add">+ नया निजी उधार</button>' : ''}
+      </div>
       <div class="card">
-        ${parties.length ? parties.map(p => `
+        ${list.length ? list.map(p => `
           <div class="item" style="cursor:pointer" data-pid="${p.id}">
             <div class="a"><b>${esc(p.name)}</b></div>
-            <span class="chip r">${money(p.bal)}</span>
+            <span class="chip ${mode === 'active' ? 'r' : 'g'}">${money(p.bal)}</span>
           </div>
-        `).join('') : '<p class="mut">कोई निजी खाता नहीं</p>'}
-      </div>`;
-      
-    $('#pv-add').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
+        `).join('') : `<p class="mut" style="text-align:center;padding:20px;">${mode === 'active' ? 'कोई बकाया नहीं है' : 'कोई हिस्ट्री नहीं है'}</p>`}
+      </div>
+    `;
     
-    // Party par click karne par uska pura account khulega (Edit/Delete/Opening Bal ke liye)
+    if ($('#pv-add')) $('#pv-add').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
+    $('#pv-toggle').onclick = () => APP.views.priv(mode === 'active' ? 'history' : 'active');
+    
     $$('[data-pid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.pid, true));
   };
 
@@ -304,10 +324,7 @@
     };
   };
 
-  /* ======================= AI REGISTER SCANNER (v2) =======================
-     Photo -> Gemini/Claude -> JSON -> yahan paste.
-     Pehle PREVIEW dikhata hai, tabhi kuch bharta hai. Kuch chhoot jaye to batata hai.
-     Naya format (nz / udhar / jama) aur purana format (nozzles / cash / ledger) dono chalte hain. */
+  /* ======================= AI REGISTER SCANNER (v2) ======================= */
   APP.scanRegister = async function (st) {
     const esc = APP.esc;
     const NZ = K.NZ;
@@ -322,8 +339,6 @@
       return isNaN(n) ? null : n;
     };
 
-
-    /* ---------- naam/gaadi yaad rakhne ka store (is phone mein) ---------- */
     const AL_KEY = 'mazda_scan_alias';
     const alias = (() => { try { const a = JSON.parse(localStorage.getItem(AL_KEY) || '{}'); return { n: a.n || {}, v: a.v || {} }; } catch (e) { return { n: {}, v: {} }; } })();
     const saveAlias = () => { try { localStorage.setItem(AL_KEY, JSON.stringify(alias)); } catch (e) { } };
@@ -354,8 +369,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
       parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
 
-
-    /* ---------- Gemini se seedha padhna (key sirf is phone mein, repo mein nahi) ---------- */
     const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
     const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
     const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { } };
@@ -385,7 +398,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       const err = new Error('इंटरनेट / ब्लॉक की दिक्कत (' + stage + '): ' + ((last && last.message) || '') + '\nजाँचें: नेट चालू हो, VPN / Private Relay / ad-blocker बंद हो, फिर दोबारा करें।');
       err.status = -1; throw err;
     };
-    // chalu (retired nahi) flash model khud dhoondhta hai, isliye purana model band hone par bhi nahi tootega
     const listModels = async key => {
       const r = await gfetch('/models?pageSize=200', {}, key, 'model list');
       const j = await r.json().catch(() => ({}));
@@ -442,10 +454,9 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
 
     const geminiRead = async file => {
       try { return await geminiReadOnce(file, 1600, 0.88); }
-      catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }   // kamzor net par chhoti photo
+      catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }
     };
 
-    /* ---------- 1. paste box (textarea) ---------- */
     const text = await new Promise(resolve => {
       const m = modal(`
         <h3>📷 AI कोड पेस्ट करें</h3>
@@ -485,23 +496,19 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     });
     if (!text || !text.trim()) return;
 
-    /* ---------- 2. parse ---------- */
     let raw;
     try {
       let t = text.replace(/```json/gi, '').replace(/```/g, '');
       const a = t.indexOf('{'), b = t.lastIndexOf('}');
       if (a < 0 || b < a) throw new Error('{ } नहीं मिला');
-      t = t.slice(a, b + 1)
-        .replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'")
-        .replace(/,\s*([}\]])/g, '$1');            // extra comma hatao
+      t = t.slice(a, b + 1).replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/,\s*([}\]])/g, '$1');
       raw = JSON.parse(t);
     } catch (e) {
       alert('कोड पढ़ नहीं पाया (' + e.message + ').\nGemini/Claude का पूरा JSON, पहले { से आख़िरी } तक, कॉपी करें।');
       return;
     }
 
-    /* ---------- 3. normalise (naya + purana format) ---------- */
-    const f = {};            // form field id -> value
+    const f = {};            
     const put = (id, v) => { const n = numOrNull(v); if (n !== null) f[id] = n; };
     const putTxt = (id, v) => { const s = clean(v); if (s) f[id] = s; };
     const pick = (...vals) => vals.find(v => v !== undefined && v !== null && clean(v) !== '');
@@ -522,7 +529,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     put('f-tankerP', raw.tankerP); put('f-tankerD', raw.tankerD);
     putTxt('f-note', raw.note);
 
-    const nz = {};           // k -> {o, c}
+    const nz = {};           
     if (raw.nz && typeof raw.nz === 'object') {
       NZ.forEach(k => {
         const x = raw.nz[k] || raw.nz[k.toUpperCase()];
@@ -531,7 +538,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         const c = numOrNull(x.c !== undefined ? x.c : x.close !== undefined ? x.close : x.closing);
         if (o !== null || c !== null) nz[k] = { o, c };
       });
-    } else if (Array.isArray(raw.nozzles)) {   // purana format: order p1..p4,d1..d4
+    } else if (Array.isArray(raw.nozzles)) {
       raw.nozzles.forEach((x, i) => {
         if (!x || !NZ[i]) return;
         const c = numOrNull(x.closing !== undefined ? x.closing : x.c);
@@ -540,7 +547,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       });
     }
 
-    /* ---- खर्चा की लाइनें (हर लाइन: कौन सा खाना, नाम, रकम) — preview में एडिट/बाँटने के लिए ---- */
     const expL = [];
     [['kharcha', 'f-kharcha'], ['driverInaam', 'f-driverInaam'], ['chaiKhana', 'f-chaiKhana']].forEach(([k, id]) => {
       if (f[id] > 0) { expL.push({ cat: k, label: '', amount: f[id] }); delete f[id]; }
@@ -564,11 +570,9 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     const udharIn = Array.isArray(raw.udhar) ? raw.udhar : (Array.isArray(raw.ledger) ? raw.ledger : []);
     const jamaIn = Array.isArray(raw.jama) ? raw.jama : [];
 
-    /* ---------- 4. date ---------- */
     const date = /^\d{4}-\d{2}-\d{2}$/.test(clean(raw.date)) ? clean(raw.date) : (st && st.date) || APP.todayISO();
     const switching = st && st.date && date !== st.date;
 
-    /* ---------- 5. parties match ---------- */
     let parties = [];
     try { parties = await APP.getParties(false, true); } catch (e) { parties = []; }
     const byId = id => parties.find(x => x.id === id) || null;
@@ -632,7 +636,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     jamaIn.forEach((it, i) => {
       if (!it) return;
       const amount = numOrNull(it.amount);
-      // "AD" = purane din ka cash -> party nahi, "पिछला कैश" box
       if (/^(ad|a\.?d\.?|एड|ए\.?डी\.?)$/i.test(nrm(it.party)) && amount > 0) {
         if (f['f-openCash'] === undefined) f['f-openCash'] = amount;
         return;
@@ -648,7 +651,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       J.push(Object.assign({ p, dup }, base));
     });
 
-    /* ---------- 6. preview ---------- */
     const fieldCount = Object.keys(f).length + Object.values(nz).reduce((a, x) => a + (x.o !== null ? 1 : 0) + (x.c !== null ? 1 : 0), 0);
     const nzTxt = NZ.filter(k => nz[k]).map(k => `${k.toUpperCase()}: ${nz[k].o !== null ? nz[k].o : '–'} → ${nz[k].c !== null ? nz[k].c : '–'}`).join('<br>');
     const newU0 = U.filter(x => !x.dup), newJ0 = J.filter(x => !x.dup);
@@ -714,7 +716,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       }
     });
     saveAlias();
-    // खर्चा: DG/ड्राइवर/चाय के बॉक्स में जोड़, बाकी "और खर्चे" की अलग पंक्तियों में
     ['kharcha', 'driverInaam', 'chaiKhana'].forEach(k => {
       const ls = expL.filter(x => x.cat === k);
       if (ls.length) f['f-' + k] = K.r2(ls.reduce((a, x) => a + x.amount, 0));
@@ -722,13 +723,11 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     const newExp = expL.filter(x => x.cat === 'other').map(x => ({ label: x.label, amount: x.amount }));
     const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
 
-    /* ---------- 7. sahi din kholo ---------- */
     if (switching) {
       try { APP.collectDraft(); } catch (e) { }
       await APP.dayView(date);
     }
 
-    /* ---------- 8. form bharo (DB mein tab tak kuch nahi jata jab tak 💾 सेव na dabe) ---------- */
     const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
     let filled = 0; const missing = [];
     const S_cur_locked = () => !!(APP.S.cur && APP.S.cur.locked);
@@ -741,7 +740,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       const x = nz[k]; if (!x) return;
       const oEl = $(`.nzi[data-k="${k}"][data-f="o"]`), cEl = $(`.nzi[data-k="${k}"][data-f="c"]`);
       if (x.c !== null) { if (cEl && !cEl.disabled) { cEl.value = x.c; fire(cEl); filled++; } else missing.push(k + ' closing'); }
-      if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); filled++; }  // opening sirf khali ho tab
+      if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); filled++; }
     });
     if (newExp.length) {
       if (S_cur_locked()) missing.push('और खर्चे (लॉक)');
@@ -749,7 +748,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     }
     try { APP.recalc(); } catch (e) { }
 
-    /* ---------- 9. udhar / jama sidha ledger mein (app ke apne format mein) ---------- */
     let wrote = 0; const failed = [];
     const by = APP.S.salesman ? APP.S.salesman.name : (APP.S.user ? APP.S.user.email : '');
     const writeEntry = async (data, delta, pid) => {
@@ -768,7 +766,6 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       try { await writeEntry(data, K.signed(data), x.p.id); wrote++; } catch (e) { failed.push(x.p.name + ': ' + e.message); }
     }
 
-    /* ---------- 10. screen taaza karo (bhare hue box draft se wapas aa jayenge) ---------- */
     try { APP.collectDraft(); } catch (e) { }
     if (wrote) { APP.S.parties = null; }
     try { await APP.dayView(date); } catch (e) { }
