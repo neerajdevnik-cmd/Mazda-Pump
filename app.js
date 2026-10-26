@@ -205,8 +205,8 @@
       ];
     } else if (isSalesman()) {
       tabs = [
-        ['salesman', '⛽', 'सेल्समैन'],
-        ['ledger', '📒', 'खाते'],
+        ['salesman', '⛽', 'मेरा हिसाब'],
+        ['sm_udhar', '🚚', 'उधार एंट्री'],
         ['more', '⚙️', 'बाहर']
       ];
     } else {
@@ -249,6 +249,8 @@
   }
 
   function go(tab, arg) {
+    // सेल्समैन को खाते/पार्टी बैलेंस/मालिक का हिसाब नहीं दिखेगा
+    if (isSalesman() && !['salesman', 'sm_udhar', 'more'].includes(tab)) tab = 'salesman';
     S.tab = tab;
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
@@ -480,9 +482,10 @@
   function renderRows(st) {
     const rows = st.rows;
     $('#rowsbox').innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="a"><b>${esc(r.partyName)}</b>
-      <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + ' · ' + FUEL[r.fuel] + ' ' + lit(r.litre) : 'जमा · ' + MODE[r.mode] + (r.note ? ' · ' + esc(r.note) : '')}</small></div>
+      <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FUEL[r.fuel] || '') + ' ' + lit(r.litre) : '') : 'जमा · ' + (MODE[r.mode] || '') + (r.note ? ' · ' + esc(r.note) : '')}</small>
+      ${r.src === 'salesman' ? `<small style="color:${r.verified ? '#0a7d33' : '#b26a00'}">👤 ${esc(r.by)} ने की · ${r.verified ? '✔ मिलान हो गया' : '⏳ मिलान बाकी'}</small>` : ''}</div>
       <div style="text-align:right"><b class="${r.kind === 'udhar' ? 'neg' : 'pos'}">${r.kind === 'udhar' ? '' : '+'}${money(r.amount)}</b>
-      ${isOwner() ? `<div><button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
+      ${isOwner() ? `<div>${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
       : '<p class="mut">आज कोई पार्टी एंट्री नहीं</p>';
   }
 
@@ -556,11 +559,23 @@
     } catch (e) { if (!silent) toast('सेव नहीं हुआ: ' + e.message); }
   }
 
+  // वही पार्टी + वही गाड़ी + वही रकम उसी दिन पहले से दर्ज है? (सेल्समैन/मालिक/AI स्कैन — सब की एंट्री में मिलान)
+  async function findDupEntry(d) {
+    try {
+      const nv = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const s = await db.collection('ledger').where('date', '==', d.date).where('partyId', '==', d.partyId).get();
+      return s.docs.map(x => ({ id: x.id, ...x.data() }))
+        .find(r => r.kind === 'udhar' && nv(r.vehicle) === nv(d.vehicle) && Math.abs(num(r.amount) - d.amount) < 0.01) || null;
+    } catch (e) { return null; }
+  }
+  APP.findDupEntry = findDupEntry;
+
   const sigEntry = (priv, e) => priv ? (e.status === 'pending' ? num(e.amount) : 0) : K.signed(e);
 
   async function entryModal(o) {
     if (isViewer()) return toast('आप केवल देख सकते हैं');
-    const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (o.kind || 'udhar');
+    const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (isSalesman() ? 'udhar' : (o.kind || 'udhar'));
+    if (isSalesman() && priv) return toast('अनुमति नहीं');
     const parties = await getParties(priv);
     if (!parties.length) { toast('पहले खाते में पार्टी जोड़ें'); return; }
     const date0 = e ? e.date : (o.date || S.date || todayISO());
@@ -568,7 +583,7 @@
     const pid0 = e ? e.partyId : (o.partyId || parties[0].id);
 
     const m = modal(`<h3>${e ? 'एंट्री बदलें' : priv ? 'निजी उधार जोड़ें' : 'नई एंट्री'}</h3>
-      ${priv ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
+      ${(priv || isSalesman()) ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
       <div class="row"><div><label>तारीख</label><input type="date" id="e-date" value="${date0}"></div><div><label>समय</label><input type="time" id="e-time" value="${e ? e.time || '' : nowTime()}"></div></div>
       <label>पार्टी</label><select id="e-party">${parties.map(p => `<option value="${p.id}" ${p.id === pid0 ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <div id="blkU">
@@ -656,8 +671,28 @@
         if (!(data.amount > 0)) return toast('रुपये भरें');
       }
       if (priv) { data.status = e ? e.status : 'pending'; }
-      data.by = S.salesman ? S.salesman.name : S.user.email;
+      const who = S.salesman ? S.salesman.name : S.user.email;
+      if (e) {
+        // बदलाव करने पर पुराना "किसने किया" मिटना नहीं चाहिए (क्रॉस-चेक के लिए)
+        ['by', 'src', 'sid', 'uid', 'verified', 'verifiedBy'].forEach(k => { if (e[k] !== undefined) data[k] = e[k]; });
+        data.editedBy = who;
+      } else {
+        data.by = who;
+        data.uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        if (S.salesman) { data.src = 'salesman'; data.sid = S.salesman.id; }
+      }
       data.at = FV.serverTimestamp();
+
+      const sbtn = q('e-save');
+      if (sbtn.disabled) return;                       // दो बार दबाने से डबल एंट्री नहीं
+      if (!e && data.kind === 'udhar' && !priv) {
+        const dup = await findDupEntry(data);
+        if (dup) {
+          const by = dup.src === 'salesman' ? 'सेल्समैन ' + dup.by : (dup.by || '?');
+          if (!confirm('⚠️ ऐसी ही एंट्री पहले से मौजूद है:\n' + dup.partyName + ' · ' + dup.vehicle + ' · ' + money(dup.amount) + ' · ' + (dup.time || '') + '\nकिसने की: ' + by + '\n\nफिर भी दोबारा जोड़ें?')) return;
+        }
+      }
+      sbtn.disabled = true;
 
       const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
       const ref = e ? db.collection(col).doc(e.id) : db.collection(col).doc();
@@ -669,12 +704,14 @@
       try {
         await commit(b.commit());
         m.close(); toast('सेव हो गया ✔');
+        const savedParty = Object.assign({}, party);
         S.parties[priv ? 'priv' : 'pub'] = null;
         if (S.tab === 'day') dayView(S.date);
         else if (S.tab === 'ledger') ledgerView();
         else if (S.tab === 'priv') partyView(partyId, true);
         else if (APP.views && APP.views[S.tab]) APP.views[S.tab]();
-      } catch (x) { toast('सेव नहीं हुआ: ' + x.message); }
+        if (APP.afterEntrySaved) { try { APP.afterEntrySaved({ data, party: savedParty, priv, isNew: !e, delta }); } catch (z) { console.error(z); } }
+      } catch (x) { sbtn.disabled = false; toast('सेव नहीं हुआ: ' + x.message); }
     };
   }
 
@@ -894,6 +931,13 @@
       collectDraft();
       const row = S.cur.rows.find(r => r.id === data.id);
       if (row) entryModal({ entry: row, date: row.date });
+    },
+    async verE(data) {
+      collectDraft();
+      try {
+        await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
+        toast('मिलान ✔'); dayView(S.date);
+      } catch (e) { toast('नहीं हुआ: ' + e.message); }
     },
     async delE(data) {
       collectDraft();
