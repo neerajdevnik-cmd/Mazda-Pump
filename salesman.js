@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी — सेल्समैन ऐप (Runsheet, Timer, Live Entry) */
+/* माज़दा ऑयल कंपनी — सेल्समैन ऐप (Final Version: Runsheet, Timer, Cash Deposit) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -11,12 +11,13 @@
   const shiftId = (sid, date) => sid + '_' + date;
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
   const val = v => (v == null ? '' : v);
-  const errMsg = e => (e && e.code === 'permission-denied') ? 'इजाज़त नहीं मिली' : ((e && e.message) || String(e));
+  const errMsg = e => (e && e.code === 'permission-denied') ? 'इजाज़त नहीं मिली (Firebase Rules चेक करें)' : ((e && e.message) || String(e));
   const FUELN = { petrol: 'पेट्रोल', diesel: 'डीज़ल' };
 
   let ST = null;            
   let saveTimer = null;
   let timerInterval = null;
+  let cashHistory = [];
 
   async function latestRates() {
     if (S.smRates && Date.now() - (S.smRatesAt || 0) < 600000) return S.smRates;
@@ -32,22 +33,26 @@
   async function loadState(date, light) {
     const sm = S.salesman, sid = sm.id;
     
-    // Check active runsheet first
     let rsSnap;
     try { rsSnap = await db().collection('runsheets').where('date', '==', date).where('sid', '==', sid).where('status', '==', 'active').get(); }
     catch(e) { console.error(e); }
-    
     const activeRs = rsSnap && !rsSnap.empty ? { id: rsSnap.docs[0].id, ...rsSnap.docs[0].data() } : null;
 
     const snapP = db().collection(COL).doc(shiftId(sid, date)).get();
     const rowsP = db().collection('ledger').where('date', '==', date).where('sid', '==', sid).get().catch(() => null);
     const ratesP = latestRates();
+    
     const [snap, rs, rates] = await Promise.all([snapP, rowsP, ratesP]);
     
+    try {
+      const cSnap = await db().collection('cash_submissions').where('date', '==', date).where('sid', '==', sid).get();
+      cashHistory = cSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.time||'').localeCompare(b.time||''));
+    } catch(e) { cashHistory = []; }
+
     const rows = rs ? rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => r.kind === 'udhar') : [];
     const base = {
       sid, name: sm.name, date, status: 'open', rateP: rates.rateP, rateD: rates.rateD,
-      testing: C.testing != null ? C.testing : 5, nz: {}, paytm: '', swipe: '', expLabel: '', expAmt: '', cashActual: '', note: ''
+      testing: C.testing != null ? C.testing : 5, nz: {}, paytm: '', swipe: '', expLabel: '', expAmt: '', note: ''
     };
     const doc = Object.assign(base, snap.exists ? snap.data() : {});
     doc.nz = doc.nz || {};
@@ -59,12 +64,12 @@
     K.NZ.forEach(k => {
       const n = doc.nz[k] = Object.assign({ o: '', c: '' }, doc.nz[k] || {});
       if (activeRs && activeRs.openings && K.has(activeRs.openings[k])) {
-        n.o = activeRs.openings[k]; // LOCK OPENING FROM RUNSHEET
+        n.o = activeRs.openings[k];
         autoO[k] = true;
       }
     });
     
-    return { date, doc, rows, autoO, activeRs, allowedNz, locked: doc.status === 'submitted', openEdit: false, exists: snap.exists };
+    return { date, doc, rows, autoO, activeRs, allowedNz, locked: doc.status === 'submitted', exists: snap.exists };
   }
 
   function readForm() {
@@ -74,7 +79,7 @@
     const d = Object.assign({}, ST.doc, {
       rateP: g('sm-rateP'), rateD: g('sm-rateD'), testing: g('sm-testing'),
       paytm: g('sm-paytm'), swipe: g('sm-swipe'), expLabel: g('sm-expLabel'), expAmt: g('sm-expAmt'),
-      cashActual: g('sm-cash'), note: g('sm-note'), nz: {}
+      note: g('sm-note'), nz: {}
     });
     K.NZ.forEach(k => { d.nz[k] = { o: '', c: '' }; });
     $$('.smn').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
@@ -85,23 +90,18 @@
     return K.compute(Object.assign({}, d, { kharcha: d.expAmt, driverInaam: 0, chaiKhana: 0, kharchaItems: [], malikDiya: 0, openCash: 0 }), ST.rows);
   }
 
-  function summaryOf(d, o) {
-    const act = K.has(d.cashActual) ? num(d.cashActual) : null;
-    return {
-      litP: o.litP, litD: o.litD, amtP: o.amtP, amtD: o.amtD, sale: o.sale,
-      udhar: o.udhar, udharCount: ST.rows.length, expected: o.close,
-      actual: act, diff: act === null ? null : r2(act - o.close)
-    };
-  }
-
   async function saveShift(status, silent) {
     const d = readForm(); if (!d) return;
     const o = computeSm(d);
     const data = Object.assign({}, d, {
       sid: S.salesman.id, name: S.salesman.name, date: ST.date, status,
-      sum: summaryOf(d, o), updatedAt: FV().serverTimestamp()
+      sum: {
+        litP: o.litP, litD: o.litD, amtP: o.amtP, amtD: o.amtD, sale: o.sale,
+        udhar: o.udhar, udharCount: ST.rows.length, expected: o.close
+      },
+      updatedAt: FV().serverTimestamp()
     });
-    if (status === 'submitted') { data.submittedAt = FV().serverTimestamp(); data.imported = false; }
+    if (status === 'submitted') { data.submittedAt = FV().serverTimestamp(); }
     await APP.commit(db().collection(COL).doc(shiftId(S.salesman.id, ST.date)).set(data, { merge: true }));
     ST.doc = Object.assign({}, d, { status });
     if (!silent) toast(status === 'submitted' ? 'शिफ्ट जमा हो गई ✔' : 'सेव हो गया ✔');
@@ -112,11 +112,9 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saveTimer = null; saveShift('open', true).catch(() => { }); }, 1500);
   }
+  
   async function flush() {
-    if (saveTimer) {
-      clearTimeout(saveTimer); saveTimer = null;
-      if (ST && !ST.locked) { try { await saveShift('open', true); } catch (e) { } }
-    }
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; if (ST && !ST.locked) { try { await saveShift('open', true); } catch (e) { } } }
   }
 
   function recalc() {
@@ -126,45 +124,28 @@
     K.NZ.forEach(k => { const e = $('#smnet-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     const w = $('#sm-warn');
     if (w) w.innerHTML = o.warn.map(x => '<div class="warn">' + esc(x) + '</div>').join('') +
-      (o.filled === 0 ? '<div class="mut">जिस नोज़ल पर काम किया उसकी क्लोज़िंग भरें</div>' : '<div class="mut">' + o.filled + '/8 नोज़ल भरे हैं</div>');
+      (o.filled === 0 ? '<div class="mut">जिस नोज़ल पर काम किया उसकी क्लोज़िंग भरें</div>' : '<div class="mut">' + o.filled + ' नोज़ल भरे हैं</div>');
     const sum = $('#sm-sum');
     if (sum) {
-      const hasCash = K.has(d.cashActual);
-      const diff = hasCash ? r2(num(d.cashActual) - o.close) : null;
+      const approved = cashHistory.filter(c => c.status === 'approved').reduce((a, c) => a + num(c.total), 0);
+      const pending = cashHistory.filter(c => c.status === 'pending').reduce((a, c) => a + num(c.total), 0);
+      const diff = r2(approved + pending - o.close);
+
       sum.innerHTML =
         kv('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) +
         kv('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
         kv('कुल बिक्री', money(o.sale), 'big') +
         kv('− Paytm / UPI', money(d.paytm)) +
         kv('− स्वाइप (कार्ड)', money(d.swipe)) +
-        kv('− उधार दिया (' + ST.rows.length + ' एंट्री)', money(o.udhar)) +
+        kv('− उधार दिया', money(o.udhar)) +
         kv('− खर्चा' + (d.expLabel ? ' (' + esc(d.expLabel) + ')' : ''), money(d.expAmt)) +
-        kv('कैश जमा होना चाहिए', money(o.close), 'big' + (o.close < 0 ? ' neg' : '')) +
-        (hasCash ? `<div class="${Math.abs(diff) < 0.5 ? 'ok' : 'warn'}" style="margin-top:8px">${Math.abs(diff) < 0.5 ? '✔ कैश बराबर है' : (diff < 0 ? 'कैश कम है: ' + money(-diff) : 'कैश ज़्यादा है: ' + money(diff))}</div>` : '');
+        kv('कैश जमा होना चाहिए', money(o.close), 'big') +
+        `<div style="margin-top:10px;padding:10px;background:#f8f9fc;border-radius:8px;">
+          ${kv('✔ मैनेजर अप्रूवल (Approved)', money(approved), 'pos')}
+          ${kv('⏳ अप्रूवल बाकी (Pending)', money(pending), 'neg')}
+          <div class="${Math.abs(diff) < 1 ? 'ok' : 'warn'}" style="margin-top:6px">${Math.abs(diff) < 1 ? '✔ कैश बराबर है' : (diff < 0 ? 'कैश कम है: ' + money(-diff) : 'कैश ज़्यादा है: ' + money(diff))}</div>
+        </div>`;
     }
-  }
-
-  function shareText() {
-    const d = ST.doc, o = computeSm(d), sm = S.salesman;
-    const diff = K.has(d.cashActual) ? r2(num(d.cashActual) - o.close) : null;
-    return [
-      '*' + C.pump.name + ' — शिफ्ट हिसाब*',
-      'सेल्समैन: ' + sm.name + ' · ' + dmy(ST.date),
-      'पेट्रोल: ' + lit(o.litP) + ' = ' + money(o.amtP),
-      'डीज़ल: ' + lit(o.litD) + ' = ' + money(o.amtD),
-      'कुल बिक्री: ' + money(o.sale),
-      'Paytm/UPI: ' + money(d.paytm) + ' · स्वाइप: ' + money(d.swipe),
-      'उधार: ' + money(o.udhar) + ' (' + ST.rows.length + ' एंट्री)',
-      num(d.expAmt) ? 'खर्चा: ' + money(d.expAmt) + (d.expLabel ? ' (' + d.expLabel + ')' : '') : '',
-      'कैश हिसाब से: ' + money(o.close),
-      K.has(d.cashActual) ? 'कैश गिना/दिया: ' + money(d.cashActual) + (diff === null || Math.abs(diff) < 0.5 ? ' ✔' : (diff < 0 ? ' (कम ' + money(-diff) + ')' : ' (ज़्यादा ' + money(diff) + ')')) : ''
-    ].filter(Boolean).join('\n');
-  }
-
-  function share() {
-    const t = shareText();
-    if (navigator.share) navigator.share({ text: t }).catch(() => { });
-    else window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
   }
 
   function rowsHtml(rows, canDel) {
@@ -184,26 +165,85 @@
     if (!ST || ST.locked) return toast('शिफ्ट जमा हो चुकी है');
     const r = ST.rows.find(x => x.id === id);
     if (!r || r.verified) return;
-    if (!confirm('ये उधार एंट्री हटाएँ?\n\n' + r.partyName + ' · ' + (r.vehicle || '') + ' · ' + money(r.amount))) return;
+    if (!confirm('ये उधार एंट्री हटाएँ?')) return;
     try {
       const b = db().batch();
       b.delete(db().collection('ledger').doc(id));
       b.update(db().collection('parties').doc(r.partyId), { bal: FV().increment(-K.signed(r)) });
       await APP.commit(b.commit());
-      if (APP.audit) APP.audit('sm_udhar_delete', { id, party: r.partyName, amount: r.amount });
-      if (S.parties) S.parties.pub = null;
-      toast('हट गई ✔');
-      APP.go(S.tab);
+      toast('हट गई ✔'); APP.go(S.tab);
     } catch (e) { toast('हटा नहीं पाया: ' + errMsg(e)); }
+  }
+
+  async function cashModal() {
+    if (ST.locked) return toast('शिफ्ट जमा हो चुकी है');
+    const notes = [500, 200, 100, 50, 20, 10];
+    const m = modal(`
+      <h3>💵 कैश जमा करें</h3>
+      <p class="mut" style="font-size:12px;margin-bottom:10px;">नोटों की संख्या डालें</p>
+      <div id="cs-list">
+        ${notes.map(n => `
+          <div class="row" style="align-items:center;margin-bottom:6px;">
+            <div style="flex:1;font-weight:bold;">₹${n} का नोट</div>
+            <input type="number" class="cs-qty" data-n="${n}" inputmode="numeric" placeholder="0" style="width:80px;padding:6px;text-align:center;">
+            <div style="flex:1;text-align:right;font-weight:bold;" id="cs-amt-${n}">₹0</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="kv" style="margin-top:10px;font-size:18px;border-top:2px solid #eee;padding-top:10px;">
+        <span>कुल कैश</span><b id="cs-total" class="big">₹0</b>
+      </div>
+      <div class="btns" style="margin-top:14px;">
+        <button class="btn g" id="cs-save">✔ जमा करें</button>
+        <button class="btn w" id="cs-cancel">रद्द</button>
+      </div>
+    `);
+
+    const q = id => $('#' + id, m);
+    const calcTotal = () => {
+      let tot = 0;
+      $$('.cs-qty', m).forEach(inp => {
+        const n = num(inp.dataset.n);
+        const qty = num(inp.value);
+        const amt = n * qty;
+        tot += amt;
+        $('#cs-amt-' + n, m).textContent = '₹' + amt;
+      });
+      $('#cs-total', m).textContent = '₹' + tot;
+    };
+
+    $$('.cs-qty', m).forEach(inp => inp.oninput = calcTotal);
+    $('#cs-cancel', m).onclick = () => m.close();
+
+    $('#cs-save', m).onclick = async () => {
+      let tot = 0; const breakdown = {};
+      $$('.cs-qty', m).forEach(inp => {
+        const n = num(inp.dataset.n);
+        const qty = num(inp.value);
+        if (qty > 0) { breakdown[n] = qty; tot += (n * qty); }
+      });
+      if (tot <= 0) return toast('कम से कम एक नोट की संख्या डालें');
+
+      const btn = $('#cs-save', m); btn.disabled = true;
+      try {
+        await db().collection('cash_submissions').add({
+          date: ST.date, sid: ST.sid, salesmanName: ST.name,
+          breakdown, total: tot, status: 'pending',
+          time: APP.nowTime(), createdAt: FV().serverTimestamp()
+        });
+        m.close(); toast('कैश जमा हो गया, मैनेजर के अप्रूवल का इंतज़ार करें ✔');
+        APP.go('salesman');
+      } catch (e) { btn.disabled = false; toast('एरर: ' + errMsg(e)); }
+    };
   }
 
   async function udharModal(pre) {
     pre = pre || {};
-    if (ST && ST.locked) return toast('शिफ्ट जमा हो चुकी है — बदलाव के लिए मालिक से खुलवाएँ');
+    if (ST && ST.locked) return toast('शिफ्ट जमा हो चुकी है');
     const date = S.date || today();
     let parties;
-    try { parties = await APP.getParties(false, true); } catch (e) { return toast('पार्टी लिस्ट नहीं मिली: ' + errMsg(e)); }
-    if (!parties.length) return toast('पार्टी लिस्ट खाली है — मालिक से पार्टी जुड़वाएँ');
+    try { parties = await APP.getParties(false, true); } catch (e) { return toast('पार्टी लिस्ट नहीं मिली'); }
+    if (!parties.length) return toast('पार्टी लिस्ट खाली है');
     const rates = { petrol: num(ST && ST.doc.rateP) || S.rates.petrol, diesel: num(ST && ST.doc.rateD) || S.rates.diesel };
     
     const m = modal(`<h3>🚚 उधार लिखें</h3>
@@ -215,7 +255,7 @@
       <div><label>रेट</label><input id="su-r" inputmode="decimal"></div></div>
       <div class="row"><div><label>लीटर</label><input id="su-l" inputmode="decimal"></div><div><label>रुपये</label><input id="su-a" inputmode="decimal"></div></div>
       <label>नोट</label><input id="su-n">
-      <div class="btns"><button class="btn g" id="su-sv">सेव करें</button><button class="btn bpcl" id="su-slip">🖨️ पर्ची</button><button class="btn w" id="su-cl">रद्द</button></div>`);
+      <div class="btns"><button class="btn g" id="su-sv">सेव करें</button><button class="btn w" id="su-cl">रद्द</button></div>`);
     const q = id => $('#' + id, m);
     const nrm = s => String(s || '').toLowerCase().replace(/[\s\-.]/g, '');
     let last = 'lit';
@@ -248,40 +288,26 @@
     q('su-a').oninput = () => { last = 'amt'; calcL(); };
     setRate();
 
-    const vehOf = () => q('su-v').value === '__x' ? q('su-vx').value.trim().toUpperCase() : q('su-v').value;
     q('su-cl').onclick = () => m.close();
-    q('su-slip').onclick = () => {
-      const p = parties.find(x => x.id === q('su-p').value) || {};
-      if (!q('su-a').value) return toast('कृपया रकम भरें');
-      if (APP.showThermalSlip) APP.showThermalSlip({
-        partyName: p.name, partyPhone: p.phone || '', vehicle: vehOf(), fuel: q('su-f').value,
-        litre: q('su-l').value, rate: q('su-r').value, amount: q('su-a').value, date, time: APP.nowTime()
-      });
-    };
     q('su-sv').onclick = async () => {
       const p = parties.find(x => x.id === q('su-p').value);
       if (!p) return toast('पार्टी चुनें');
+      const veh = q('su-v').value === '__x' ? q('su-vx').value.trim().toUpperCase() : q('su-v').value;
       const data = {
         partyId: p.id, partyName: p.name, date, time: APP.nowTime(), kind: 'udhar', note: q('su-n').value.trim(),
-        vehicle: vehOf(), fuel: q('su-f').value, rate: num(q('su-r').value), litre: num(q('su-l').value), amount: num(q('su-a').value),
-        by: S.salesman.name, uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-        src: 'salesman', sid: S.salesman.id
+        vehicle: veh, fuel: q('su-f').value, rate: num(q('su-r').value), litre: num(q('su-l').value), amount: num(q('su-a').value),
+        by: S.salesman.name, src: 'salesman', sid: S.salesman.id
       };
       if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
       if (!(data.litre > 0) || !(data.amount > 0)) return toast('लीटर व रुपये भरें');
-      const btn = q('su-sv'); if (btn.disabled) return;
-      btn.disabled = true;
+      const btn = q('su-sv'); if (btn.disabled) return; btn.disabled = true;
       try {
-        if (num(p.limit) > 0 && num(p.bal) + data.amount > num(p.limit) && !confirm('⚠️ इस पार्टी की उधार सीमा पार हो रही है।\n\nफिर भी उधार दें?')) { btn.disabled = false; return; }
         data.at = FV().serverTimestamp();
         const b = db().batch();
         b.set(db().collection('ledger').doc(), data);
         b.update(db().collection('parties').doc(p.id), { bal: FV().increment(K.signed(data)) });
         await APP.commit(b.commit());
-        if (APP.audit) APP.audit('sm_udhar_add', { party: p.name, vehicle: data.vehicle, amount: data.amount, date });
-        m.close(); toast('उधार लिख गया ✔');
-        if (S.parties) S.parties.pub = null;
-        APP.go(S.tab);
+        m.close(); toast('उधार लिख गया ✔'); APP.go(S.tab);
       } catch (e) { btn.disabled = false; toast('सेव नहीं हुआ: ' + errMsg(e)); }
     };
   }
@@ -313,28 +339,32 @@
 
     const nzr = (k, lab) => {
       const n = d.nz[k] || {};
-      const auto = ST.autoO[k] && !ST.openEdit;
-      // Opening is strictly locked if from runsheet
       const roO = (locked || ST.autoO[k]) ? 'readonly style="background:#e9ecef;color:#555;font-weight:bold"' : '';
       return `<div class="nz"><b>${lab}</b>
         <input class="smn" data-k="${k}" data-f="o" inputmode="decimal" value="${esc(val(n.o))}" ${roO}>
         <input class="smn" data-k="${k}" data-f="c" inputmode="decimal" value="${esc(val(n.c))}" placeholder="क्लोज़िंग" ${dis}>
         <span id="smnet-${k}">–</span></div>`;
     };
-    const chip = locked
-      ? (d.imported ? '<span class="chip g">जमा ✔ हिसाब में जुड़ा</span>' : '<span class="chip g">जमा ✔ लॉक</span>')
-      : '<span class="chip">चालू</span>';
-
+    const chip = locked ? '<span class="chip g">जमा ✔ लॉक</span>' : '<span class="chip">चालू</span>';
     const allowP = ST.allowedNz.filter(k => k.startsWith('p'));
     const allowD = ST.allowedNz.filter(k => k.startsWith('d'));
+
+    let cashListHtml = '';
+    if (cashHistory.length) {
+      cashListHtml = `<div class="card" style="padding:10px;"><h3>💵 मेरा कैश हिसाब</h3>
+      ${cashHistory.map(c => `
+        <div class="item">
+          <div class="a"><b>${money(c.total)}</b><small>${c.time}</small></div>
+          <div>${c.status === 'approved' ? `<span class="chip g">✔ Received by ${esc(c.approvedBy)}</span>` : '<span class="chip o">⏳ पेंडिंग</span>'}</div>
+        </div>
+      `).join('')}</div>`;
+    }
 
     main.innerHTML = `
     ${timerHtml}
     <div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
       <input type="date" id="sm-date" value="${ST.date}" max="${today()}" min="${minD}"></div>
-      <div style="flex:0 0 auto;align-self:end">${chip}</div></div>
-      ${locked ? '<p class="mut" style="margin:8px 0 0">शिफ्ट जमा हो चुकी है।</p>' : ''}
-      ${!ST.activeRs ? '<p class="mut" style="margin:8px 0 0;color:var(--r)">मैनेजर ने अभी आपकी रनशीट नहीं खोली है।</p>' : ''}</div>
+      <div style="flex:0 0 auto;align-self:end">${chip}</div></div></div>
 
     <div class="card"><h3>आज का रेट (₹/लीटर)</h3><div class="row">
       <div><label>पेट्रोल</label>${inp('sm-rateP', d.rateP)}</div>
@@ -355,46 +385,37 @@
 
     <div class="card"><h3>💳 पेमेंट और खर्चा</h3>
       <div class="row"><div><label>Paytm / UPI कुल</label>${inp('sm-paytm', d.paytm)}</div><div><label>स्वाइप (कार्ड) कुल</label>${inp('sm-swipe', d.swipe)}</div></div>
-      <div class="row"><div><label>खर्चा (किस चीज़ का)</label><input id="sm-expLabel" class="smi" value="${esc(val(d.expLabel))}" placeholder="जैसे चाय, पंचर" ${dis}></div>
+      <div class="row"><div><label>खर्चा (किस चीज़ का)</label><input id="sm-expLabel" class="smi" value="${esc(val(d.expLabel))}" placeholder="जैसे चाय" ${dis}></div>
       <div><label>खर्चा ₹</label>${inp('sm-expAmt', d.expAmt)}</div></div></div>
 
     <div class="card"><h3>🧾 मेरा हिसाब</h3><div id="sm-sum"></div>
-      <label>गिना हुआ कैश (जो आप जमा कर रहे हैं)</label>${inp('sm-cash', d.cashActual, 'कैश न हो तो 0 लिखें')}
       <label>नोट</label><input id="sm-note" class="smi" value="${esc(val(d.note))}" ${dis}></div>
 
+    ${cashListHtml}
+
     <div class="btns">
-      ${locked || !ST.activeRs ? '' : '<button class="btn w" id="sm-save" type="button">💾 सेव</button>'}
-      <button class="btn" id="sm-share" type="button">📤 हिसाब भेजें</button>
+      ${locked || !ST.activeRs ? '' : '<button class="btn g" id="sm-depcash" type="button">💵 कैश जमा करें</button>'}
+      <button class="btn w" id="sm-save" type="button">💾 सेव</button>
     </div>`;
 
     if (ST.activeRs && ST.activeRs.startTime) {
       if (timerInterval) clearInterval(timerInterval);
       const [sh, sm] = ST.activeRs.startTime.split(':').map(Number);
       const start = new Date(); start.setHours(sh, sm, 0, 0);
-      
       timerInterval = setInterval(() => {
         const el = $('#sm-timer');
         if (!el) { clearInterval(timerInterval); return; }
-        const now = new Date();
-        const diff = now - start;
+        const diff = new Date() - start;
         if (diff < 0) return;
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        el.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        el.textContent = `${String(Math.floor(diff/3600000)).padStart(2,'0')}:${String(Math.floor((diff%3600000)/60000)).padStart(2,'0')}:${String(Math.floor((diff%60000)/1000)).padStart(2,'0')}`;
       }, 1000);
     }
 
-    $('#sm-date').onchange = async e => {
-      const v = e.target.value || today();
-      await flush();
-      S.date = v < minD ? minD : (v > today() ? today() : v);
-      APP.go('salesman');
-    };
+    $('#sm-date').onchange = async e => { await flush(); S.date = e.target.value || today(); APP.go('salesman'); };
     $$('.smi, .smn', main).forEach(i => i.addEventListener('input', () => { recalc(); scheduleSave(); }));
     const au = $('#sm-addu'); if (au) au.onclick = async () => { ST.doc = readForm(); await flush(); udharModal(); };
-    const sv = $('#sm-save'); if (sv) sv.onclick = async () => { try { await saveShift('open', false); } catch (e) { toast('सेव नहीं हुआ: ' + errMsg(e)); } };
-    $('#sm-share').onclick = () => { ST.doc = readForm(); share(); };
+    const dc = $('#sm-depcash'); if (dc) dc.onclick = () => { ST.doc = readForm(); cashModal(); };
+    const sv = $('#sm-save'); if (sv) sv.onclick = async () => { try { await saveShift('open', false); } catch (e) { toast('सेव नहीं हुआ'); } };
     bindDel(main);
     recalc();
   }
@@ -406,31 +427,18 @@
     const date = S.date || today();
     let parties;
     try { ST = await loadState(date, true); parties = await APP.getParties(false, true); }
-    catch (e) { main.innerHTML = APP.errBox(e) + '<p class="mut">' + esc(errMsg(e)) + '</p>'; return; }
+    catch (e) { main.innerHTML = APP.errBox(e); return; }
     const locked = ST.locked;
     const totA = ST.rows.reduce((a, r) => a + num(r.amount), 0), totL = ST.rows.reduce((a, r) => a + num(r.litre), 0);
     main.innerHTML = `
       <div class="card"><h3>🚚 उधार एंट्री · ${dmy(date)}</h3>
         ${kv('मेरी एंट्री', ST.rows.length)}${kv('कुल उधार', money(totA), 'neg')}${kv('कुल लीटर', lit(totL))}
-        ${locked ? '<div class="warn">आज की शिफ्ट जमा हो चुकी है — नई एंट्री के लिए मालिक से शिफ्ट खुलवाएँ।</div>' : ''}</div>
+        ${locked ? '<div class="warn">आज की शिफ्ट जमा हो चुकी है</div>' : ''}</div>
       ${locked || !ST.activeRs ? '' : '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="sq-new" type="button">+ नई उधार एंट्री</button></div>'}
-      ${locked || !ST.activeRs ? '' : `<div class="card"><h3>पार्टी से जल्दी एंट्री</h3>
-        <input id="sq-q" class="search" placeholder="🔍 पार्टी का नाम या गाड़ी नंबर" autocomplete="off">
-        <div id="sq-list"></div></div>`}
       <div class="card"><h3>मेरी एंट्रियाँ</h3><div id="sm-rows">${rowsHtml(ST.rows, !locked)}</div></div>`;
     bindDel(main);
     if (locked || !ST.activeRs) return;
     $('#sq-new').onclick = () => udharModal();
-    const nrm = s => String(s || '').toLowerCase().replace(/[\s\-.]/g, '');
-    const drawList = () => {
-      const t = nrm($('#sq-q').value);
-      const list = parties.filter(p => !t || nrm(p.name).includes(t) || (p.vehicles || []).some(v => nrm(v).includes(t))).slice(0, 40);
-      $('#sq-list').innerHTML = list.length ? list.map(p => `<div class="item" style="flex-wrap:wrap"><div class="a"><b>${esc(p.name)}</b>
-        <div>${(p.vehicles || []).map(v => `<span class="veh-pill" data-pid="${p.id}" data-v="${esc(v)}" style="cursor:pointer">${esc(v)}</span>`).join('') || '<small>गाड़ी दर्ज नहीं</small>'}</div></div>
-        <button class="btn sm o" data-pid="${p.id}" type="button">+ उधार</button></div>`).join('') : '<p class="mut">कोई पार्टी नहीं मिली</p>';
-      $$('#sq-list [data-pid]').forEach(b => b.onclick = () => udharModal({ partyId: b.dataset.pid, vehicle: b.dataset.v || '' }));
-    };
-    $('#sq-q').oninput = drawList; drawList();
   };
 
   const origMore = APP.views.more;
@@ -438,12 +446,7 @@
     if (origMore) await origMore.apply(this, arguments);
     if (S.role !== 'salesman') return;
     const x = $('#extra-more-card'); if (x) x.remove();
-    $$('#main .kv').forEach(r => {
-      const sp = r.querySelector('span'), b = r.querySelector('b');
-      if (sp && b && sp.textContent.trim() === 'भूमिका') b.textContent = 'सेल्समैन';
-    });
-    const sb = $('#m-sync-bank'); if (sb) sb.remove();
   };
   
-  console.log('[Mazda salesman.js] loaded ✓');
+  console.log('[Mazda salesman.js] Final loaded ✓');
 })();
