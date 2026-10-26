@@ -22,6 +22,7 @@
   };
   const S = APP.S;
   let auth, db, FV;
+  
   const isOwner = () => S.role === 'owner';
   const isSalesman = () => S.role === 'salesman';
   const isViewer = () => S.role === 'viewer';
@@ -689,7 +690,28 @@
       await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
     },
     report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
-    scan() { if (APP.scanRegister) APP.scanRegister(S.cur); }
+    scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
+    editE(data) {
+      collectDraft();
+      const row = S.cur.rows.find(r => r.id === data.id);
+      if (row) entryModal({ entry: row, date: row.date });
+    },
+    async delE(data) {
+      collectDraft();
+      const row = S.cur.rows.find(r => r.id === data.id);
+      if (!row) return;
+      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
+      try {
+        const b = db.batch();
+        b.delete(db.collection('ledger').doc(row.id));
+        const delta = -K.signed(row); 
+        if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
+        await commit(b.commit());
+        toast('एंट्री हटा दी गई ✔');
+        S.parties.pub = null;
+        dayView(S.date);
+      } catch (e) { toast('नहीं हटा: ' + e.message); }
+    }
   };
   APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
