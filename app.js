@@ -1,14 +1,6 @@
 /* माज़दा ऑयल कंपनी - कोर ऐप कंट्रोलर */
 (function () {
   'use strict';
-  
-  // अगर कोई एरर आए तो स्क्रीन पर दिखाने के लिए
-  window.onerror = function(msg, url, line, col, error) {
-    const eBox = document.getElementById('error-box');
-    if(eBox) { eBox.style.display='block'; eBox.innerHTML='Error: ' + msg + ' Line:' + line; }
-    return false;
-  };
-
   const C = window.CFG, K = window.Calc, num = K.num, r2 = K.r2;
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -162,16 +154,10 @@
   }
 
   function boot() {
-    try {
-      firebase.initializeApp(C.firebase);
-      auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-      db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
-      APP.db = db; APP.auth = auth; APP.FV = FV;
-    } catch(e) {
-      document.getElementById('error-box').style.display = 'block';
-      document.getElementById('error-box').innerText = 'Firebase Error: ' + e.message;
-      return;
-    }
+    firebase.initializeApp(C.firebase);
+    auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
+    APP.db = db; APP.auth = auth; APP.FV = FV;
 
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
@@ -267,7 +253,7 @@
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
-    if (tab === 'ledger') return ledgerView(arg);
+    if (tab === 'ledger')]) return ledgerView(arg);
 
     if (APP.views && typeof APP.views[tab] === 'function') {
       APP.views[tab](arg);
@@ -321,29 +307,6 @@
     }
   }
 
-  // 🔄 पुराने डेटा को सिंक करने का फंक्शन
-  APP.syncOldBankData = async function() {
-    if(!confirm('क्या आप पुराने सारे हिसाब को SBI बैंक जमा में सिंक करना चाहते हैं? इसमें 1 मिनट लग सकता है।')) return;
-    toast('पुराना डेटा सिंक हो रहा है...');
-    try {
-      const daysSnap = await db.collection('days').get();
-      let count = 0;
-      for (const doc of daysSnap.docs) {
-        const d = doc.data();
-        const mdAmt = num(d.malikDiya);
-        if (mdAmt > 0) {
-          const docId = 'sbi_auto_' + d.date;
-          await db.collection('bank_deposits').doc(docId).set({
-            bank: 'SBI', date: d.date, amount: mdAmt, mode: 'cash',
-            note: 'मालिक को दिया (SBI जमा)', by: d.by || 'system', at: FV.serverTimestamp()
-          }, { merge: true });
-          count++;
-        }
-      }
-      toast(count + ' दिन का पुराना डेटा बैंक में जुड़ गया ✔');
-    } catch(e) { toast('सिंक एरर: ' + e.message); }
-  };
-
   async function dayView(date) {
     date = (typeof date === 'string' && date) ? date : (S.date || todayISO()); S.date = date;
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
@@ -369,7 +332,7 @@
       });
     }
 
-    if (S.draft[date]) {
+    if (S.draft[date {
       d = Object.assign({}, d, S.draft[date]);
       if (d.opening_locked !== false && prev) {
         K.NZ.forEach(k => {
@@ -430,9 +393,7 @@
         <div><label>चाय-खाना</label>${inp('f-chaiKhana', d.chaiKhana)}</div>
         <div><label>मालिक को दिया (SBI जमा)</label>${inp('f-malikDiya', d.malikDiya)}</div>
       </div>
-      <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}>
-      ${isOwner() && !locked ? `<div style="margin-top:10px;"><button class="btn sm w full" data-do="syncOld">🔄 पुराना डेटा SBI बैंक में सिंक करें</button></div>` : ''}
-      </div>
+      <label>नोट</label><input id="f-note" value="${esc(d.note || '')}" ${dis}></div>
 
     <div class="card"><h3>आज का हिसाब</h3><div id="sum"></div></div>
 
@@ -565,7 +526,7 @@
       await commit(db.collection('days').doc(st.date).set(d));
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       
-      // --- SBI Bank Deposit Auto Sync ---
+      // --- SBI Bank Deposit Auto Sync (Fixed & Error Proof) ---
       try {
         const bankRef = db.collection('bank_deposits');
         const docId = 'sbi_auto_' + st.date;
@@ -573,8 +534,13 @@
         
         if (mdAmt > 0) {
           await bankRef.doc(docId).set({
-            bank: 'SBI', date: st.date, amount: mdAmt, mode: 'cash',
-            note: 'मालिक को दिया (SBI जमा)', by: S.user.email, at: FV.serverTimestamp()
+            bank: 'SBI', 
+            date: st.date, 
+            amount: mdAmt, 
+            mode: 'cash',
+            note: 'मालिक को दिया (SBI जमा)', 
+            by: S.user.email, 
+            at: FV.serverTimestamp()
           }, { merge: true });
         } else {
           await bankRef.doc(docId).delete().catch(() => {});
@@ -888,12 +854,55 @@
     };
   }
 
+  // 🔄 पुराने सारे दिनों का डेटा बैंक जमा में सिंक करने का फंक्शन
+  APP.syncOldBankData = async function() {
+    if(!confirm('क्या आप पुराने सारे हिसाब को SBI बैंक जमा में सिंक करना चाहते हैं? इसमें 1 मिनट लग सकता है।')) return;
+    toast('पुराना डेटा सिंक हो रहा है...');
+    try {
+      const daysSnap = await db.collection('days').get();
+      let count = 0;
+      for (const doc of daysSnap.docs) {
+        const d = doc.data();
+        const mdAmt = num(d.malikDiya);
+        if (mdAmt > 0) {
+          const docId = 'sbi_auto_' + d.date;
+          await db.collection('bank_deposits').doc(docId).set({
+            bank: 'SBI', date: d.date, amount: mdAmt, mode: 'cash',
+            note: 'मालिक को दिया (SBI जमा)', by: d.by || 'system', at: FV.serverTimestamp()
+          }, { merge: true });
+          count++;
+        }
+      }
+      toast(count + ' दिन का पुराना डेटा बैंक में जुड़ गया ✔');
+      if (S.tab === 'bank') APP.views.bank();
+    } catch(e) { toast('सिंक एरर: ' + e.message); }
+  };
+
+  // मालिक के "और" (More) टैब में सिंक बटन जोड़ना
+  const origMore = APP.views.more;
+  APP.views.more = async function() {
+    if(origMore) await origMore();
+    const main = $('#main');
+    const card = main.querySelector('.card');
+    if(card && isOwner()) {
+       const btns = card.querySelector('.btns');
+       if(btns && !document.getElementById('m-sync-bank')) {
+          const btn = document.createElement('button');
+          btn.id = 'm-sync-bank';
+          btn.className = 'btn w full';
+          btn.style.marginBottom = '10px';
+          btn.innerHTML = '🔄 पुराना डेटा SBI बैंक में सिंक करें';
+          btns.insertBefore(btn, btns.firstChild);
+          btn.onclick = () => APP.syncOldBankData();
+       }
+    }
+  };
+
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
     save() { saveDay(false); },
     submit() { saveDay(true); },
-    syncOld() { APP.syncOldBankData(); },
     async unlock() {
       await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
     },
@@ -924,4 +933,3 @@
   APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
   window.addEventListener('load', boot);
-})();
