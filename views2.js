@@ -215,6 +215,82 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
       parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
 
+
+    /* ---------- Gemini se seedha padhna (key sirf is phone mein, repo mein nahi) ---------- */
+    const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
+    const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+    const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { } };
+    const getKey = () => lsGet(KEY_LS);
+    const askKey = () => {
+      const k = prompt('Gemini API key paste karein (aistudio.google.com/app/apikey se). Ye sirf is phone mein save hogi:', getKey());
+      if (k === null) return false;
+      lsSet(KEY_LS, k.trim()); lsSet(MODEL_LS, '');
+      return !!k.trim();
+    };
+    const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
+    const gErr = (code, j) => {
+      const m = (j && j.error && j.error.message) || ('HTTP ' + code);
+      const hint = code === 400 && /api key/i.test(m) ? 'Key galat hai — 🔑 se dobara daalein.'
+        : code === 403 ? 'Key ko permission nahi mili ya is jagah se block hai.'
+        : code === 429 ? 'Free limit poori ho gayi — thodi der baad try karein.'
+        : code === 503 ? 'Gemini abhi busy hai — dobara try karein.' : '';
+      return 'Gemini error (' + code + '): ' + m + (hint ? '\n' + hint : '');
+    };
+    // chalu (retired nahi) flash model khud dhoondhta hai, isliye purana model band hone par bhi nahi tootega
+    const listModels = async key => {
+      const r = await fetch(GBASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
+      const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
+      const ver = n => { const m = /^gemini-(\d+(?:\.\d+)?)-flash/.exec(n); return m ? parseFloat(m[1]) : 0; };
+      const flash = all.filter(n => ver(n) > 0 && !/image|tts|live|audio|embed|thinking|robotics|computer|exp|8b/.test(n));
+      const rank = n => (/preview/.test(n) ? 0 : /lite/.test(n) ? 1 : 2);
+      flash.sort((a, b) => rank(b) - rank(a) || ver(b) - ver(a));
+      const out = flash.slice(0, 3);
+      if (all.includes('gemini-flash-latest')) out.push('gemini-flash-latest');
+      return out;
+    };
+    const toJpegB64 = file => new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+        res(cv.toDataURL('image/jpeg', 0.88).split(',')[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई — कैमरे से सीधी फोटो लें')); };
+      img.src = url;
+    });
+    const geminiRead = async file => {
+      const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
+      const b64 = await toJpegB64(file);
+      let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
+      const ask = buildPrompt(ps) + '\n\nAaj ki tareekh ' + ((st && st.date) || APP.todayISO()) + ' hai; photo mein tareekh na dikhe to yahi use karo.';
+      const body = JSON.stringify({ contents: [{ parts: [{ text: ask }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
+      const tryModel = async model => {
+        const r = await fetch(GBASE + '/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
+        const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+        const txt = parts.map(x => x.text || '').join('');
+        if (!txt.trim()) { const e = new Error('Gemini ne khaali jawab diya (photo saaf nahi ho sakti) — dobara try karein'); e.status = 0; throw e; }
+        return txt;
+      };
+      let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [], lastErr;
+      for (let round = 0; round < 2; round++) {
+        for (const mdl of models) {
+          try { const out = await tryModel(mdl); lsSet(MODEL_LS, mdl); return out; }
+          catch (e) { lastErr = e; if (![404, 429, 500, 503].includes(e.status)) throw e; }
+        }
+        if (round === 0) {
+          lsSet(MODEL_LS, ''); models = await listModels(key);
+          if (!models.length) throw new Error('Is key par koi chalu Gemini model nahi mila');
+        }
+      }
+      throw lastErr;
+    };
+
     /* ---------- 1. paste box (textarea) ---------- */
     const text = await new Promise(resolve => {
       const m = modal(`
@@ -222,6 +298,9 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
         <p class="mut" style="margin:4px 0 8px">Gemini / Claude का दिया JSON यहाँ पेस्ट करें</p>
         <textarea id="scan-ta" rows="9" style="width:100%;font-size:13px" placeholder='{ "date": "..." }'></textarea>
         <div class="btns" style="margin-top:10px">
+          <button class="btn g" id="scan-auto">📷 फोटो से अपने-आप भरें</button>
+          <button class="btn w" id="scan-key">🔑 Gemini key</button>
+          <input type="file" id="scan-file" accept="image/*" style="display:none">
           <button class="btn w" id="scan-clip">📋 क्लिपबोर्ड से लें</button>
           <button class="btn w" id="scan-prompt">🧾 Gemini के लिए प्रॉम्प्ट कॉपी (पार्टी लिस्ट के साथ)</button>
           <button class="btn g" id="scan-ok">आगे बढ़ें</button>
@@ -231,6 +310,15 @@ Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numb
       $('#scan-clip', m).onclick = async () => {
         try { ta.value = await navigator.clipboard.readText(); }
         catch (e) { toast('क्लिपबोर्ड नहीं मिला — बॉक्स में दबाकर पेस्ट करें'); }
+      };
+      const fileEl = $('#scan-file', m), autoBtn = $('#scan-auto', m);
+      autoBtn.onclick = () => { if (!getKey() && !askKey()) return; fileEl.value = ''; fileEl.click(); };
+      $('#scan-key', m).onclick = () => { askKey(); };
+      fileEl.onchange = async () => {
+        const f0 = fileEl.files && fileEl.files[0]; if (!f0) return;
+        autoBtn.disabled = true; autoBtn.textContent = '⏳ AI पढ़ रहा है…';
+        try { ta.value = await geminiRead(f0); $('#scan-ok', m).click(); }
+        catch (e) { autoBtn.disabled = false; autoBtn.textContent = '📷 फोटो से अपने-आप भरें'; alert(e.message); }
       };
       $('#scan-prompt', m).onclick = async () => {
         let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
