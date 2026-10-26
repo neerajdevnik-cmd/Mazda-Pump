@@ -52,21 +52,139 @@
     });
   };
 
-  /* ======================= STOCK ======================= */
+  /* ======================= STOCK REPORT (MONTHLY) ======================= */
   APP.views.stock = async function () {
     const main = $('#main'); if (!main) return;
-    main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    let snap; try { snap = await db().collection('days').orderBy('date', 'desc').limit(15).get(); } catch (e) { snap = { docs: [] }; }
-    const days = snap.docs.map(d => d.data());
-    main.innerHTML = `
-      <div class="card">
-        <h3>🛢️ स्टॉक रिकॉर्ड</h3>
-        <table><tr><th>तारीख</th><th class="n">P सेल</th><th class="n">D सेल</th><th class="n">P डिप</th><th class="n">D डिप</th></tr>
-        ${days.map(d => `<tr><td>${dmy(d.date)}</td><td class="n">${d.sum ? d.sum.litP : '-'}</td><td class="n">${d.sum ? d.sum.litD : '-'}</td><td class="n">${d.dipP || '-'}</td><td class="n">${d.dipD || '-'}</td></tr>`).join('')}
-        </table>
-      </div>`;
-  };
+    main.innerHTML = '<p class="mut">स्टॉक रिपोर्ट लोड हो रही है…</p>';
+    
+    const now = new Date();
+    const defaultMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    
+    const renderView = async (monthStr) => {
+      main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
+      const start = monthStr + '-01';
+      const end = monthStr + '-31';
+      
+      let snap;
+      try { snap = await db().collection('days').where('date', '>=', start).where('date', '<=', end).get(); } 
+      catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
+      
+      const days = snap.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
+      
+      let totTankerP = 0, totTankerD = 0;
+      let totLitP = 0, totLitD = 0;
+      let totDiffP = 0, totDiffD = 0;
+      let totTestP = 0, totTestD = 0;
+      
+      const nzP = { p1: 0, p2: 0, p3: 0, p4: 0 };
+      const nzD = { d1: 0, d2: 0, d3: 0, d4: 0 };
+      
+      days.forEach(d => {
+        totTankerP += num(d.tankerP);
+        totTankerD += num(d.tankerD);
+        
+        totLitP += num(d.sum && d.sum.litP);
+        totLitD += num(d.sum && d.sum.litD);
+        
+        totDiffP += num(d.sum && d.sum.diffP);
+        totDiffD += num(d.sum && d.sum.diffD);
+        
+        let activeP = 0, activeD = 0;
+        const testing = num(d.testing || 5);
+        
+        K.NZ.forEach(k => {
+          const n = d.nz && d.nz[k];
+          if (n && K.has(n.o) && K.has(n.c)) {
+            const net = Math.max(0, (num(n.c) - num(n.o)) - testing);
+            if (k.startsWith('p')) { nzP[k] += net; activeP++; }
+            else { nzD[k] += net; activeD++; }
+          }
+        });
+        totTestP += (activeP * testing);
+        totTestD += (activeD * testing);
+      });
+      
+      const pct = (val, tot) => tot > 0 ? ((val / tot) * 100).toFixed(1) + '%' : '0%';
+      const sign = (v) => v > 0 ? '+' : '';
+      const color = (v) => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
+      
+      const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
+      
+      main.innerHTML = `
+        <div class="card" style="background:#0b3d91;color:#fff;">
+          <div class="row" style="align-items:center;">
+            <div style="flex:1">
+              <label style="color:#fff;margin:0;">महीना चुनें</label>
+              <input type="month" id="stk-month" value="${monthStr}" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid #fff;">
+            </div>
+            <div style="flex:0 0 auto;">
+              <button class="btn sm w" id="stk-refresh" style="margin-top:20px;">🔄 रिफ्रेश</button>
+            </div>
+          </div>
+        </div>
 
+        <div class="card">
+          <h3>⛽ पेट्रोल का हिसाब</h3>
+          ${kvEl('टैंकर से आया (कुल)', lit(totTankerP))}
+          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitP), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', lit(totTestP))}
+          ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffP) + r2(totDiffP) + ' L', color(totDiffP))}
+        </div>
+
+        <div class="card">
+          <h3>⛽ डीज़ल का हिसाब</h3>
+          ${kvEl('टैंकर से आया (कुल)', lit(totTankerD))}
+          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitD), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', lit(totTestD))}
+          ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffD) + r2(totDiffD) + ' L', color(totDiffD))}
+        </div>
+
+        <div class="card">
+          <h3>⛽ नोज़ल-वाइज पेट्रोल बिक्री</h3>
+          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
+        </div>
+
+        <div class="card">
+          <h3>🛢️ नोज़ल-वाइज डीज़ल बिक्री</h3>
+          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
+        </div>
+
+        <div class="card" style="overflow-x:auto">
+          <h3>📅 दिन-वार स्टॉक रजिस्टर</h3>
+          ${days.length ? `
+          <table style="font-size:11px;min-width:400px;">
+            <tr>
+              <th>तारीख</th>
+              <th class="n">P टैंकर</th>
+              <th class="n">P सेल</th>
+              <th class="n">P फर्क</th>
+              <th class="n">D टैंकर</th>
+              <th class="n">D सेल</th>
+              <th class="n">D फर्क</th>
+            </tr>
+            ${days.map(d => {
+              const dp = d.sum ? d.sum.diffP : null;
+              const dd = d.sum ? d.sum.diffD : null;
+              return `<tr>
+                <td>${dmy(d.date)}</td>
+                <td class="n">${d.tankerP || '-'}</td>
+                <td class="n">${d.sum ? d.sum.litP : '-'}</td>
+                <td class="n ${dp > 0 ? 'pos' : (dp < 0 ? 'neg' : '')}">${dp !== null && dp !== undefined ? sign(dp) + r2(dp) : '-'}</td>
+                <td class="n">${d.tankerD || '-'}</td>
+                <td class="n">${d.sum ? d.sum.litD : '-'}</td>
+                <td class="n ${dd > 0 ? 'pos' : (dd < 0 ? 'neg' : '')}">${dd !== null && dd !== undefined ? sign(dd) + r2(dd) : '-'}</td>
+              </tr>`;
+            }).join('')}
+          </table>` : '<p class="mut">इस महीने का कोई डेटा नहीं है।</p>'}
+        </div>
+      `;
+      
+      $('#stk-month').onchange = (e) => renderView(e.target.value);
+      $('#stk-refresh').onclick = () => renderView($('#stk-month').value);
+    };
+    
+    renderView(defaultMonth);
+  };
   /* ======================= NIJI UDHAR (PRIV) - UPDATED ======================= */
   APP.views.priv = async function () {
     const main = $('#main'); if (!main) return;
