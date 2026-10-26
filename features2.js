@@ -11,6 +11,7 @@
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c||''}">${b}</b></div>`;
   APP.views = APP.views || {};
 
+  const khBreak = days => K.khSummary(days, true).map(x => '<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ' + esc(x.label) + '</span><span class="mut">' + money(x.amount) + '</span></div>').join('');
   function monthKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
   function monthLabel(ym) { const p = ym.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleString('hi-IN', { month: 'long', year: 'numeric' }); }
   function initials(name) { return String(name || '?').split(' ').map(x => x[0]).filter(Boolean).slice(0, 2).join('').toUpperCase(); }
@@ -261,13 +262,13 @@
 
     const days = daySnap.docs.map(x => x.data()).sort((a, b) => a.date.localeCompare(b.date));
     const parties = partySnap.docs.map(x => x.data());
-    const banks = bankSnap.docs.map(x => x.data());
+    const banks = bankSnap.docs.map(x => x.data()).filter(x => !x.removed);
     const workers = wSnap.docs.map(x => x.data()).filter(w => w.active !== false);
     const att = {}; attSnap.docs.forEach(d => { const r = d.data(); att[r.workerId] = r.status; });
     const salaries = {}; salSnap.docs.forEach(d => { const r = d.data(); if (!salaries[r.workerId]) salaries[r.workerId] = 0; salaries[r.workerId] += num(r.amount); });
 
     const totSale = days.reduce((a, d) => a + num((d.sum || {}).sale), 0);
-    const totKharcha = days.reduce((a, d) => a + num(d.kharcha) + num(d.driverInaam) + num(d.chaiKhana) + num(d.malikDiya), 0);
+    const totKharcha = days.reduce((a, d) => a + K.khTotal(d) + num(d.malikDiya), 0);
     const totUdhar = parties.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
     const totBank = banks.reduce((a, x) => a + num(x.amount), 0);
     const last = days[days.length - 1];
@@ -285,6 +286,7 @@
       '<div class="card"><h3>📊 मुख्य आंकड़े (माह)</h3>' +
         kv('कुल बिक्री', money(totSale), 'big') +
         kv('कुल खर्चा', money(totKharcha), 'neg') +
+        khBreak(days) +
         kv('कुल उधार (बकाया)', money(totUdhar), 'neg') +
         kv('बैंक जमा', money(totBank), 'pos') +
         kv('Paytm/UPI', money(paytm)) +
@@ -350,7 +352,7 @@
       ledgerSnap = await db().collection('ledger').where('date', '>=', mStart).where('date', '<=', mEnd).get();
     } catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
     const days = daySnap.docs.map(x => x.data()).sort((a, b) => a.date.localeCompare(b.date));
-    const banks = bankSnap.docs.map(x => x.data()).sort((a, b) => a.date.localeCompare(b.date));
+    const banks = bankSnap.docs.map(x => x.data()).filter(x => !x.removed).sort((a, b) => a.date.localeCompare(b.date));
     const ledger = ledgerSnap.docs.map(x => x.data());
     const jd = {};
     ledger.forEach(r => {
@@ -365,7 +367,7 @@
     const totPaytm = days.reduce((a, d) => a + num(d.paytm), 0);
     const totSwipe = days.reduce((a, d) => a + num(d.swipe), 0);
     const totBank = banks.reduce((a, x) => a + num(x.amount), 0);
-    const totKharcha = days.reduce((a, d) => a + num(d.kharcha) + num(d.driverInaam) + num(d.chaiKhana) + num(d.malikDiya), 0);
+    const totKharcha = days.reduce((a, d) => a + K.khTotal(d) + num(d.malikDiya), 0);
     const totJama = ledger.filter(r => r.kind === 'jama').reduce((a, r) => a + num(r.amount), 0);
 
     main.innerHTML =
@@ -388,11 +390,21 @@
           dmy(b.date) + ' · ' + esc(b.mode || '') + (b.cheque ? ' · चेक ' + esc(b.cheque) : '') + '</small></div></div>').join('')
           : '<p class="mut">कोई जमा नहीं</p>') +
       '</div>' +
-      '<div class="card"><h3>💸 सारे खर्चे</h3>' +
-        (days.filter(d => num(d.kharcha) + num(d.driverInaam) + num(d.chaiKhana) + num(d.malikDiya) > 0).map(d =>
-          '<div class="item"><div class="a"><b>' + dmy(d.date) + '</b><small>खर्चा: ' + money(d.kharcha) + ' · ड्राइवर: ' + money(d.driverInaam) + ' · चाय: ' + money(d.chaiKhana) + ' · मालिक: ' + money(d.malikDiya) + '</small></div>' +
-          '<b>' + money(num(d.kharcha) + num(d.driverInaam) + num(d.chaiKhana) + num(d.malikDiya)) + '</b></div>'
-        ).join('') || '<p class="mut">कोई खर्चा नहीं</p>') +
+      '<div class="card"><h3>💸 खर्चा — किस चीज़ में कितना (माह)</h3>' +
+        (K.khSummary(days, true).map(x => kv(esc(x.label), money(x.amount), 'neg')).join('') || '<p class="mut">कोई खर्चा नहीं</p>') +
+      '</div>' +
+      '<div class="card"><h3>💸 रोज़ के खर्चे (अलग-अलग)</h3>' +
+        (days.map(d => {
+          const L = K.khList(d);
+          if (num(d.malikDiya)) L.push({ label: 'मालिक को दिया (SBI जमा)', amount: num(d.malikDiya) });
+          if (!L.length) return '';
+          const t = L.reduce((a, x) => a + x.amount, 0);
+          return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb">' +
+            '<div class="kv" style="border:0;padding:0"><b>' + dmy(d.date) + '</b><b class="neg">' + money(t) + '</b></div>' +
+            L.map(x => '<div class="kv" style="border:0;padding:1px 0 1px 12px;font-size:13px"><span class="mut">• ' + esc(x.label) + '</span><span>' + money(x.amount) + '</span></div>').join('') +
+            (d.note ? '<div class="mut" style="font-size:12px;padding-left:12px">नोट: ' + esc(d.note) + '</div>' : '') +
+            '</div>';
+        }).join('') || '<p class="mut">कोई खर्चा नहीं</p>') +
       '</div>';
   };
 
