@@ -253,7 +253,7 @@
     $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
-    if (tab === 'ledger')]) return ledgerView(arg);
+    if (tab === 'ledger') return ledgerView(arg);
 
     if (APP.views && typeof APP.views[tab] === 'function') {
       APP.views[tab](arg);
@@ -332,7 +332,7 @@
       });
     }
 
-    if (S.draft[date {
+    if (S.draft[date]) {
       d = Object.assign({}, d, S.draft[date]);
       if (d.opening_locked !== false && prev) {
         K.NZ.forEach(k => {
@@ -878,25 +878,7 @@
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
 
-  // मालिक के "और" (More) टैब में सिंक बटन जोड़ना
-  const origMore = APP.views.more;
-  APP.views.more = async function() {
-    if(origMore) await origMore();
-    const main = $('#main');
-    const card = main.querySelector('.card');
-    if(card && isOwner()) {
-       const btns = card.querySelector('.btns');
-       if(btns && !document.getElementById('m-sync-bank')) {
-          const btn = document.createElement('button');
-          btn.id = 'm-sync-bank';
-          btn.className = 'btn w full';
-          btn.style.marginBottom = '10px';
-          btn.innerHTML = '🔄 पुराना डेटा SBI बैंक में सिंक करें';
-          btns.insertBefore(btn, btns.firstChild);
-          btn.onclick = () => APP.syncOldBankData();
-       }
-    }
-  };
+  // (सिंक बटन अब views2.js के "और" टैब में जुड़ता है, क्योंकि वहीं more बनता है)
 
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
@@ -933,3 +915,4 @@
   APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
 
   window.addEventListener('load', boot);
+})();
