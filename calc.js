@@ -9,7 +9,6 @@
   /* ---------- खर्चा: अलग-अलग चीज़ों की लिस्ट ---------- */
   const KH = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
   const KH_NONAME = 'अन्य (नाम नहीं लिखा)';
-  // d.kharchaItems = [{label, amount}] — DG / ड्राइवर / चाय के अलावा बाकी खर्चे, हर एक अलग
   function khList(d) {
     d = d || {};
     const out = [];
@@ -21,7 +20,6 @@
     return out;
   }
   const khTotal = d => r2(khList(d).reduce((a, x) => a + x.amount, 0));
-  // कई दिनों का जोड़: किस चीज़ में कितना (withMalik=true हो तो "मालिक को दिया" भी अलग लाइन में)
   function khSummary(days, withMalik) {
     const m = {};
     (days || []).forEach(d => {
@@ -89,17 +87,27 @@
 
     const openStockP = num(d.openStockP), openStockD = num(d.openStockD);
     const tankerP = num(d.tankerP), tankerD = num(d.tankerD);
-    const stockCloseP = r2(openStockP + tankerP - litP);
-    const stockCloseD = r2(openStockD + tankerD - litD);
-
-    const diffP = has(d.dipP) ? r2(num(d.dipP) - stockCloseP) : null;
-    const diffD = has(d.dipD) ? r2(num(d.dipD) - stockCloseD) : null;
+    
+    // New Stock Calculation Logic (Opening + Tanker - Sale = Expected)
+    const expStockP = r2(openStockP + tankerP - litP);
+    const expStockD = r2(openStockD + tankerD - litD);
+    
+    // Actual Stock from Dip Chart
+    let actStockP = null, actStockD = null;
+    if (window.DipChart) {
+       if (has(d.dipP)) actStockP = r2(window.DipChart.getLiters('petrol', d.dipP));
+       if (has(d.dipD)) actStockD = r2(window.DipChart.getLiters('diesel', d.dipD));
+    }
+    
+    // Variation
+    const diffP = (actStockP !== null && expStockP !== null) ? r2(actStockP - expStockP) : null;
+    const diffD = (actStockD !== null && expStockD !== null) ? r2(actStockD - expStockD) : null;
 
     return {
       filled, nz, litP, litD, amtP, amtD, sale,
       jCash, jPaytm, jSwipe, jBank, udhar,
       totalKharcha, kul, close,
-      stockCloseP, stockCloseD, diffP, diffD, warn
+      expStockP, expStockD, actStockP, actStockD, diffP, diffD, warn
     };
   }
 
