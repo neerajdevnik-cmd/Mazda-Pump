@@ -6,6 +6,31 @@
   const has = v => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
   const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
 
+  /* ---------- खर्चा: अलग-अलग चीज़ों की लिस्ट ---------- */
+  const KH = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
+  const KH_NONAME = 'अन्य (नाम नहीं लिखा)';
+  // d.kharchaItems = [{label, amount}] — DG / ड्राइवर / चाय के अलावा बाकी खर्चे, हर एक अलग
+  function khList(d) {
+    d = d || {};
+    const out = [];
+    Object.keys(KH).forEach(k => { const a = r2(d[k]); if (a) out.push({ key: k, label: KH[k], amount: a }); });
+    (Array.isArray(d.kharchaItems) ? d.kharchaItems : []).forEach((x, i) => {
+      const a = r2(x && x.amount);
+      if (a) out.push({ key: 'item', idx: i, label: String((x && x.label) || '').trim() || KH_NONAME, amount: a });
+    });
+    return out;
+  }
+  const khTotal = d => r2(khList(d).reduce((a, x) => a + x.amount, 0));
+  // कई दिनों का जोड़: किस चीज़ में कितना (withMalik=true हो तो "मालिक को दिया" भी अलग लाइन में)
+  function khSummary(days, withMalik) {
+    const m = {};
+    (days || []).forEach(d => {
+      khList(d).forEach(x => { const k = x.label.toLowerCase(); (m[k] = m[k] || { label: x.label, amount: 0 }).amount += x.amount; });
+      if (withMalik && num(d.malikDiya)) { const k = 'मालिक को दिया (sbi जमा)'; (m[k] = m[k] || { label: 'मालिक को दिया (SBI जमा)', amount: 0 }).amount += num(d.malikDiya); }
+    });
+    return Object.keys(m).map(k => ({ label: m[k].label, amount: r2(m[k].amount) })).sort((a, b) => b.amount - a.amount);
+  }
+
   function compute(d, rows) {
     rows = rows || [];
     const t = has(d.testing) ? num(d.testing) : 5;
@@ -57,10 +82,7 @@
     const kul = r2(sale + openCash + jCash + jPaytm + jSwipe);
     const paytm = num(d.paytm);
     const swipe = num(d.swipe);
-    const kharcha = num(d.kharcha);
-    const driverInaam = num(d.driverInaam);
-    const chaiKhana = num(d.chaiKhana);
-    const totalKharcha = r2(kharcha + driverInaam + chaiKhana);
+    const totalKharcha = khTotal(d);
     const malikDiya = num(d.malikDiya);
 
     const close = r2(kul - paytm - swipe - udhar - totalKharcha - malikDiya);
@@ -111,5 +133,5 @@
     return e.kind === 'udhar' ? a : -a;
   }
 
-  window.Calc = { num, r2, has, NZ, compute, stmt, signed };
+  window.Calc = { num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
 })();
