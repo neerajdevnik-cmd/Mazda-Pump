@@ -24,6 +24,7 @@
   let auth, db, FV;
   const isOwner = () => S.role === 'owner';
   const isSalesman = () => S.role === 'salesman';
+  const isViewer = () => S.role === 'viewer';
 
   function toast(msg) {
     const t = $('#toast'); if (!t) return;
@@ -46,7 +47,7 @@
     m.close = () => m.remove();
     return m;
   }
-  Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman });
+  Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer });
 
   async function getParties(priv, force) {
     const key = priv ? 'priv' : 'pub';
@@ -67,8 +68,9 @@
       <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
       
       <div class="seg" style="margin:16px 0">
-        <button id="tab-man" class="on">मालिक / मैनेजर</button>
-        <button id="tab-sm">सेल्समैन (Salesman)</button>
+        <button id="tab-man" class="on">मालिक</button>
+        <button id="tab-sm">सेल्समैन</button>
+        <button id="tab-vw">मालिक-व्यू</button>
       </div>
 
       <div id="form-man">
@@ -89,19 +91,31 @@
         <div class="btns" style="margin-top:14px"><button class="btn full g" id="go-sm">सेल्समैन लॉगिन</button></div>
       </div>
 
+      <div id="form-vw" style="display:none">
+        <label>मालिक व्यू कोड</label>
+        <input id="vw-code" type="password" placeholder="कोड दर्ज करें" autocomplete="off">
+        <div class="btns" style="margin-top:14px"><button class="btn full o" id="go-vw">देखने के लिए लॉगिन</button></div>
+        <p class="mut" style="font-size:12px;margin-top:10px;text-align:center">केवल देख सकते हैं — कोई बदलाव नहीं</p>
+      </div>
+
       ${msg ? '<div class="err" style="margin-top:10px">' + esc(msg) + '</div>' : ''}
     </div>`;
 
     $('#tab-man').onclick = () => {
-      $('#tab-man').classList.add('on'); $('#tab-sm').classList.remove('on');
-      $('#form-man').style.display = ''; $('#form-sm').style.display = 'none';
+      $('#tab-man').classList.add('on'); $('#tab-sm').classList.remove('on'); $('#tab-vw').classList.remove('on');
+      $('#form-man').style.display = ''; $('#form-sm').style.display = 'none'; $('#form-vw').style.display = 'none';
     };
     $('#tab-sm').onclick = () => {
-      $('#tab-sm').classList.add('on'); $('#tab-man').classList.remove('on');
-      $('#form-sm').style.display = ''; $('#form-man').style.display = 'none';
+      $('#tab-sm').classList.add('on'); $('#tab-man').classList.remove('on'); $('#tab-vw').classList.remove('on');
+      $('#form-sm').style.display = ''; $('#form-man').style.display = 'none'; $('#form-vw').style.display = 'none';
+    };
+    $('#tab-vw').onclick = () => {
+      $('#tab-vw').classList.add('on'); $('#tab-man').classList.remove('on'); $('#tab-sm').classList.remove('on');
+      $('#form-vw').style.display = ''; $('#form-man').style.display = 'none'; $('#form-sm').style.display = 'none';
     };
 
     $('#go-btn').onclick = async () => {
+      localStorage.removeItem('mazda_viewer'); S.role = null;
       let em = $('#em').value.trim();
       if (!em.includes('@')) em = em.toLowerCase() + '@' + (C.loginDomain || 'mazda-pump.in');
       try { await auth.signInWithEmailAndPassword(em, $('#pw').value); }
@@ -109,6 +123,7 @@
     };
 
     $('#go-sm').onclick = () => {
+      localStorage.removeItem('mazda_viewer'); S.role = null;
       const smId = $('#sm-sel').value;
       const pin = $('#sm-pin').value.trim();
       const s = (C.salesmen || []).find(x => x.id === smId);
@@ -123,6 +138,19 @@
         loginView('गलत PIN दर्ज किया गया है!');
       }
     };
+
+    $('#go-vw').onclick = async () => {
+      const code = $('#vw-code').value.trim();
+      if (code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
+      try { if (auth) await auth.signOut(); } catch (e) {}
+      localStorage.removeItem('mazda_sm');
+      localStorage.setItem('mazda_viewer', 'Mazda@123');
+      S.salesman = null;
+      S.role = 'viewer';
+      S.user = { email: 'viewer@owner.local' };
+      S.date = todayISO();
+      shell();
+    };
   }
 
   function boot() {
@@ -130,6 +158,15 @@
     auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
     db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
     APP.db = db; APP.auth = auth; APP.FV = FV;
+
+    const savedViewer = localStorage.getItem('mazda_viewer');
+    if (savedViewer === 'Mazda@123') {
+      S.salesman = null;
+      S.role = 'viewer';
+      S.user = { email: 'viewer@owner.local' };
+      S.date = todayISO();
+      shell(); return;
+    }
 
     const savedSM = localStorage.getItem('mazda_sm');
     if (savedSM) {
@@ -141,9 +178,11 @@
     }
 
     auth.onAuthStateChanged(u => {
+      if (isViewer()) return;
       if (!u) {
         if (!S.salesman) { S.user = null; return loginView(); }
       } else {
+        localStorage.removeItem('mazda_viewer');
         const em = (u.email || '').toLowerCase();
         S.role = em === C.ownerEmail.toLowerCase() ? 'owner' : 'manager';
         S.user = u; S.date = todayISO(); shell();
@@ -156,7 +195,15 @@
 
   function shell() {
     let tabs = [];
-    if (isSalesman()) {
+    if (isViewer()) {
+      tabs = [
+        ['v_home', '🏠', 'होम'],
+        ['v_parties', '📒', 'पार्टी'],
+        ['v_money', '💰', 'पैसा'],
+        ['v_workers', '👥', 'वर्कर'],
+        ['more', '⚙️', 'बाहर']
+      ];
+    } else if (isSalesman()) {
       tabs = [
         ['salesman', '⛽', 'सेल्समैन'],
         ['ledger', '📒', 'खाते'],
@@ -173,8 +220,8 @@
       tabs.push(['more', '⚙️', 'और']);
     }
 
-    const titleRole = isOwner() ? 'मालिक' : isSalesman() ? (`सेल्समैन · ${S.salesman.name}`) : 'मैनेजर';
-    const userName = S.salesman ? S.salesman.name : esc(S.user.email.split('@')[0]);
+    const titleRole = isOwner() ? 'मालिक' : isViewer() ? 'केवल देखें' : isSalesman() ? ('सेल्समैन · ' + S.salesman.name) : 'मैनेजर';
+    const userName = S.salesman ? S.salesman.name : isViewer() ? 'Owner' : esc((S.user && S.user.email || 'user').split('@')[0]);
 
     $('#app').innerHTML = `
       <header>
@@ -192,12 +239,13 @@
 
     $('#top-logout').onclick = () => {
       localStorage.removeItem('mazda_sm');
+      localStorage.removeItem('mazda_viewer');
       if (auth) auth.signOut();
       location.reload();
     };
 
     $$('nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
-    go(isSalesman() ? 'salesman' : 'day');
+    go(isSalesman() ? 'salesman' : isViewer() ? 'v_home' : 'day');
   }
 
   function go(tab, arg) {
@@ -217,7 +265,6 @@
   }
   APP.go = go;
 
-  /* ======================= DAY VIEW ======================= */
   async function prevDay(date) {
     const s = await db.collection('days').where('date', '<', date).orderBy('date', 'desc').limit(1).get();
     return s.empty ? null : s.docs[0].data();
@@ -251,7 +298,7 @@
     const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date);
     if (S.draft[date]) d = Object.assign({}, d, S.draft[date]);
-    const locked = d.status === 'submitted' && !isOwner();
+    const locked = (d.status === 'submitted' && !isOwner()) || isViewer();
     const dis = locked ? 'disabled' : '';
     const inp = (id, v, ph) => `<input id="${id}" inputmode="decimal" value="${esc(v == null ? '' : v)}" placeholder="${ph || ''}" ${dis}>`;
     const nzr = (k, lab) => { const n = (d.nz && d.nz[k]) || {}; return `<div class="nz"><b>${lab}</b>
@@ -367,6 +414,7 @@
   }
 
   async function saveDay(submit) {
+    if (isViewer()) return toast('आप केवल देख सकते हैं');
     const st = S.cur; const d = readForm(); const o = K.compute(d, st.rows);
     if (submit) {
       if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
@@ -383,10 +431,10 @@
     } catch (e) { toast('सेव नहीं हुआ: ' + e.message); }
   }
 
-  /* ======================= ENTRY & MODAL ======================= */
   const sigEntry = (priv, e) => priv ? (e.status === 'pending' ? num(e.amount) : 0) : K.signed(e);
 
   async function entryModal(o) {
+    if (isViewer()) return toast('आप केवल देख सकते हैं');
     const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (o.kind || 'udhar');
     const parties = await getParties(priv);
     if (!parties.length) { toast('पहले खाते में पार्टी जोड़ें'); return; }
@@ -504,7 +552,6 @@
     };
   }
 
-  /* ======================= LEDGER VIEW ======================= */
   async function ledgerView() {
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties; try { parties = await getParties(false, true); } catch (e) { main.innerHTML = errBox(e); return; }
@@ -560,8 +607,6 @@
     };
   }
 
-
-  /* ---- लिस्ट से कई पार्टी/गाड़ियाँ एक साथ जोड़ना (पुराना बैलेंस/डेटा नहीं छूता) ---- */
   async function bulkPartyModal() {
     const m = modal(`<h3>📥 पार्टी लिस्ट जोड़ें</h3>
       <p class="mut" style="margin:4px 0 8px">हर लाइन में एक पार्टी: <b>नाम : गाड़ी1, गाड़ी2</b><br>पार्टी पहले से हो तो सिर्फ नई गाड़ियाँ जुड़ेंगी।</p>
@@ -593,7 +638,7 @@
       });
       const newN = plan.filter(x => !x.ex).length, upN = plan.filter(x => x.ex && x.add.length).length;
       $('#bk-pv', m).innerHTML = plan.length
-        ? `<div class="kv"><span>नई पार्टी</span><b>${newN}</b></div><div class="kv"><span>गाड़ी जुड़ेंगी (पुरानी पार्टी में)</span><b>${upN}</b></div>` +
+        ? `<div class="kv"><span>नई पार्टी</span><b>${newN}</b></div><div class="kv"><span>गाड़ी जुड़ेंगी (पुरानी में)</span><b>${upN}</b></div>` +
           plan.map(x => `<div class="mut" style="font-size:12px">${x.ex ? (x.add.length ? '➕' : '＝') : '🆕'} ${esc(x.name)} ${x.add.length ? '· ' + esc(x.add.join(', ')) : x.ex ? '· कुछ नया नहीं' : ''}</div>`).join('')
         : '<div class="warn">कोई लाइन नहीं मिली</div>';
       $('#bk-save', m).style.display = plan.some(x => !x.ex || x.add.length) ? '' : 'none';
