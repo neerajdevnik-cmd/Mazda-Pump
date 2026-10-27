@@ -19,18 +19,21 @@
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">रनशीट लोड हो रही है…</p>';
 
-    let snap, cSnap;
+    let snap, cSnap, RSH = { sh: [], cs: [] };
     try {
       if (mode === 'active') {
         snap = await db().collection('runsheets').where('date', '==', today()).where('status', '==', 'active').get();
         cSnap = await db().collection('cash_submissions').where('date', '==', today()).where('status', '==', 'pending').get();
       } else {
-        snap = await db().collection('runsheets').where('status', '==', 'closed').orderBy('createdAt', 'desc').limit(50).get();
-        cSnap = { docs: [] };
+        snap = await db().collection('runsheets').where('date', '>=', APP.shiftDate(today(), -90)).get();
+        const from = APP.shiftDate(today(), -90);
+        const [a, b] = await Promise.all([db().collection('sm_shifts').where('date', '>=', from).get(), db().collection('cash_submissions').where('date', '>=', from).get()]);
+        cSnap = { docs: [] }; RSH = { sh: a.docs.map(d => d.data()), cs: b.docs.map(d => d.data()) };
       }
     } catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
 
-    const activeSheets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let activeSheets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (mode !== 'active') activeSheets = activeSheets.filter(x => x.status === 'closed').sort((a, b) => (b.date + (b.startTime || '')).localeCompare(a.date + (a.startTime || '')));
     const pendingCash = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     if (mode === 'active') {
@@ -57,6 +60,11 @@
       </div>`;
     }
 
+    const histInfo = sh => {
+      const s = RSH.sh.find(x => x.sid === sh.sid && x.date === sh.date);
+      const got = RSH.cs.filter(x => x.sid === sh.sid && x.date === sh.date && x.status === 'approved').reduce((a, x) => a + num(x.total), 0);
+      return s ? `<div class="mut" style="font-size:12px;">बिक्री ${money((s.sum || {}).sale)} · कैश होना चाहिए ${money((s.sum || {}).expected)} · मिला ${money(got)}</div>` : '';
+    };
     let listHtml = activeSheets.length ? activeSheets.map(sheet => {
       const st = sheet.status === 'active' ? '<span class="chip g">चालू (Active)</span>' : `<span class="chip r">बंद (${dmy(sheet.date)})</span>`;
       const nzOpen = Object.keys(sheet.openings || {}).map(k => `${k.toUpperCase()}: ${sheet.openings[k]}`).join(' | ');
@@ -67,6 +75,7 @@
               <b>${esc(sheet.salesmanName)}</b> ${st}
               <div class="mut" style="font-size:12px;">मीटर: ${sheet.nozzles.join(', ').toUpperCase()}</div>
               <div class="mut" style="font-size:12px;">ओपनिंग: ${nzOpen}</div>
+              ${sheet.status === 'closed' ? histInfo(sheet) : ''}
               ${sheet.startTime ? `<div class="mut" style="font-size:12px;">शुरू: ${sheet.startTime} ${sheet.endTime ? ' | बंद: ' + sheet.endTime : ''}</div>` : ''}
             </div>
             <div style="text-align:right;">
