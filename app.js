@@ -267,8 +267,7 @@
   function boot() {
     firebase.initializeApp(C.firebase);
     auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-    db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
-    APP.db = db; APP.auth = auth; APP.FV = FV;
+    
 
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
