@@ -4,6 +4,7 @@
   const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
   const r2 = n => Math.round((num(n) + Number.EPSILON) * 100) / 100;
   const has = v => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
+  const isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
   const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
 
   /* ---------- खर्चा: अलग-अलग चीज़ों की लिस्ट ---------- */
@@ -30,7 +31,7 @@
   }
 
   function compute(d, rows) {
-    rows = rows || [];
+    rows = (rows || []).filter(r => !isOpening(r));
     const t = has(d.testing) ? num(d.testing) : 5;
     const rateP = num(d.rateP), rateD = num(d.rateD);
     const nz = {};
@@ -143,5 +144,5 @@
     return e.kind === 'udhar' ? a : -a;
   }
 
-  window.Calc = { num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
+  window.Calc = { isOpening, num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
 })();
