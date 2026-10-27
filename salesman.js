@@ -324,6 +324,7 @@
 
   function draw() {
     const main = $('#main'); if (!main || !ST) return;
+    if (!ST.activeRs) { main.innerHTML = '<div class="card" style="text-align:center;padding:24px"><h3 style="justify-content:center">⏸ कोई चालू शिफ्ट नहीं</h3><p class="mut">मैनेजर से रनशीट शुरू करवाएँ। शिफ्ट बंद होने के बाद पुराना हिसाब यहाँ नहीं दिखता।</p></div>'; return; }
     const d = ST.doc, locked = ST.locked, dis = locked ? 'disabled' : '';
     const minD = APP.shiftDate(today(), -2);
     const inp = (id, v, ph, cls) => `<input id="${id}" class="${cls || 'smi'}" inputmode="decimal" value="${esc(val(v))}" placeholder="${ph || ''}" ${dis}>`;
@@ -428,6 +429,7 @@
     let parties;
     try { ST = await loadState(date, true); parties = await APP.getParties(false, true); }
     catch (e) { main.innerHTML = APP.errBox(e); return; }
+    if (!ST.activeRs) { main.innerHTML = '<div class="card" style="text-align:center;padding:24px"><h3 style="justify-content:center">⏸ कोई चालू शिफ्ट नहीं</h3><p class="mut">मैनेजर से रनशीट शुरू करवाएँ। शिफ्ट बंद होने के बाद पुराना हिसाब यहाँ नहीं दिखता।</p></div><div class="btns"><button class="btn w" id="sq-priv" type="button">🔒 Private Udhar</button></div>'; $('#sq-priv').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() }); return; }
     const locked = ST.locked;
     const totA = ST.rows.reduce((a, r) => a + num(r.amount), 0), totL = ST.rows.reduce((a, r) => a + num(r.litre), 0);
     main.innerHTML = `
