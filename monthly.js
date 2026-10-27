@@ -84,7 +84,7 @@
       const filled = document.querySelectorAll('.nzi[data-f="c"]').length ? Array.from(document.querySelectorAll('.nzi[data-f="c"]')).filter(i => i.value !== '').length : 0;
       const v = id => { const e = document.getElementById(id); return e && e.value !== ''; };
       const it = (ok, t) => '<div class="kv"><span>' + t + '</span><b>' + (ok ? '✅' : '⬜') + '</b></div>';
-      box.innerHTML = '<h3>📋 Today checklist</h3>' + (prev === null ? '' : it(prev, 'कल का हिसाब जमा') ) + it(filled >= 8, 'Meter closing (' + filled + '/8)') + it(v('f-dipP') && v('f-dipD'), 'Dip (Petrol + Diesel)') + it(st.d && st.d.status === 'submitted', 'आज का हिसाब जमा');
+      box.innerHTML = '<h3>📋 Today checklist</h3>' + (prev === null ? '' : it(prev, 'कल का हिसाब जमा') ) + it(filled >= K.activeNz().length, 'Meter closing (' + filled + '/' + K.activeNz().length + ')') + it(v('f-dipP') && v('f-dipD'), 'Dip (Petrol + Diesel)') + it(st.d && st.d.status === 'submitted', 'आज का हिसाब जमा');
     } finally { busy = false; }
   }
   document.addEventListener('input', () => setTimeout(checklist, 300));
