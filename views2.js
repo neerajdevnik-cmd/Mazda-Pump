@@ -241,7 +241,7 @@
         ${list.length ? list.map(p => `
           <div class="item" style="cursor:pointer" data-pid="${p.id}">
             <div class="a"><b>${esc(p.name)}</b></div>
-            <span class="chip ${mode === 'active' ? 'r' : 'g'}">${money(p.bal)}</span>
+            <span class="chip ${mode === 'active' ? 'r' : 'g'}">${money(mode === 'active' ? p.bal : (p.closedAmount || p.bal))}</span>
           </div>
         `).join('') : `<p class="mut" style="text-align:center;padding:20px;">${mode === 'active' ? 'कोई बकाया नहीं है' : 'कोई हिस्ट्री नहीं है'}</p>`}
       </div>
