@@ -435,8 +435,10 @@
         ${kv('मेरी एंट्री', ST.rows.length)}${kv('कुल उधार', money(totA), 'neg')}${kv('कुल लीटर', lit(totL))}
         ${locked ? '<div class="warn">आज की शिफ्ट जमा हो चुकी है</div>' : ''}</div>
       ${locked || !ST.activeRs ? '' : '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="sq-new" type="button">+ नई उधार एंट्री</button></div>'}
+      <div class="btns" style="margin-bottom:12px"><button class="btn w" id="sq-priv" type="button">🔒 Private Udhar</button></div>
       <div class="card"><h3>मेरी एंट्रियाँ</h3><div id="sm-rows">${rowsHtml(ST.rows, !locked)}</div></div>`;
     bindDel(main);
+    $('#sq-priv').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
     if (locked || !ST.activeRs) return;
     $('#sq-new').onclick = () => udharModal();
   };
