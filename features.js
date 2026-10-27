@@ -37,7 +37,7 @@
   let dTimer = null;
   document.addEventListener('input', e => {
     if (!S.cur || S.cur.locked || !e.target.closest('#main')) return;
-    if (e.target.id === 'f-date' || e.target.id === 'f-physicalCash' ||
+    if (e.target.id === 'f-date' ||
         e.target.id === 'f-costP' || e.target.id === 'f-costD' || e.target.id === 'reg-photo-in') return;
     clearTimeout(dTimer);
     dTimer = setTimeout(() => { try { APP.collectDraft(); } catch (x) {} }, 500);
@@ -584,14 +584,12 @@
       else if (diff > 0) el.innerHTML = '<div class="warn">➕ ज़्यादा: ₹' + Math.abs(diff).toFixed(2) + '</div>';
       else el.innerHTML = '<div class="err">➖ कम: ₹' + Math.abs(diff).toFixed(2) + '</div>';
     };
-    inp.addEventListener('input', update);
+    inp.addEventListener('input', () => { update(); if (APP.triggerAutoSave) APP.triggerAutoSave(); });
     const sum = document.querySelector('#sum');
     if (sum) new MutationObserver(update).observe(sum, { childList: true, subtree: true, characterData: true });
-    const date = S.cur && S.cur.date;
-    if (date) {
-      try { const sv = localStorage.getItem('mazda_pcash_' + date); if (sv) { inp.value = sv; update(); } } catch (e) {}
-      inp.addEventListener('change', () => { try { localStorage.setItem('mazda_pcash_' + date, inp.value); } catch (e) {} });
-    }
+    const pc0 = S.cur && S.cur.d ? S.cur.d.physicalCash : '';
+    if (pc0 !== undefined && pc0 !== null && pc0 !== '') inp.value = pc0;
+    update();
   }
   function injectCostFields() {
     if (document.querySelector('#f-costP')) return;
