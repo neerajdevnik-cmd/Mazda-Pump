@@ -109,6 +109,7 @@
       try {
         if (e) await db().collection('shop').doc(e.id).update(data);
         else await db().collection('shop').add(Object.assign({ createdAt: APP.FV.serverTimestamp() }, data));
+        APP.audit('shop_save', { name, rate, stock, was: e ? { rate: e.rate, stock: e.stock } : null });
         m.close(); toast('सेव ✔'); APP.views.shop();
       } catch (err) { toast('सेव नहीं हुआ: ' + err.message); }
     };
@@ -118,6 +119,7 @@
         if (!confirm('इस सामान को हटाएँ?')) return;
         try {
           await db().collection('shop').doc(e.id).delete();
+          APP.audit('shop_delete', { name: e.name, stock: e.stock });
           m.close(); toast('हट गया ✔'); APP.views.shop();
         } catch (err) { toast('नहीं हटा: ' + err.message); }
       };
