@@ -93,18 +93,15 @@
     const openStockP = num(d.openStockP), openStockD = num(d.openStockD);
     const tankerP = num(d.tankerP), tankerD = num(d.tankerD);
     
-    // New Stock Calculation Logic (Opening + Tanker - Sale = Expected)
     const expStockP = r2(openStockP + tankerP - litP);
     const expStockD = r2(openStockD + tankerD - litD);
     
-    // Actual Stock from Dip Chart
     let actStockP = null, actStockD = null;
     if (window.DipChart) {
        if (has(d.dipP)) actStockP = r2(window.DipChart.getLiters('petrol', d.dipP));
        if (has(d.dipD)) actStockD = r2(window.DipChart.getLiters('diesel', d.dipD));
     }
     
-    // Variation
     const diffP = (actStockP !== null && expStockP !== null) ? r2(actStockP - expStockP) : null;
     const diffD = (actStockD !== null && expStockD !== null) ? r2(actStockD - expStockD) : null;
 
@@ -116,29 +113,70 @@
     };
   }
 
+  /* ---------- पार्टी स्टेटमेंट और रनिंग बैलेंस इंजन (Photo Statement Ready) ---------- */
   function stmt(rows, from, to) {
-    rows = (rows || []).slice().sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+    rows = (rows || []).slice().sort((a, b) => {
+      const da = String(a.date || ''), db = String(b.date || '');
+      if (da !== db) return da.localeCompare(db);
+      const oa = isOpening(a) ? 0 : 1, ob = isOpening(b) ? 0 : 1;
+      if (oa !== ob) return oa - ob;
+      return String(a.time || '').localeCompare(String(b.time || ''));
+    });
+
     let open = 0;
     const inRange = [];
+    let lastJama = null, lastUdhar = null;
+
     rows.forEach(r => {
-      const d = r.date;
-      if (from && d < from) {
-        if (r.kind === 'udhar') open += num(r.amount);
-        else if (r.kind === 'jama') open -= num(r.amount);
+      const d = r.date || '';
+      const a = num(r.amount);
+      const isOp = isOpening(r);
+
+      if (!isOp) {
+        if (r.kind === 'jama') lastJama = r;
+        else if (r.kind === 'udhar') lastUdhar = r;
+      }
+
+      // अगर तारीख 'from' से पहले की है, या 'from' वाली तारीख पर ही Opening Balance एंट्री है, तो उसे पिछला बैलेंस (Balance b/f) मानें
+      if ((from && d < from) || (from && d === from && isOp)) {
+        if (r.kind === 'udhar') open += a;
+        else if (r.kind === 'jama') open -= a;
       } else if (!to || d <= to) {
-        inRange.push(r);
+        if (!from && isOp && inRange.length === 0) {
+          if (r.kind === 'udhar') open += a;
+          else if (r.kind === 'jama') open -= a;
+        } else {
+          inRange.push(r);
+        }
       }
     });
 
-    let run = open, totU = 0, totJ = 0;
+    let run = open, totU = 0, totJ = 0, litP = 0, litD = 0;
     const out = inRange.map(r => {
       const a = num(r.amount);
-      if (r.kind === 'udhar') { run += a; totU += a; }
-      else if (r.kind === 'jama') { run -= a; totJ += a; }
+      const l = num(r.litre);
+      if (r.kind === 'udhar') {
+        run += a; totU += a;
+        if (r.fuel === 'petrol') litP += l;
+        else if (r.fuel === 'diesel' || l > 0) litD += l;
+      } else if (r.kind === 'jama') {
+        run -= a; totJ += a;
+      }
       return Object.assign({}, r, { run: r2(run) });
     });
 
-    return { open: r2(open), rows: out, totU: r2(totU), totJ: r2(totJ), close: r2(run) };
+    return {
+      open: r2(open),
+      rows: out,
+      totU: r2(totU),
+      totJ: r2(totJ),
+      close: r2(run),
+      litP: r2(litP),
+      litD: r2(litD),
+      totLit: r2(litP + litD),
+      lastJama,
+      lastUdhar
+    };
   }
 
   function signed(e) {
