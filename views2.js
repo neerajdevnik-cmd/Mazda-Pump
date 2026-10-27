@@ -17,10 +17,13 @@
   APP.views.gaadicash = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">गाड़ी कैश लोड हो रहा है…</p>';
-    let snap;
-    try { snap = await db().collection('gaadi_cash').orderBy('date', 'desc').limit(40).get(); } catch (e) { snap = { docs: [] }; }
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const totPending = list.filter(x => x.status !== 'paid').reduce((a, b) => a + num(b.amount), 0);
+    let snap, pSnap;
+    try { [snap, pSnap] = await Promise.all([db().collection('gaadi_cash').orderBy('date', 'desc').limit(40).get(), db().collection('gaadi_cash').where('status', '==', 'pending').get()]); } catch (e) { snap = { docs: [] }; pSnap = { docs: [] }; }
+    const seen = {}, list = [];
+    pSnap.docs.concat(snap.docs).forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; list.push({ id: d.id, ...d.data() }); } });
+    list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const totPending = pSnap.docs.reduce((a, d) => a + num(d.data().amount), 0);
+    const LOCAL_GC = 'लोकल / बिना पार्टी (गाड़ी कैश)';
 
     main.innerHTML = `
       <div class="card"><div class="kv"><span>कुल बाकी गाड़ी कैश</span><b class="neg">${money(totPending)}</b></div></div>
@@ -47,7 +50,7 @@
         <label>पार्टी</label><select id="gc-pp"><option value="">— लोकल / बिना पार्टी —</option>${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <label>गाड़ी नंबर</label><input id="gc-v" style="text-transform:uppercase">
         <label>रुपये</label><input id="gc-a" inputmode="decimal">
-        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी और आज के कैश से कम होगी।</div>
+        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी; बिना पार्टी हो तो "लोकल / बिना पार्टी (गाड़ी कैश)" खाते में जुड़ेगी। दोनों हाल में आज के कैश से कम होगी।</div>
         <div class="btns" style="margin-top:10px"><button class="btn g" id="gc-sv">सेव</button><button class="btn w" id="gc-cl">रद्द</button></div>`);
       $('#gc-cl', m).onclick = () => m.close();
       $('#gc-sv', m).onclick = async () => {
@@ -55,8 +58,13 @@
         if (!v || !(a > 0)) return toast('गाड़ी नंबर व रकम सही भरें');
         const btn = $('#gc-sv', m); if (btn.disabled) return; btn.disabled = true;
         try {
-          const lid = p ? await gcWrite(p, v, a, 'udhar', 'गाड़ी कैश') : '';
-          await db().collection('gaadi_cash').add({ vehicle: v, partyId: p ? p.id : '', partyName: p ? p.name : '', ledgerId: lid, amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
+          let pp = p;
+          if (!pp) {
+            pp = ps.find(x => x.name === LOCAL_GC);
+            if (!pp) { const ref = db().collection('parties').doc(); await ref.set({ name: LOCAL_GC, phone: '', vehicles: [], bal: 0, createdAt: APP.FV.serverTimestamp() }); pp = { id: ref.id, name: LOCAL_GC }; }
+          }
+          const lid = await gcWrite(pp, v, a, 'udhar', 'गाड़ी कैश');
+          await db().collection('gaadi_cash').add({ vehicle: v, partyId: pp.id, partyName: pp.name, ledgerId: lid, amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
           APP.S.parties = null; m.close(); toast('सेव हो गया'); APP.views.gaadicash();
         } catch (e) { btn.disabled = false; toast('सेव नहीं हुआ: ' + e.message); }
       };
@@ -113,7 +121,7 @@
         totDiffD += num(d.sum && d.sum.diffD);
         
         let activeP = 0, activeD = 0;
-        const testing = num(d.testing || 5);
+        const testing = K.has(d.testing) ? num(d.testing) : 5;
         
         K.NZ.forEach(k => {
           const n = d.nz && d.nz[k];
@@ -290,23 +298,19 @@
 
   /* ======================= BPCL THERMAL SLIP ======================= */
   APP.showThermalSlip = function (data) {
-    const inv = '244' + String(Date.now()).slice(-8);
+    const inv = 'CR' + String(data.date || '').replace(/-/g, '').slice(2) + String(data.time || '').replace(':', '') + String(data.vehicle || '').replace(/\D/g, '').slice(-4);
     const slipDOM = `
       <div id="slip-capture-node" style="background:#faf8f5;color:#111;font-family:'Courier New',Courier,monospace;padding:18px 14px;width:275px;margin:0 auto;font-size:12px;line-height:1.35;box-shadow:0 8px 24px rgba(0,0,0,0.15);border-radius:3px;">
         <div style="text-align:center;margin-bottom:8px;">
           ${MOC_BPCL_LOGO}
-          <b style="font-size:14px;letter-spacing:0.5px;">Bharat Petroleum</b><br>
+          <b style="font-size:14px;letter-spacing:0.5px;">उधार पर्ची / CREDIT SLIP</b><br>
           <div style="font-size:12px;margin:2px 0;font-weight:bold;">${esc(C.pump.nameEn)}</div>
           <div style="font-size:10px;color:#444;">${esc(C.pump.addressEn)}</div>
         </div>
         <div style="border-top:1px dashed #666;margin:6px 0;"></div>
         <div>Tel. No.: ${esc(C.pump.phone)}</div>
-        <div>Inv.No: ${inv}</div>
-        <div>Local ID : 00012894</div>
-        <div>FIP No. : 02 &nbsp; Nozzle No.: 02</div>
+        <div>Slip No: ${inv}</div>
         <div>Product : ${(data.fuel || 'Diesel').toUpperCase()}</div>
-        <div>Density : ${data.fuel === 'petrol' ? '742.0' : '821.5'}Kg/Cu.mtr</div>
-        <div>Preset Type: Volume</div>
         <div>Rate(Rs/L) : &nbsp; ${Number(data.rate).toFixed(2)}</div>
         <div>Volume(L) : &nbsp; ${Number(data.litre).toFixed(2)}</div>
         <div style="font-size:14px;font-weight:bold;margin:2px 0;">Amount(Rs) : &nbsp; ${Number(data.amount).toFixed(2)}</div>
@@ -315,11 +319,11 @@
         <div>Customer : ${esc(data.partyName || 'WALK-IN')}</div>
         <div>Date : ${dmy(data.date)} &nbsp;Time: ${data.time || APP.nowTime()}</div>
         <div style="border-top:1px dashed #666;margin:6px 0;"></div>
-        <div style="text-align:center;margin-top:8px;">Thank You! Please Visit Again..</div>
+        <div style="text-align:center;margin-top:8px;">धन्यवाद! फिर पधारें<br><span style="font-size:9px;color:#666">यह उधार पर्ची है, टैक्स इनवॉइस नहीं</span></div>
       </div>`;
 
     const m = modal(`
-      <h3>🖨️ BPCL थर्मल पर्ची</h3>
+      <h3>🖨️ उधार पर्ची</h3>
       <div style="padding:10px 0;text-align:center;">${slipDOM}</div>
       <div class="btns" style="margin-top:12px">
         <button class="btn bpcl full" id="slip-share">📤 WhatsApp पर शेयर करें (Image)</button>
