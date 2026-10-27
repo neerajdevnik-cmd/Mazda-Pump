@@ -572,10 +572,6 @@
       <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <div id="nzwarn"></div>
-      ${(!locked && isOwner() && ch) ? `
-      <div class="btns" style="margin-top:8px">
-        <button class="btn sm w" id="toggle-open" type="button">${isOpeningLocked ? '🔓 ओपनिंग एडिट करें' : '🔒 ओपनिंग लॉक करें (पिछले दिन से जोड़ें)'}</button>
-      </div>` : ''}
     </div>
 
     <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
@@ -655,32 +651,6 @@
     
     $('#f-date').onchange = e => { collectDraft(); dayView(e.target.value || todayISO()); };
     
-    if ($('#toggle-open')) {
-      const setRO = ro => {
-        const els = $$('.nzi[data-f="o"]').concat(['f-openCash', 'f-openStockP', 'f-openStockD'].map(id => $('#' + id)).filter(Boolean));
-        els.forEach(el => {
-          if (ro) { el.setAttribute('readonly', true); el.style.background = '#f0f0f0'; el.style.fontWeight = 'bold'; }
-          else { el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; }
-        });
-      };
-      $('#toggle-open').onclick = () => {
-        const cur = S.cur;
-        if (cur.d.opening_locked !== false) {
-          if (!confirm('⚠️ ओपनिंग (मीटर, कैश, स्टॉक) एडिट करेंगे तो कल की क्लोज़िंग से लिंक टूट जाएगा। आगे बढ़ें?')) return;
-          cur.d.opening_locked = false; setRO(false);
-          $('#toggle-open').textContent = '🔒 ओपनिंग लॉक करें (कल से जोड़ें)';
-        } else {
-          const c2 = cur.chain; if (!c2) return toast('कल का हिसाब नहीं मिला');
-          cur.d.opening_locked = true;
-          $$('.nzi[data-f="o"]').forEach(el => { el.value = c2.nz[el.dataset.k]; });
-          $('#f-openCash').value = c2.openCash; $('#f-openStockP').value = c2.openStockP; $('#f-openStockD').value = c2.openStockD;
-          setRO(true);
-          $('#toggle-open').textContent = '🔓 ओपनिंग एडिट करें';
-        }
-        recalc(); triggerAutoSave();
-      };
-    }
-
     $$('#main input').forEach(i => {
       if (i.id !== 'f-date' && !i.closest('#expbox')) {
         i.addEventListener('input', () => { recalc(); triggerAutoSave(); });
@@ -755,17 +725,23 @@
     const actInpD = $('#f-actStockD'); if(actInpD) actInpD.value = o.actStockD !== null ? r2(o.actStockD) : '';
 
     const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
+    
+    // Asli hisab ka naya format (Galla badhane wale + Galla ghatane wale)
     $('#sum').innerHTML =
-      kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
-      kvEl('कुल बिक्री', money(o.sale), 'big') +
-      kvEl('+ पिछला कैश', money(d.openCash)) +
+      kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + 
+      kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
+      kvEl('+ पिछला कैश (AD)', money(d.openCash)) +
       kvEl('+ पार्टी जमा (नकद/UPI)', money(o.jCash + o.jPaytm + o.jSwipe)) +
-      kvEl('= कुल', money(o.kul)) +
-      kvEl('− Paytm कुल', money(d.paytm)) + kvEl('− स्वाइप कुल', money(d.swipe)) + kvEl('− उधार दिया', money(o.udhar)) +
+      kvEl('= कुल गल्ला (बढ़ा)', money(o.kul), 'big') +
+      '<div style="border-top:1px dashed #ccc;margin:8px 0"></div>' +
+      kvEl('− Paytm कुल', money(d.paytm)) + 
+      kvEl('− स्वाइप कुल', money(d.swipe)) + 
+      kvEl('− उधार दिया', money(o.udhar)) +
+      kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
       kvEl('− कुल खर्चा', money(o.totalKharcha)) +
       K.khList(d).map(x => `<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ${esc(x.label)}</span><span class="mut">${money(x.amount)}</span></div>`).join('') +
-      kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
-      kvEl('आज का बचा कैश', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
+      '<div style="border-top:1px dashed #ccc;margin:8px 0"></div>' +
+      kvEl('असली कैश (बचा)', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
     
     st.o = o;
   }
@@ -993,10 +969,10 @@
   async function ledgerView() {
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties; try { parties = await getParties(false, true); } catch (e) { main.innerHTML = errBox(e); return; }
-    const due = parties.filter(p => num(p.bal) > 0);
+    const due = parties.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
     main.innerHTML = `
       <div class="card">
-        <div class="kv"><span>कुल बकाया (लेना है)</span><b class="neg">${money(due.reduce((a, p) => a + num(p.bal), 0))}</b></div>
+        <div class="kv"><span>कुल बकाया (लेना है)</span><b class="neg">-₹${due.toLocaleString('en-IN', {maximumFractionDigits: 2})}</b></div>
       </div>
       <div class="row search"><input id="q" placeholder="पार्टी या गाड़ी खोजें…"></div>
       <div class="card" id="plist"></div>
@@ -1012,9 +988,12 @@
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
+        // MINUS amount (Udhar) = Red, PLUS amount (Advance) = Green
+        const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
+        const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
           <div class="a"><b>${esc(p.name)}</b><small>${esc((p.vehicles || []).join(', '))}</small></div>
-          <span class="chip ${b > 0 ? 'r' : 'g'}">${money(b)}</span>
+          <span class="chip ${cls}">${disp}</span>
         </div>`;
       }).join('') : '<p class="mut">कोई पार्टी नहीं मिली</p>';
       $$('#plist .item').forEach(it => it.onclick = () => partyView(it.dataset.id, false));
@@ -1105,6 +1084,10 @@
     const tDr = st.rows.filter(r => r.kind === 'udhar').reduce((a, b) => a + num(b.amount), 0);
     const tCr = st.rows.filter(r => r.kind === 'jama').reduce((a, b) => a + num(b.amount), 0);
 
+    // COLOR FIX: Minus amount red, Plus amount green
+    const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
+    const balColor = st.close > 0 ? 'var(--r)' : (st.close < 0 ? 'var(--g)' : 'var(--t)');
+
     main.innerHTML = `
       <div class="btns" style="margin-bottom:10px">
         <button class="btn sm w" id="back">← वापस</button>
@@ -1130,7 +1113,7 @@
           </div>
           <div class="ledger-box">
             <span>असली बैलेंस</span>
-            <b style="color:${st.close > 0 ? 'var(--r)' : 'var(--g)'}">${money(st.close)}</b>
+            <b style="color:${balColor}">${balDisp}</b>
           </div>
         </div>
         
