@@ -119,72 +119,167 @@
     } catch (e) { alert('बैकअप नहीं बना: ' + e.message); }
   };
 
-  /* ============ PARTY STATEMENT ============ */
+  /* ============ PROFESSIONAL PARTY STATEMENT ============ */
   APP.sharePartyStatement = async function (partyId, priv) {
-    toast('स्टेटमेंट बन रहा है…');
+    const pcol = priv ? 'priv_parties' : 'parties';
+    const lcol = priv ? 'priv_ledger' : 'ledger';
+    
+    let ps, es;
     try {
-      const pcol = priv ? 'priv_parties' : 'parties';
-      const lcol = priv ? 'priv_ledger' : 'ledger';
-      const [ps, es] = await Promise.all([
-        db().collection(pcol).doc(partyId).get(),
-        db().collection(lcol).where('partyId', '==', partyId).get()
-      ]);
-      if (!ps.exists) return toast('पार्टी नहीं मिली');
-      const p = { id: partyId, ...ps.data() };
-      const st = K.stmt(es.docs.map(x => ({ id: x.id, ...x.data() })), null, null);
+      [ps, es] = await Promise.all([db().collection(pcol).doc(partyId).get(), db().collection(lcol).where('partyId', '==', partyId).get()]);
+    } catch (e) { return toast('डेटा नहीं मिला: ' + e.message); }
+    if (!ps.exists) return toast('पार्टी नहीं मिली');
+    
+    const p = { id: partyId, ...ps.data() };
+    const allRows = es.docs.map(x => ({ id: x.id, ...x.data() }));
+    
+    const todayD = today();
+    const firstDay = todayD.slice(0, 8) + '01';
+    const m = modal(`
+      <h3>📄 स्टेटमेंट जनरेट करें</h3>
+      <p class="mut" style="font-size:12px;margin-bottom:10px;">तारीख चुनें, हम प्रोफेशनल स्टेटमेंट बनाएंगे।</p>
+      <div class="row">
+        <div><label>कब से (From)</label><input type="date" id="st-from" value="${firstDay}"></div>
+        <div><label>कब तक (To)</label><input type="date" id="st-to" value="${todayD}"></div>
+      </div>
+      <div class="btns" style="margin-top:14px">
+        <button class="btn g" id="st-pdf">🖨️ Print / PDF</button>
+        <button class="btn w" id="st-img">📤 WhatsApp Image</button>
+        <button class="btn w" id="st-cancel">रद्द</button>
+      </div>
+    `);
+    
+    $('#st-cancel', m).onclick = () => m.close();
+    
+    const genHTML = (from, to) => {
+      const st = K.stmt(allRows, from, to);
+      const totalDr = st.rows.filter(r => r.kind === 'udhar').reduce((a, b) => a + num(b.amount), 0);
+      const totalCr = st.rows.filter(r => r.kind === 'jama').reduce((a, b) => a + num(b.amount), 0);
+      
+      return `
+        <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#333;background:#fff;padding:30px;width:750px;margin:0 auto;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0b3d91;padding-bottom:15px;margin-bottom:20px;">
+            <div style="display:flex;gap:15px;align-items:center;">
+              <img src="./logo.png" style="width:60px;height:60px;border-radius:50%;">
+              <div>
+                <h1 style="margin:0;font-size:24px;color:#0b3d91;">${esc(C.pump.nameEn)}</h1>
+                <div style="font-size:12px;color:#666;">${esc(C.pump.addressEn)} | 📞 ${esc(C.pump.phone)}</div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <h2 style="margin:0;font-size:18px;color:#333;text-transform:uppercase;">Account Statement</h2>
+              <div style="font-size:12px;color:#666;">Date: ${dmy(to)}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;margin-bottom:20px;background:#f8f9fc;padding:15px;border-radius:8px;border: 1px solid #e5e7eb;">
+            <div>
+              <div style="font-size:11px;color:#888;text-transform:uppercase;margin-bottom:4px;">Party Name</div>
+              <div style="font-size:16px;font-weight:bold;">${esc(p.name)}</div>
+              ${p.phone ? `<div style="font-size:12px;color:#555;">📞 ${esc(p.phone)}</div>` : ''}
+              ${(p.vehicles||[]).length ? `<div style="font-size:12px;color:#555;">🚚 ${esc(p.vehicles.join(', '))}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px;color:#888;text-transform:uppercase;margin-bottom:4px;">Period</div>
+              <div style="font-size:13px;font-weight:bold;">${dmy(from)} to ${dmy(to)}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:15px;margin-bottom:20px;">
+            <div style="flex:1;border:1px solid #ddd;border-top:3px solid #c62828;padding:10px;border-radius:4px;text-align:center;">
+              <div style="font-size:11px;color:#888;">Total Debit (Dr)</div>
+              <div style="font-size:18px;font-weight:bold;color:#c62828;">₹${totalDr.toFixed(2)}</div>
+            </div>
+            <div style="flex:1;border:1px solid #ddd;border-top:3px solid #0a7d33;padding:10px;border-radius:4px;text-align:center;">
+              <div style="font-size:11px;color:#888;">Total Credit (Cr)</div>
+              <div style="font-size:18px;font-weight:bold;color:#0a7d33;">₹${totalCr.toFixed(2)}</div>
+            </div>
+            <div style="flex:1;border:1px solid #ddd;border-top:3px solid #0b3d91;padding:10px;border-radius:4px;text-align:center;background:#e8eefb;">
+              <div style="font-size:11px;color:#0b3d91;">Closing Balance</div>
+              <div style="font-size:18px;font-weight:bold;color:#0b3d91;">₹${st.close.toFixed(2)} Dr</div>
+            </div>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#0b3d91;color:#fff;">
+                <th style="padding:8px;text-align:left;">Date</th>
+                <th style="padding:8px;text-align:left;">Particulars</th>
+                <th style="padding:8px;text-align:right;">Debit (Dr)</th>
+                <th style="padding:8px;text-align:right;">Credit (Cr)</th>
+                <th style="padding:8px;text-align:right;">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${dmy(from)}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">Opening Balance</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;"></td>
+                <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;"></td>
+                <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${st.open.toFixed(2)} Dr</td>
+              </tr>
+              ${st.rows.map(r => `
+                <tr>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">${dmy(r.date)}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">
+                    ${r.kind === 'udhar' ? '🚚 ' + esc(r.vehicle || '') + ' ' + (r.litre ? r.litre + 'L' : '') : '💰 Jama (' + (r.mode||'') + ')'}
+                    ${r.note ? '<br><small style="color:#888">'+esc(r.note)+'</small>' : ''}
+                  </td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#c62828;font-weight:bold;">${r.kind === 'udhar' ? r.amount.toFixed(2) : ''}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#0a7d33;font-weight:bold;">${r.kind === 'jama' ? r.amount.toFixed(2) : ''}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${r.run.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top:30px;text-align:center;font-size:11px;color:#888;border-top:1px solid #eee;padding-top:10px;">
+            This is a computer generated statement. | Thank you for your business!
+          </div>
+        </div>
+      `;
+    };
+
+    $('#st-pdf', m).onclick = () => {
+      const from = $('#st-from', m).value;
+      const to = $('#st-to', m).value;
+      if (!from || !to) return toast('तारीख चुनें');
+      const html = genHTML(from, to);
+      
+      const win = window.open('', '_blank');
+      win.document.write(`<html><head><title>Statement - ${esc(p.name)}</title><style>@media print { body { -webkit-print-color-adjust: exact; } }</style></head><body style="margin:0;">${html}</body></html>`);
+      win.document.close();
+      setTimeout(() => { win.print(); }, 500);
+      m.close();
+    };
+
+    $('#st-img', m).onclick = async () => {
+      const from = $('#st-from', m).value;
+      const to = $('#st-to', m).value;
+      if (!from || !to) return toast('तारीख चुनें');
+      m.close();
+      toast('इमेज तैयार हो रही है…');
+      
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'position:fixed;left:-99999px;top:0;width:520px;background:#fff;padding:24px;font-family:sans-serif;color:#111;line-height:1.4';
-      wrap.innerHTML =
-        '<div style="text-align:center;border-bottom:3px solid #0b3d91;padding-bottom:10px;margin-bottom:12px">' +
-          '<img src="./logo.png" style="width:64px;height:64px;border-radius:50%;display:block;margin:0 auto 4px">' +
-          '<h2 style="margin:4px 0;color:#0b3d91;font-size:20px">' + esc(C.pump.nameEn) + '</h2>' +
-          '<div style="font-size:12px;color:#555">' + esc(C.pump.addressEn) + '</div>' +
-          '<div style="font-size:12px;color:#555">📞 ' + esc(C.pump.phone) + '</div>' +
-        '</div>' +
-        '<div style="margin:10px 0">' +
-          '<div style="font-size:16px;font-weight:700">' + esc(p.name) + '</div>' +
-          (p.phone ? '<div style="font-size:12px;color:#555">📞 ' + esc(p.phone) + '</div>' : '') +
-          ((p.vehicles || []).length ? '<div style="font-size:12px;color:#555">🚚 ' + esc(p.vehicles.join(', ')) + '</div>' : '') +
-        '</div>' +
-        '<div style="background:#e8eefb;padding:12px;border-radius:8px;text-align:center;margin:12px 0">' +
-          '<div style="font-size:12px;color:#555">कुल बकाया</div>' +
-          '<div style="font-size:24px;font-weight:700;color:#c62828">' + money(st.close) + '</div>' +
-        '</div>' +
-        '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
-          '<tr style="background:#0b3d91;color:#fff">' +
-            '<th style="padding:6px 4px;text-align:left">तारीख</th>' +
-            '<th style="padding:6px 4px;text-align:left">विवरण</th>' +
-            '<th style="padding:6px 4px;text-align:right">उधार</th>' +
-            '<th style="padding:6px 4px;text-align:right">जमा</th>' +
-            '<th style="padding:6px 4px;text-align:right">बैलेंस</th>' +
-          '</tr>' +
-          st.rows.slice(-25).map(r =>
-            '<tr>' +
-              '<td style="padding:4px;border-bottom:1px solid #eee">' + dmy(r.date) + '</td>' +
-              '<td style="padding:4px;border-bottom:1px solid #eee">' + esc(r.vehicle || (r.kind === 'jama' ? 'जमा' : '-')) + '</td>' +
-              '<td style="padding:4px;border-bottom:1px solid #eee;text-align:right;color:#c62828">' + (r.kind === 'udhar' ? money(r.amount) : '') + '</td>' +
-              '<td style="padding:4px;border-bottom:1px solid #eee;text-align:right;color:#0a7d33">' + (r.kind === 'jama' ? money(r.amount) : '') + '</td>' +
-              '<td style="padding:4px;border-bottom:1px solid #eee;text-align:right">' + money(r.run) + '</td>' +
-            '</tr>'
-          ).join('') +
-        '</table>' +
-        '<p style="font-size:10px;color:#666;text-align:center;margin-top:14px">कृपया बकाया राशि जल्द चुकाएँ। धन्यवाद!</p>';
+      wrap.style.position = 'fixed';
+      wrap.style.left = '-9999px';
+      wrap.innerHTML = genHTML(from, to);
       document.body.appendChild(wrap);
-      await new Promise(r => setTimeout(r, 300));
-      const cv = await html2canvas(wrap, { scale: 2, backgroundColor: '#fff' });
+      
+      try {
+        const canvas = await html2canvas(wrap.firstElementChild, { scale: 2, backgroundColor: '#ffffff' });
+        canvas.toBlob(async blob => {
+          const file = new File([blob], `statement-${p.name}.png`, { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], text: `Statement for ${p.name}` });
+          } else {
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+            toast('डाउनलोड हो गया ✔');
+          }
+        }, 'image/png');
+      } catch (e) { toast('इमेज नहीं बनी'); }
       document.body.removeChild(wrap);
-      cv.toBlob(async blob => {
-        const safe = (p.name || 'party').replace(/[^a-z0-9]+/gi, '-');
-        const file = new File([blob], 'statement-' + safe + '.png', { type: 'image/png' });
-        const text = '*' + C.pump.name + '*\n' + p.name + '\nकुल बकाया: ' + money(st.close);
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], text }); } catch (e) {}
-        } else {
-          const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-          a.download = file.name; a.click(); toast('डाउनलोड हो गया ✔');
-        }
-      }, 'image/png');
-    } catch (e) { alert('स्टेटमेंट नहीं बना: ' + e.message); }
+    };
   };
 
   /* ============ AUDIT LOG ============ */
