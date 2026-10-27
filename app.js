@@ -265,9 +265,20 @@
 
 
   function boot() {
-    firebase.initializeApp(C.firebase);
-    auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-    db.settings({ ignoreUndefinedProperties: true }); // 🔥 Fix for Firestore Assertion Error
+    try {
+      firebase.initializeApp(C.firebase);
+      auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
+      
+      // 🔥 assign to APP IMMEDIATELY
+      APP.db = db; APP.auth = auth; APP.FV = FV;
+      
+      try { db.settings({ ignoreUndefinedProperties: true }); } catch(e) { console.log('Settings error', e); }
+
+    } catch (e) {
+      console.error(e);
+      const err = document.getElementById('error-box');
+      if (err) { err.style.display = 'block'; err.innerText = 'Firebase init error: ' + e.message; }
+    }
 
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
@@ -448,15 +459,15 @@
     let ds, rs, ch;
     try {
       const [dsR, rsR, chR] = await Promise.all([
-        db.collection('days').doc(date).get(),
-        db.collection('ledger').where('date', '==', date).get(),
-        chainFor(date)
+        db.collection('days').doc(date).get().catch(() => ({ exists: false, data: () => null })),
+        db.collection('ledger').where('date', '==', date).get().catch(() => ({ docs: [] })),
+        chainFor(date).catch(() => null)
       ]);
       ds = dsR; rs = rsR; ch = chR;
     } catch (e) { main.innerHTML = errBox(e); return; }
 
     let d = ds.exists ? ds.data() : null;
-    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date, ch);
     const frozen = ds.exists && ds.data().status === 'submitted';
     if (S.draft[date]) d = Object.assign({}, d, S.draft[date]);
@@ -868,6 +879,7 @@
     q('e-cancel').onclick = () => m.close();
     q('e-save').onclick = async () => {
       const partyId = q('e-party').value, party = partyById(priv, partyId);
+      if (!party) return toast('पार्टी नहीं मिली, रिफ्रेश करें');
       const data = { partyId, partyName: party.name, date: q('e-date').value, time: q('e-time').value || nowTime(), kind: priv ? 'udhar' : kind, note: q('e-note').value.trim() };
       if (!data.date) return toast('तारीख चुनें');
       if (data.kind === 'udhar') {
@@ -1089,16 +1101,17 @@
       if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
       const row = all.find(x => x.id === b.dataset.delRow);
       if (!row) return;
+      b.disabled = true;
       try {
         const b2 = db.batch();
         b2.delete(db.collection(col).doc(row.id));
         const delta = -sigEntry(priv, row);
         if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
-        await commit(b2.commit());
+        await b2.commit(); // Direct commit for speed
         toast('एंट्री हटा दी गई ✔');
         S.parties[priv ? 'priv' : 'pub'] = null;
         partyView(id, priv);
-      } catch (e) { toast('नहीं हटा: ' + e.message); }
+      } catch (e) { b.disabled = false; toast('नहीं हटा: ' + e.message); }
     });
   }
   APP.partyView = partyView;
@@ -1206,115 +1219,3 @@
     $('#tr-share', m).onclick = () => {
       const lit = $('#tr-lit', m).value;
       const bDip = $('#tr-bdip', m).value;
-      const aDip = $('#tr-adip', m).value;
-      const st = $('#tr-st', m).value;
-      const et = $('#tr-et', m).value;
-      
-      if (!lit) return toast('लीटर भरें');
-      
-      let timeTaken = '';
-      if (st && et) {
-        const [sh, sm] = st.split(':').map(Number);
-        const [eh, em] = et.split(':').map(Number);
-        let mins = (eh * 60 + em) - (sh * 60 + sm);
-        if (mins < 0) mins += 1440; 
-        const h = Math.floor(mins / 60);
-        const mnt = mins % 60;
-        timeTaken = `${h} घंटे ${mnt} मिनट`;
-      }
-      
-      const text = `*माज़दा ऑयल कंपनी* 🚛\n*टैंकर रिपोर्ट (${fuelName})*\n\n` +
-                   `📅 तारीख: ${APP.dmy(APP.todayISO())}\n` +
-                   `🛢️ टैंकर लीटर: ${lit} L\n` +
-                   `📉 Before Dip: ${bDip || '-'}\n` +
-                   `📈 After Dip: ${aDip || '-'}\n` +
-                   `⏱️ Start Time: ${st || '-'}\n` +
-                   `⏱️ End Time: ${et || '-'}\n` +
-                   `⌛ कुल समय: ${timeTaken || '-'}\n\n` +
-                   `कृपया जाँच लें।`;
-                   
-      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-      m.close();
-    };
-  };
-
-  const A = {
-    addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
-    addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
-    addX() { const it = getExpItems(); it.push({ label: '', amount: '' }); setExpItems(it); const ls = $$('#expbox .exl'); if (ls.length) ls[ls.length - 1].focus(); },
-    delX(ds) { const it = getExpItems(); it.splice(+ds.i, 1); setExpItems(it); recalc(); triggerAutoSave(); },
-    splitX(ds) {
-      const it = getExpItems(), x = it[+ds.i], tot = num(x && x.amount);
-      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
-      expEditor({
-        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
-        note: `<b>${esc(x.label || 'यह खर्चा')}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
-        lines: [{ cat: 'other', label: x.label, amount: tot }, { cat: 'other', label: '', amount: '' }],
-        onOk: lines => { it.splice(+ds.i, 1); applyExpLines(it, lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
-      });
-    },
-    splitF(ds) {
-      const id = KHF[ds.f], el = $('#' + id), tot = num(el && el.value);
-      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
-      const name = (EXP_CATS.find(c => c[0] === ds.f) || [])[1] || '';
-      expEditor({
-        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
-        note: `<b>${esc(name)}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
-        lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
-        onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
-      });
-    },
-    tankerRep(ds) {
-      const fuelType = ds.f;
-      const inputId = fuelType === 'petrol' ? 'f-tankerP' : 'f-tankerD';
-      const currentLiters = num($('#' + inputId).value);
-      APP.openTankerReportModal(fuelType, currentLiters);
-    },
-    save() { saveDay(false); },
-    submit() { saveDay(true); },
-    async unlock() {
-      await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
-    },
-    report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
-    async relink() {
-      const ch = S.cur.chain; if (!ch) return;
-      if (!confirm('इस दिन की ओपनिंग (मीटर, कैश, स्टॉक) कल के क्लोज़ से दोबारा जोड़ें?')) return;
-      collectDraft();
-      const date = S.cur.date, d = Object.assign({}, S.draft[date] || readForm());
-      applyChain(d, ch); d.opening_locked = true; S.draft[date] = d;
-      await dayView(date); await saveDay(false, true); toast('कल से जुड़ गया ✔');
-    },
-    scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
-    editE(data) {
-      collectDraft();
-      const row = S.cur.rows.find(r => r.id === data.id);
-      if (row) entryModal({ entry: row, date: row.date });
-    },
-    async verE(data) {
-      collectDraft();
-      try {
-        await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
-        toast('मिलान ✔'); dayView(S.date);
-      } catch (e) { toast('नहीं हुआ: ' + e.message); }
-    },
-    async delE(data) {
-      collectDraft();
-      const row = S.cur.rows.find(r => r.id === data.id);
-      if (!row) return;
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
-      try {
-        const b = db.batch();
-        b.delete(db.collection('ledger').doc(row.id));
-        const delta = -K.signed(row); 
-        if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
-        await commit(b.commit());
-        toast('एंट्री हटा दी गई ✔');
-        S.parties.pub = null;
-        dayView(S.date);
-      } catch (e) { toast('नहीं हटा: ' + e.message); }
-    }
-  };
-  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
-
-  window.addEventListener('load', boot);
-})();
