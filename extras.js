@@ -50,8 +50,8 @@
     const L = days[days.length - 1] || {}, s = L.sum || {}, alerts = [];
     if (s.actStockP != null && s.actStockP < 1200) alerts.push('⛽ पेट्रोल स्टॉक कम: ' + lit(s.actStockP));
     if (s.actStockD != null && s.actStockD < 1000) alerts.push('🛢️ डीज़ल स्टॉक कम: ' + lit(s.actStockD));
-    if (s.diffP != null && Math.abs(s.diffP) > 20) alerts.push('⚠️ पेट्रोल फर्क ' + r2(s.diffP) + ' L (' + dmy(L.date) + ')');
-    if (s.diffD != null && Math.abs(s.diffD) > 20) alerts.push('⚠️ डीज़ल फर्क ' + r2(s.diffD) + ' L (' + dmy(L.date) + ')');
+    if (s.diffP != null && Math.abs(s.diffP) > (num(C.stockTolerance) || 25)) alerts.push('⚠️ पेट्रोल फर्क ' + r2(s.diffP) + ' L (' + dmy(L.date) + ')');
+    if (s.diffD != null && Math.abs(s.diffD) > (num(C.stockTolerance) || 25)) alerts.push('⚠️ डीज़ल फर्क ' + r2(s.diffD) + ' L (' + dmy(L.date) + ')');
     if (!by[t]) alerts.push('📝 आज का हिसाब अभी शुरू नहीं हुआ');
     main.innerHTML = (alerts.length ? '<div class="card">' + alerts.map(a => '<div class="warn">' + esc(a) + '</div>').join('') + '</div>' : '<div class="ok" style="margin-bottom:12px">✔ सब ठीक है — कोई अलर्ट नहीं</div>') +
       '<div class="card"><h3>📊 आज · ' + dmy(t) + '</h3>' + kv('बिक्री', money(sale(by[t])), 'big') + kv('पेट्रोल', lit(((by[t] || {}).sum || {}).litP)) + kv('डीज़ल', lit(((by[t] || {}).sum || {}).litD)) + kv('बचा कैश', money(((by[t] || {}).sum || {}).close)) + '</div>' +
