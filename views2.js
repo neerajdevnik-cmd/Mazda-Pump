@@ -693,7 +693,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         ${dupN ? `<div class="mut" style="margin-top:6px">पहले से मौजूद (छोड़ दी जाएँगी): ${dupN}</div>` : ''}
         ${pend.length ? `<div class="warn" style="margin-top:8px"><b>❓ ये पार्टी नहीं पहचानी — सही पार्टी चुनें (${pend.length}):</b>
           ${pend.map((x, i) => { const sg = suggest(x.nameRaw, x.base.veh); return `<div style="margin-top:8px"><small>${esc(x.label)} · ${money(x.base.amount)}</small>
-            <select data-pi="${i}" style="width:100%;margin-top:3px"><option value="">— छोड़ दो —</option>${sg.map((o, j) => `<option value="${o.x.id}">${j < 3 && o.sc > 0.5 ? '⭐ ' : ''}${esc(o.x.name)}</option>`).join('')}</select></div>`; }).join('')}
+            <select data-pi="${i}" style="width:100%;margin-top:3px">${x.nameRaw ? '<option value="__new" selected>➕ नई पार्टी बनाओ: ' + esc(x.nameRaw) + '</option>' : ''}<option value="">— छोड़ दो —</option>${sg.map((o, j) => `<option value="${o.x.id}">${j < 3 && o.sc > 0.5 ? '⭐ ' : ''}${esc(o.x.name)}</option>`).join('')}</select></div>`; }).join('')}
           <small class="mut">एक बार चुनने पर app ये नाम/गाड़ी याद रखेगा।</small></div>` : ''}
         ${bad.length ? `<div class="warn" style="margin-top:8px"><b>❌ ये नहीं भरी जा सकीं (${bad.length}):</b><br>${bad.map(esc).join('<br>')}</div>` : ''}
         <div class="btns" style="margin-top:12px">
@@ -724,8 +724,22 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     });
     if (!picks) return;
 
+    const mk = {};
+    Object.keys(picks).forEach(i => {
+      if (picks[i] !== '__new') return;
+      const x = pend[i], key = nrmHi(x.nameRaw);
+      mk[key] = mk[key] || { name: x.nameRaw, vehicles: [] };
+      if (x.base.veh && !mk[key].vehicles.includes(x.base.veh)) mk[key].vehicles.push(x.base.veh);
+    });
+    const made = {};
+    for (const key of Object.keys(mk)) {
+      const ref = db().collection('parties').doc();
+      await ref.set({ name: mk[key].name, phone: '', vehicles: mk[key].vehicles, bal: 0, createdAt: APP.FV.serverTimestamp() });
+      const np = { id: ref.id, name: mk[key].name, vehicles: mk[key].vehicles };
+      parties.push(np); made[key] = np;
+    }
     pend.forEach((x, i) => {
-      const p = picks[i] ? byId(picks[i]) : null;
+      const p = picks[i] === '__new' ? made[nrmHi(x.nameRaw)] : (picks[i] ? byId(picks[i]) : null);
       if (!p) return;
       const hn = nrmHi(x.nameRaw), vv = nrmVeh(x.base.veh);
       if (hn && hn !== nrmHi('?')) alias.n[hn] = p.id;
