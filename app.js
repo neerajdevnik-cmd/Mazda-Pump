@@ -277,19 +277,26 @@
 
 
   function boot() {
-    firebase.initializeApp(C.firebase);
-    auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-    db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
-    APP.db = db; APP.auth = auth; APP.FV = FV;
+    try {
+      firebase.initializeApp(C.firebase);
+      auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
+      
+      APP.db = db; APP.auth = auth; APP.FV = FV;
+      try { db.settings({ ignoreUndefinedProperties: true }); } catch(e) { console.log('Settings error', e); }
 
-    const reAuth = () => { const un = auth.onAuthStateChanged(u => { un(); if (!u) auth.signInAnonymously().catch(() => { }); }); };
+    } catch (e) {
+      console.error(e);
+      const err = document.getElementById('error-box');
+      if (err) { err.style.display = 'block'; err.innerText = 'Firebase init error: ' + e.message; }
+    }
+
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
       S.salesman = null;
       S.role = 'viewer';
       S.user = { email: 'viewer@owner.local' };
       S.date = todayISO();
-      reAuth(); shell(); return;
+      shell(); return;
     }
 
     const savedSM = localStorage.getItem('mazda_sm');
@@ -297,7 +304,7 @@
       try {
         const sm = JSON.parse(savedSM);
         S.salesman = sm; S.role = 'salesman'; S.user = { email: sm.id + '@salesman.mazda' }; S.date = todayISO();
-        reAuth(); shell(); return;
+        shell(); return;
       } catch (x) { localStorage.removeItem('mazda_sm'); }
     }
 
@@ -403,7 +410,6 @@
     return s.empty ? null : s.docs[0].data();
   }
   
-  /* ===== कल के क्लोज़ से आज की ओपनिंग (मीटर + कैश/AD + स्टॉक) — एक ही जगह से ===== */
   const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 
   async function chainFor(date) {
@@ -469,7 +475,6 @@
   APP.dayIsLocked = dayIsLocked; APP.refreshDaySum = refreshDaySum;
   const LOCKMSG = '❌ इस तारीख का हिसाब जमा (लॉक) हो चुका है — मालिक से अनलॉक करवाएँ';
 
-  /* सिर्फ बदले हुए खाने सेव हों — पुराना फ़ॉर्म किसी और का लिखा न मिटाए */
   const baseOf = x => JSON.parse(JSON.stringify(x || {}, (k, v) => k === 'at' ? undefined : v));
   function dayPatch(base, d) {
     const walk = (b, n) => {
@@ -721,12 +726,10 @@
     const st = S.cur; if (!st) return;
     const d = readForm(), o = K.compute(d, st.rows);
     
-    // Update Meter Net Liters
     K.NZ.forEach(k => { const e = $('#net-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     $('#nzwarn').innerHTML = o.warn.map(w => '<div class="warn">' + esc(w) + '</div>').join('') +
       (o.filled < K.activeNz().length ? `<div class="mut">${o.filled}/${K.activeNz().length} नोज़ल भरे हैं</div>` : '');
       
-    // Update Stock Section (Petrol & Diesel)
     const tol = num(C.stockTolerance) || 25;
     const setStkHtml = (prefix, exp, act, diff, tanker, sale) => {
       const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
@@ -748,11 +751,9 @@
     const elP = $('#stkP'); if (elP) elP.innerHTML = setStkHtml('P', o.expStockP, o.actStockP, o.diffP, d.tankerP, o.litP);
     const elD = $('#stkD'); if (elD) elD.innerHTML = setStkHtml('D', o.expStockD, o.actStockD, o.diffD, d.tankerD, o.litD);
 
-    // Update Actual Stock Input boxes directly
     const actInpP = $('#f-actStockP'); if(actInpP) actInpP.value = o.actStockP !== null ? r2(o.actStockP) : '';
     const actInpD = $('#f-actStockD'); if(actInpD) actInpD.value = o.actStockD !== null ? r2(o.actStockD) : '';
 
-    // Update Cash Summary
     const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
     $('#sum').innerHTML =
       kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
@@ -794,7 +795,6 @@
       st.base = baseOf(d);
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       
-      // --- SBI Bank Deposit Auto Sync ---
       try {
         const bankRef = db.collection('bank_deposits');
         const docId = 'sbi_auto_' + st.date;
@@ -803,7 +803,6 @@
         const exSnap = await bankRef.doc(docId).get();
         const exd = exSnap.exists ? exSnap.data() : null;
         if (exd && (exd.removed || exd.edited)) {
-          // मालिक ने इसे हाथ से बदला / हटाया है
         } else if (mdAmt > 0) {
           await bankRef.doc(docId).set({
             bank: 'SBI', 
@@ -818,7 +817,6 @@
           await bankRef.doc(docId).delete().catch(() => {});
         }
       } catch (bankErr) { console.error('Bank sync error:', bankErr); }
-      // ----------------------------------
 
       if (!silent) {
         audit(submit ? 'day_submit' : 'day_save', { date: st.date, sale: o.sale, close: o.close });
@@ -926,6 +924,7 @@
     q('e-cancel').onclick = () => m.close();
     q('e-save').onclick = async () => {
       const partyId = q('e-party').value, party = partyById(priv, partyId);
+      if (!party) return toast('पार्टी नहीं मिली, रिफ्रेश करें');
       const data = { partyId, partyName: party.name, date: q('e-date').value, time: q('e-time').value || nowTime(), kind: priv ? 'udhar' : kind, note: q('e-note').value.trim() };
       if (!data.date) return toast('तारीख चुनें');
       if (data.kind === 'udhar') {
@@ -1102,26 +1101,77 @@
     const p = { id, ...ps.data() };
     const all = es.docs.map(x => ({ id: x.id, ...x.data() }));
     const st = K.stmt(all, null, null);
+    
+    const tDr = st.rows.filter(r => r.kind === 'udhar').reduce((a, b) => a + num(b.amount), 0);
+    const tCr = st.rows.filter(r => r.kind === 'jama').reduce((a, b) => a + num(b.amount), 0);
 
     main.innerHTML = `
       <div class="btns" style="margin-bottom:10px">
         <button class="btn sm w" id="back">← वापस</button>
-        ${isOwner() ? '<button class="btn sm o" id="editP">✏️ बदलें</button>' : ''}
-        <button class="btn sm o" id="addU">+ उधार</button>
-        <button class="btn sm g" id="addJ">+ जमा</button>
+        ${isOwner() ? '<button class="btn sm o" id="editP">✏️ पार्टी बदलें</button>' : ''}
         <button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>
-        ${priv && isOwner() ? '<button class="btn sm g" id="closeK">✅ खाता बंद</button>' : ''}
+        <button class="btn sm g" id="addU">+ उधार</button>
+        <button class="btn sm g" id="addJ">+ जमा</button>
+        ${priv && isOwner() ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
-      <div class="card">
-        <h3>${esc(p.name)}</h3>
-        <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${esc((p.vehicles || []).join(', '))}</p>
-        <div class="due">कुल बैलेंस: ${money(priv ? p.bal : st.close)}</div>
+      
+      <div class="card" style="padding:12px;">
+        <h3 style="margin:0;color:#0b3d91">${esc(p.name)}</h3>
+        <p class="mut" style="margin-top:4px">${esc(p.phone || 'फोन नंबर नहीं')} | ${esc((p.vehicles || []).join(', '))}</p>
+        
+        <div class="ledger-summary">
+          <div class="ledger-box debit">
+            <span>कुल उधार (Dr)</span>
+            <b>${money(tDr)}</b>
+          </div>
+          <div class="ledger-box credit">
+            <span>कुल जमा (Cr)</span>
+            <b>${money(tCr)}</b>
+          </div>
+          <div class="ledger-box">
+            <span>असली बैलेंस</span>
+            <b style="color:${st.close > 0 ? 'var(--r)' : 'var(--g)'}">${money(st.close)}</b>
+          </div>
+        </div>
+        
+        <button class="btn full" id="shareStmt" style="margin-top:8px;background:#0b3d91">📄 प्रोफेशनल स्टेटमेंट देखें / भेजें</button>
       </div>
-      <div class="card" style="overflow-x:auto">
-        <table>
-          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th></tr>
-          ${st.rows.map(r => `<tr><td>${dmy(r.date)}</td><td>${esc(r.vehicle || '-')}<br><small class="mut">${esc(r.note||'')}</small></td><td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td><td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td><td class="n">${money(r.run)}</td></tr>`).join('')}
-        </table>
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="pro-table-wrap">
+          <table class="pro-table">
+            <thead>
+              <tr>
+                <th>तारीख</th>
+                <th>विवरण</th>
+                <th style="text-align:right">उधार (Dr)</th>
+                <th style="text-align:right">जमा (Cr)</th>
+                <th style="text-align:right">बैलेंस</th>
+                <th style="text-align:center">एक्शन</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${st.rows.length ? st.rows.map(r => `
+                <tr>
+                  <td class="dt">${dmy(r.date)}</td>
+                  <td>
+                    ${esc(r.vehicle || (r.kind === 'jama' ? 'जमा' : '-'))}
+                    <br><small class="mut">${esc(r.note||'')}</small>
+                  </td>
+                  <td class="dr">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
+                  <td class="cr">${r.kind === 'jama' ? money(r.amount) : ''}</td>
+                  <td class="bal">${money(r.run)}</td>
+                  <td>
+                    <div class="action-btns">
+                      <button class="edit" data-edit-row="${r.id}">✏️</button>
+                      <button class="del" data-del-row="${r.id}">🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6" class="mut" style="text-align:center;padding:20px;">कोई एंट्री नहीं है</td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </div>`;
       
     $('#back').onclick = () => priv ? APP.views.priv() : ledgerView();
@@ -1130,6 +1180,29 @@
     $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
     $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
+    
+    $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
+    
+    $$('[data-edit-row]').forEach(b => b.onclick = () => {
+      const row = all.find(x => x.id === b.dataset.editRow);
+      if (row) entryModal({ entry: row, date: row.date, priv: priv });
+    });
+    $$('[data-del-row]').forEach(b => b.onclick = async () => {
+      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
+      const row = all.find(x => x.id === b.dataset.delRow);
+      if (!row) return;
+      b.disabled = true;
+      try {
+        const b2 = db.batch();
+        b2.delete(db.collection(col).doc(row.id));
+        const delta = -sigEntry(priv, row);
+        if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
+        await b2.commit();
+        toast('एंट्री हटा दी गई ✔');
+        S.parties[priv ? 'priv' : 'pub'] = null;
+        partyView(id, priv);
+      } catch (e) { b.disabled = false; toast('नहीं हटा: ' + e.message); }
+    });
   }
   APP.partyView = partyView;
 
@@ -1209,7 +1282,6 @@
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
 
-  // 🚛 टैंकर रिपोर्ट जनरेट करने का फंक्शन
   APP.openTankerReportModal = function(fuelType, liters) {
     const fuelName = fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल';
     const m = modal(`
