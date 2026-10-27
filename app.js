@@ -440,11 +440,13 @@
     let d = ds.exists ? ds.data() : null;
     const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date);
+    const frozen = ds.exists && ds.data().status === 'submitted';
     
     if (prev && d.opening_locked !== false) {
       if (!d.nz) d.nz = {};
       K.NZ.forEach(k => {
         if (!d.nz[k]) d.nz[k] = {};
+        if (frozen && K.has(d.nz[k].o)) return;
         d.nz[k].o = prev.nz && prev.nz[k] ? prev.nz[k].c : '';
       });
     }
@@ -454,6 +456,7 @@
       if (d.opening_locked !== false && prev) {
         K.NZ.forEach(k => {
           if(!d.nz[k]) d.nz[k] = {};
+          if (frozen && K.has(d.nz[k].o)) return;
           d.nz[k].o = prev.nz && prev.nz[k] ? prev.nz[k].c : '';
         });
       }
@@ -755,7 +758,6 @@
   async function entryModal(o) {
     if (isViewer()) return toast('आप केवल देख सकते हैं');
     const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (isSalesman() ? 'udhar' : (o.kind || 'udhar'));
-    if (isSalesman() && priv) return toast('अनुमति नहीं');
     const parties = await getParties(priv);
     if (!parties.length) { toast('पहले खाते में पार्टी जोड़ें'); return; }
     const date0 = e ? e.date : (o.date || S.date || todayISO());
