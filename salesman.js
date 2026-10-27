@@ -34,11 +34,13 @@
     const sm = S.salesman, sid = sm.id;
     
     let rsSnap;
-    try { rsSnap = await db().collection('runsheets').where('date', '==', date).where('sid', '==', sid).where('status', '==', 'active').get(); }
+    try { rsSnap = await db().collection('runsheets').where('sid', '==', sid).where('status', '==', 'active').get(); }
     catch(e) { console.error(e); }
     const activeRs = rsSnap && !rsSnap.empty ? { id: rsSnap.docs[0].id, ...rsSnap.docs[0].data() } : null;
+    if (activeRs && activeRs.date) { date = activeRs.date; S.date = date; }
+    const docId = activeRs ? activeRs.id : shiftId(sid, date);
 
-    const snapP = db().collection(COL).doc(shiftId(sid, date)).get();
+    const snapP = db().collection(COL).doc(docId).get();
     const rowsP = db().collection('ledger').where('date', '==', date).where('sid', '==', sid).get().catch(() => null);
     const ratesP = latestRates();
     
@@ -46,12 +48,12 @@
     
     try {
       const cSnap = await db().collection('cash_submissions').where('date', '==', date).where('sid', '==', sid).get();
-      cashHistory = cSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.time||'').localeCompare(b.time||''));
+      cashHistory = cSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => !activeRs || !c.rsId || c.rsId === activeRs.id).sort((a,b) => (a.time||'').localeCompare(b.time||''));
     } catch(e) { cashHistory = []; }
 
-    const rows = rs ? rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => r.kind === 'udhar') : [];
+    const rows = rs ? rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => r.kind === 'udhar' && (!activeRs || !r.rsId || r.rsId === activeRs.id)) : [];
     const base = {
-      sid, name: sm.name, date, status: 'open', rateP: rates.rateP, rateD: rates.rateD,
+      sid, name: sm.name, date, status: 'open', rsId: activeRs ? activeRs.id : null, rateP: (activeRs && num(activeRs.rateP)) || rates.rateP, rateD: (activeRs && num(activeRs.rateD)) || rates.rateD,
       testing: C.testing != null ? C.testing : 5, nz: {}, paytm: '', swipe: '', expLabel: '', expAmt: '', note: ''
     };
     const doc = Object.assign(base, snap.exists ? snap.data() : {});
@@ -69,7 +71,7 @@
       }
     });
     
-    return { date, doc, rows, autoO, activeRs, allowedNz, locked: doc.status === 'submitted', exists: snap.exists };
+    return { date, docId, doc, rows, autoO, activeRs, allowedNz, locked: doc.status === 'submitted', exists: snap.exists };
   }
 
   function readForm() {
@@ -94,7 +96,7 @@
     const d = readForm(); if (!d) return;
     const o = computeSm(d);
     const data = Object.assign({}, d, {
-      sid: S.salesman.id, name: S.salesman.name, date: ST.date, status,
+      sid: S.salesman.id, name: S.salesman.name, date: ST.date, status, rsId: ST.activeRs ? ST.activeRs.id : null,
       sum: {
         litP: o.litP, litD: o.litD, amtP: o.amtP, amtD: o.amtD, sale: o.sale,
         udhar: o.udhar, udharCount: ST.rows.length, expected: o.close
@@ -102,7 +104,7 @@
       updatedAt: FV().serverTimestamp()
     });
     if (status === 'submitted') { data.submittedAt = FV().serverTimestamp(); }
-    await APP.commit(db().collection(COL).doc(shiftId(S.salesman.id, ST.date)).set(data, { merge: true }));
+    await APP.commit(db().collection(COL).doc(ST.docId).set(data, { merge: true }));
     ST.doc = Object.assign({}, d, { status });
     if (!silent) toast(status === 'submitted' ? 'शिफ्ट जमा हो गई ✔' : 'सेव हो गया ✔');
   }
@@ -165,12 +167,15 @@
     if (!ST || ST.locked) return toast('शिफ्ट जमा हो चुकी है');
     const r = ST.rows.find(x => x.id === id);
     if (!r || r.verified) return;
+    if (await APP.dayIsLocked(ST.date)) return toast('❌ इस तारीख का हिसाब जमा हो चुका है');
     if (!confirm('ये उधार एंट्री हटाएँ?')) return;
     try {
       const b = db().batch();
       b.delete(db().collection('ledger').doc(id));
       b.update(db().collection('parties').doc(r.partyId), { bal: FV().increment(-K.signed(r)) });
       await APP.commit(b.commit());
+      APP.audit('sm_delete_udhar', { party: r.partyName, vehicle: r.vehicle, amount: r.amount, litre: r.litre, date: r.date, time: r.time });
+      APP.refreshDaySum(r.date);
       toast('हट गई ✔'); APP.go(S.tab);
     } catch (e) { toast('हटा नहीं पाया: ' + errMsg(e)); }
   }
@@ -228,7 +233,7 @@
       try {
         await db().collection('cash_submissions').add({
           date: ST.date, sid: ST.sid, salesmanName: ST.name,
-          breakdown, total: tot, status: 'pending',
+          breakdown, total: tot, status: 'pending', rsId: ST.activeRs ? ST.activeRs.id : null,
           time: APP.nowTime(), createdAt: FV().serverTimestamp()
         });
         m.close(); toast('कैश जमा हो गया, मैनेजर के अप्रूवल का इंतज़ार करें ✔');
@@ -240,7 +245,7 @@
   async function udharModal(pre) {
     pre = pre || {};
     if (ST && ST.locked) return toast('शिफ्ट जमा हो चुकी है');
-    const date = S.date || today();
+    const date = (ST && ST.date) || S.date || today();
     let parties;
     try { parties = await APP.getParties(false, true); } catch (e) { return toast('पार्टी लिस्ट नहीं मिली'); }
     if (!parties.length) return toast('पार्टी लिस्ट खाली है');
@@ -296,10 +301,14 @@
       const data = {
         partyId: p.id, partyName: p.name, date, time: APP.nowTime(), kind: 'udhar', note: q('su-n').value.trim(),
         vehicle: veh, fuel: q('su-f').value, rate: num(q('su-r').value), litre: num(q('su-l').value), amount: num(q('su-a').value),
-        by: S.salesman.name, src: 'salesman', sid: S.salesman.id
+        by: S.salesman.name, src: 'salesman', sid: S.salesman.id, rsId: ST && ST.activeRs ? ST.activeRs.id : null
       };
       if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
       if (!(data.litre > 0) || !(data.amount > 0)) return toast('लीटर व रुपये भरें');
+      if (await APP.dayIsLocked(date)) return toast('❌ इस तारीख का हिसाब जमा हो चुका है — मैनेजर से कहें');
+      const dup = await APP.findDupEntry(data);
+      if (dup && !confirm('⚠️ ऐसी ही एंट्री पहले से है: ' + dup.partyName + ' · ' + dup.vehicle + ' · ' + money(dup.amount) + ' · ' + (dup.time || '') + '\nफिर भी जोड़ें?')) return;
+      if (num(p.limit) > 0 && num(p.bal) + data.amount > num(p.limit) && !confirm('⚠️ ' + p.name + ' की उधार सीमा ' + money(p.limit) + ' है। बकाया ' + money(p.bal) + ' + ' + money(data.amount) + ' = ' + money(num(p.bal) + data.amount) + '\nफिर भी उधार दें?')) return;
       const btn = q('su-sv'); if (btn.disabled) return; btn.disabled = true;
       try {
         data.at = FV().serverTimestamp();
@@ -402,7 +411,7 @@
     if (ST.activeRs && ST.activeRs.startTime) {
       if (timerInterval) clearInterval(timerInterval);
       const [sh, sm] = ST.activeRs.startTime.split(':').map(Number);
-      const start = new Date(); start.setHours(sh, sm, 0, 0);
+      const start = new Date((ST.activeRs.date || today()) + 'T00:00:00'); start.setHours(sh, sm, 0, 0);
       timerInterval = setInterval(() => {
         const el = $('#sm-timer');
         if (!el) { clearInterval(timerInterval); return; }
@@ -433,7 +442,7 @@
     const locked = ST.locked;
     const totA = ST.rows.reduce((a, r) => a + num(r.amount), 0), totL = ST.rows.reduce((a, r) => a + num(r.litre), 0);
     main.innerHTML = `
-      <div class="card"><h3>🚚 उधार एंट्री · ${dmy(date)}</h3>
+      <div class="card"><h3>🚚 उधार एंट्री · ${dmy(ST.date)}</h3>
         ${kv('मेरी एंट्री', ST.rows.length)}${kv('कुल उधार', money(totA), 'neg')}${kv('कुल लीटर', lit(totL))}
         ${locked ? '<div class="warn">आज की शिफ्ट जमा हो चुकी है</div>' : ''}</div>
       ${locked || !ST.activeRs ? '' : '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="sq-new" type="button">+ नई उधार एंट्री</button></div>'}
