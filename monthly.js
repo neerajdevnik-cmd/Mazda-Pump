@@ -12,7 +12,7 @@
     const a = ym + '-01', b = ym + '-31', col = n => db().collection(n).where('date', '>=', a).where('date', '<=', b).get();
     const [ds, ls, bs, parties] = await Promise.all([col('days'), col('ledger'), col('bank_deposits').catch(() => ({ docs: [] })), APP.getParties(false, true)]);
     const days = ds.docs.map(x => x.data()).sort((p, q) => p.date.localeCompare(q.date));
-    const led = ls.docs.map(x => x.data());
+    const led = ls.docs.map(x => x.data()).filter(r => !K.isOpening(r));
     const banks = bs.docs.map(x => x.data()).filter(x => !x.removed).sort((p, q) => p.date.localeCompare(q.date));
     const by = {}; led.forEach(r => { const o = by[r.date] = by[r.date] || { u: 0, j: 0 }; if (r.kind === 'udhar') o.u += num(r.amount); else if (r.kind === 'jama') o.j += num(r.amount); });
     const rows = days.map(d => {
