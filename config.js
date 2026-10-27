@@ -42,6 +42,8 @@ window.CFG = {
 
   loginDomain: "mazda-pump.in",
   testing: 5,
+  activeNozzles: ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'],  // जो नोज़ल पंप पर असल में हैं सिर्फ वही रखें (बाकी हटा दें)
+  stockTolerance: 25,   // लीटर — डिप की सटीकता के अंदर इतना फर्क 'ठीक' माना जाएगा
   meterMax: 10000000,   // मीटर में कितने अंक (7 अंक = 10000000). 0 पर घूमने पर अपने-आप गिन लेगा
   defaultRateP: 100.23,
   defaultRateD: 95.68
