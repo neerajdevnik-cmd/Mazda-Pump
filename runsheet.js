@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Runsheet Management (Manager Side) with History */
+/* Mazda Oil Company - Runsheet Management (Manager Side) with History & Delete */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -33,7 +33,12 @@
     } catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
 
     let activeSheets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (mode !== 'active') activeSheets = activeSheets.filter(x => x.status === 'closed').sort((a, b) => (b.date + (b.startTime || '')).localeCompare(a.date + (a.startTime || '')));
+    
+    // History mode: sirf closed dikhe aur newest first ho
+    if (mode !== 'active') {
+      activeSheets = activeSheets.filter(x => x.status === 'closed').sort((a, b) => (b.date + (b.startTime || '')).localeCompare(a.date + (a.startTime || '')));
+    }
+    
     const pendingCash = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     if (mode === 'active') {
@@ -65,6 +70,7 @@
       const got = RSH.cs.filter(x => (x.rsId ? x.rsId === sh.id : (x.sid === sh.sid && x.date === sh.date)) && x.status === 'approved').reduce((a, x) => a + num(x.total), 0);
       return s ? `<div class="mut" style="font-size:12px;">बिक्री ${money((s.sum || {}).sale)} · कैश होना चाहिए ${money((s.sum || {}).expected)} · मिला ${money(got)}</div>` : '';
     };
+    
     let listHtml = activeSheets.length ? activeSheets.map(sheet => {
       const st = sheet.status === 'active' ? '<span class="chip ' + (sheet.date !== today() ? 'o' : 'g') + '">चालू (Active)' + (sheet.date !== today() ? ' · ' + dmy(sheet.date) + ' से' : '') + '</span>' : `<span class="chip r">बंद (${dmy(sheet.date)})</span>`;
       const nzOpen = Object.keys(sheet.openings || {}).map(k => `${k.toUpperCase()}: ${sheet.openings[k]}`).join(' | ');
@@ -79,7 +85,10 @@
               ${sheet.startTime ? `<div class="mut" style="font-size:12px;">शुरू: ${sheet.startTime} ${sheet.endTime ? ' | बंद: ' + sheet.endTime : ''}</div>` : ''}
             </div>
             <div style="text-align:right;">
-              ${sheet.status === 'active' ? `<button class="btn sm r" data-close="${sheet.id}">🛑 शिफ्ट बंद करें</button>` : ''}
+              ${sheet.status === 'active' 
+                ? `<button class="btn sm r" data-close="${sheet.id}">🛑 शिफ्ट बंद करें</button>` 
+                : `<button class="btn sm r" data-del-rs="${sheet.id}">🗑 हटाएँ</button>`
+              }
             </div>
           </div>
         </div>`;
@@ -145,6 +154,37 @@
         APP.audit('shift_close', { sid: sh.sid, rs: sh.id, date: sh.date, warn });
         toast('शिफ्ट बंद हो गई ✔'); APP.views.runsheet(mode);
       } catch (e) { toast('एरर: ' + e.message); }
+    });
+
+    // History se permanent delete
+    $$('[data-del-rs]').forEach(b => b.onclick = async () => {
+      if (!confirm('क्या आप सच में इस पुरानी रनशीट (और इससे जुड़ी सेल्समैन एंट्री) को हमेशा के लिए डिलीट करना चाहते हैं?\n\nयह वापस नहीं आएगी!')) return;
+      const rsId = b.dataset.delRs;
+      const sh = activeSheets.find(x => x.id === rsId);
+      b.disabled = true;
+      try {
+        // 1. Delete Runsheet
+        await db().collection('runsheets').doc(rsId).delete();
+        
+        // 2. Delete associated sm_shift (if exists)
+        if (sh) {
+          const s1 = await db().collection('sm_shifts').doc(rsId).get();
+          if (s1.exists) await db().collection('sm_shifts').doc(rsId).delete();
+          else {
+            const s2 = await db().collection('sm_shifts').doc(sh.sid + '_' + sh.date).get();
+            if (s2.exists) await db().collection('sm_shifts').doc(sh.sid + '_' + sh.date).delete();
+          }
+        }
+
+        // 3. Delete Cash Submissions linked to this
+        const cs = await db().collection('cash_submissions').where('rsId', '==', rsId).get();
+        const batch = db().batch();
+        cs.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        toast('डिलीट हो गया ✔');
+        APP.views.runsheet(mode);
+      } catch (e) { b.disabled = false; toast('डिलीट नहीं हुआ: ' + e.message); }
     });
   };
 
