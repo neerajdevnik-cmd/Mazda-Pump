@@ -42,6 +42,7 @@ window.CFG = {
 
   loginDomain: "mazda-pump.in",
   testing: 5,
+  meterMax: 10000000,   // मीटर में कितने अंक (7 अंक = 10000000). 0 पर घूमने पर अपने-आप गिन लेगा
   defaultRateP: 100.23,
   defaultRateD: 95.68
 };
