@@ -33,22 +33,45 @@
           </div>`).join('') : '<p class="mut">कोई रिकॉर्ड नहीं</p>'}
       </div>`;
 
-    $('#gc-add').onclick = () => {
+    const gcWrite = async (party, veh, amt, kind, note) => {
+      const ref = db().collection('ledger').doc(), b = db().batch();
+      b.set(ref, { partyId: party.id, partyName: party.name, date: APP.todayISO(), time: APP.nowTime(), kind, vehicle: veh || '', fuel: '', rate: 0, litre: 0, amount: amt, note,
+        by: (APP.S.user && APP.S.user.email) || '', uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), at: APP.FV.serverTimestamp(),
+        ...(kind === 'jama' ? { mode: 'cash' } : {}) });
+      b.update(db().collection('parties').doc(party.id), { bal: APP.FV.increment(kind === 'udhar' ? amt : -amt) });
+      await b.commit(); return ref.id;
+    };
+    $('#gc-add').onclick = async () => {
+      let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
       const m = modal(`<h3>नया गाड़ी कैश</h3>
+        <label>पार्टी</label><select id="gc-pp"><option value="">— लोकल / बिना पार्टी —</option>${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <label>गाड़ी नंबर</label><input id="gc-v" style="text-transform:uppercase">
-        <label>पार्टी</label><input id="gc-p">
         <label>रुपये</label><input id="gc-a" inputmode="decimal">
+        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी और आज के कैश से कम होगी।</div>
         <div class="btns" style="margin-top:10px"><button class="btn g" id="gc-sv">सेव</button><button class="btn w" id="gc-cl">रद्द</button></div>`);
       $('#gc-cl', m).onclick = () => m.close();
       $('#gc-sv', m).onclick = async () => {
-        const v = $('#gc-v', m).value.trim().toUpperCase(), a = num($('#gc-a', m).value);
+        const v = $('#gc-v', m).value.trim().toUpperCase(), a = num($('#gc-a', m).value), p = ps.find(x => x.id === $('#gc-pp', m).value);
         if (!v || !(a > 0)) return toast('गाड़ी नंबर व रकम सही भरें');
-        await db().collection('gaadi_cash').add({ vehicle: v, partyName: $('#gc-p', m).value.trim(), amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
-        m.close(); toast('सेव हो गया'); APP.views.gaadicash();
+        const btn = $('#gc-sv', m); if (btn.disabled) return; btn.disabled = true;
+        try {
+          const lid = p ? await gcWrite(p, v, a, 'udhar', 'गाड़ी कैश') : '';
+          await db().collection('gaadi_cash').add({ vehicle: v, partyId: p ? p.id : '', partyName: p ? p.name : '', ledgerId: lid, amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
+          APP.S.parties = null; m.close(); toast('सेव हो गया'); APP.views.gaadicash();
+        } catch (e) { btn.disabled = false; toast('सेव नहीं हुआ: ' + e.message); }
       };
     };
     $$('[data-gc-id]').forEach(b => {
-      b.onclick = async () => { await db().collection('gaadi_cash').doc(b.dataset.gcId).update({ status: 'paid' }); toast('Paid हो गया'); APP.views.gaadicash(); };
+      b.onclick = async () => {
+        const it = list.find(x => x.id === b.dataset.gcId); if (!it) return;
+        if (!confirm('क्या ' + money(it.amount) + ' वापस मिल गया?' + (it.partyId ? '\nये पार्टी के खाते में नकद जमा लिखा जाएगा।' : ''))) return;
+        b.disabled = true;
+        try {
+          if (it.partyId) await gcWrite({ id: it.partyId, name: it.partyName }, it.vehicle, num(it.amount), 'jama', 'गाड़ी कैश वापस');
+          await db().collection('gaadi_cash').doc(it.id).update({ status: 'paid' });
+          APP.S.parties = null; toast('Paid हो गया'); APP.views.gaadicash();
+        } catch (e) { b.disabled = false; toast('नहीं हुआ: ' + e.message); }
+      };
     });
   };
 
