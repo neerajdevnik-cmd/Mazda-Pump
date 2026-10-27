@@ -6,6 +6,7 @@
   const has = v => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
   const isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
   const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+  const activeNz = () => { const a = (window.CFG || {}).activeNozzles; return (Array.isArray(a) && a.length) ? NZ.filter(k => a.includes(k)) : NZ.slice(); };
 
   /* ---------- खर्चा: अलग-अलग चीज़ों की लिस्ट ---------- */
   const KH = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
@@ -38,11 +39,12 @@
     let filled = 0, litP = 0, litD = 0;
     const warn = [];
 
+    const act = activeNz();
     NZ.forEach(k => {
       const n = (d.nz && d.nz[k]) || {};
       const hasO = has(n.o), hasC = has(n.c);
       if (hasO && hasC) {
-        filled++;
+        if (act.includes(k)) filled++;
         const o = num(n.o), c = num(n.c);
         const MM = num((window.CFG || {}).meterMax) || 10000000;
         const roll = c < o && o >= MM * 0.9 && c <= MM * 0.1;
@@ -144,5 +146,36 @@
     return e.kind === 'udhar' ? a : -a;
   }
 
-  window.Calc = { isOpening, num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
+  /* ---------- हिसाब जमा करने से पहले जाँच ---------- */
+  function validate(d, rows, ctx) {
+    ctx = ctx || {};
+    const errors = [], warns = [];
+    const o = compute(d, rows);
+    activeNz().forEach(k => {
+      const n = (d.nz && d.nz[k]) || {}, L = k.toUpperCase();
+      if (!has(n.o)) errors.push(L + ': ओपनिंग नहीं है (कल की क्लोज़िंग खाली थी?)');
+      else if (!has(n.c)) errors.push(L + ': क्लोज़िंग नहीं भरी — नोज़ल बंद रहा तो ओपनिंग जितनी ही लिखें');
+      else if (!o.nz[k].ok) errors.push(L + ': क्लोज़िंग (' + num(n.c) + ') ओपनिंग (' + num(n.o) + ') से कम है');
+    });
+    if (!(num(d.rateP) > 0) || !(num(d.rateD) > 0)) errors.push('पेट्रोल / डीज़ल का रेट भरें');
+    [['P', 'petrol', 'पेट्रोल'], ['D', 'diesel', 'डीज़ल']].forEach(x => {
+      const dip = d['dip' + x[0]];
+      if (!has(dip) || !(num(dip) > 0)) { errors.push(x[2] + ' की डिप नहीं डाली — स्टॉक का मिलान डिप से ही होता है'); return; }
+      const mx = window.DipChart && window.DipChart.maxDip ? window.DipChart.maxDip(x[1]) : 0;
+      if (mx && num(dip) > mx) errors.push(x[2] + ' डिप ' + num(dip) + ' चार्ट की सीमा (' + mx + ') से ज़्यादा है — दोबारा देखें');
+    });
+    const tol = num((window.CFG || {}).stockTolerance) || 25;
+    [['P', 'पेट्रोल'], ['D', 'डीज़ल']].forEach(x => {
+      const df = o['diff' + x[0]];
+      if (df !== null && Math.abs(df) > tol) warns.push(x[1] + ' स्टॉक में फर्क ' + (df > 0 ? '+' : '') + r2(df) + ' L (सीमा ' + tol + ' L)');
+    });
+    if (o.close < 0) warns.push('आज का बचा कैश माइनस है: ' + o.close);
+    if (!has(d.physicalCash)) warns.push('दराज़ का असली नकद गिनकर नहीं डाला');
+    else { const df = r2(num(d.physicalCash) - o.close); if (Math.abs(df) >= 1) warns.push('असली नकद और हिसाब में ' + (df > 0 ? 'ज़्यादा' : 'कम') + ' ₹' + Math.abs(df)); }
+    if (ctx.prevPending) (ctx.isOwner ? warns : errors).push('पिछला दिन (' + ctx.prevPending + ') अभी जमा नहीं हुआ — पहले उसे जमा करें');
+    if (ctx.gap > 0) warns.push(ctx.prevDate + ' के बाद ' + ctx.gap + ' दिन का हिसाब नहीं बना');
+    return { errors, warns, o };
+  }
+
+  window.Calc = { activeNz, validate, isOpening, num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
 })();
