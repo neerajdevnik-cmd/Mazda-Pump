@@ -31,10 +31,22 @@
     t.textContent = msg; t.classList.add('on');
     clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3000);
   }
+  let pendingW = 0;
+  function syncBadge() {
+    let b = document.getElementById('sync-badge');
+    if (!pendingW) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'sync-badge'; b.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top) + 58px);right:8px;z-index:50;background:#b26a00;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:700'; document.body.appendChild(b); }
+    b.textContent = '⏳ ' + pendingW + ' सेव सर्वर पर जाना बाकी';
+  }
   function commit(p) {
-    let done = false;
-    p.then(() => { done = true; }, () => { done = true; });
-    return Promise.race([p, new Promise(r => setTimeout(() => { if (!done) toast('⏳ नेट धीमा है — डेटा फ़ोन में सुरक्षित है'); r(); }, 2500))]);
+    let done = false, timedOut = false;
+    pendingW++; syncBadge();
+    p.then(() => { done = true; pendingW--; syncBadge(); },
+      e => {
+        done = true; pendingW--; syncBadge();
+        if (timedOut) { const m = (e && e.message) || e; toast('❌ सर्वर ने सेव नहीं लिया: ' + m); try { alert('❌ एक सेव सर्वर तक नहीं पहुँचा:\n' + m + '\n\nउस एंट्री को दोबारा जाँचें।'); } catch (x) { } }
+      });
+    return Promise.race([p, new Promise(r => setTimeout(() => { if (!done) { timedOut = true; toast('⏳ नेट धीमा है — डेटा फ़ोन में सुरक्षित है, नेट आते ही अपने-आप जुड़ जाएगा'); } r(); }, 2500))]);
   }
   function audit(action, detail) {
     try {
@@ -265,28 +277,19 @@
 
 
   function boot() {
-    try {
-      firebase.initializeApp(C.firebase);
-      auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-      
-      // 🔥 assign to APP IMMEDIATELY so it never crashes
-      APP.db = db; APP.auth = auth; APP.FV = FV;
-      
-      try { db.settings({ ignoreUndefinedProperties: true }); } catch(e) { console.log('Settings error', e); }
+    firebase.initializeApp(C.firebase);
+    auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
+    APP.db = db; APP.auth = auth; APP.FV = FV;
 
-    } catch (e) {
-      console.error(e);
-      const err = document.getElementById('error-box');
-      if (err) { err.style.display = 'block'; err.innerText = 'Firebase init error: ' + e.message; }
-    }
-
+    const reAuth = () => { const un = auth.onAuthStateChanged(u => { un(); if (!u) auth.signInAnonymously().catch(() => { }); }); };
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
       S.salesman = null;
       S.role = 'viewer';
       S.user = { email: 'viewer@owner.local' };
       S.date = todayISO();
-      shell(); return;
+      reAuth(); shell(); return;
     }
 
     const savedSM = localStorage.getItem('mazda_sm');
@@ -294,7 +297,7 @@
       try {
         const sm = JSON.parse(savedSM);
         S.salesman = sm; S.role = 'salesman'; S.user = { email: sm.id + '@salesman.mazda' }; S.date = todayISO();
-        shell(); return;
+        reAuth(); shell(); return;
       } catch (x) { localStorage.removeItem('mazda_sm'); }
     }
 
@@ -373,7 +376,7 @@
   function go(tab, arg) {
     if (isSalesman() && !['salesman', 'sm_udhar', 'more'].includes(tab)) tab = 'salesman';
     S.tab = tab;
-    $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
     if (tab === 'ledger') return ledgerView(arg);
@@ -387,12 +390,20 @@
     }
   }
   APP.go = go;
+  S._today = todayISO();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || S._today === todayISO()) return;
+    S._today = todayISO();
+    if (isSalesman() || !S.role) return;
+    S.date = S._today; if (S.tab === 'day') dayView(S.date);
+  });
 
   async function prevDay(date) {
     const s = await db.collection('days').where('date', '<', date).orderBy('date', 'desc').limit(1).get();
     return s.empty ? null : s.docs[0].data();
   }
   
+  /* ===== कल के क्लोज़ से आज की ओपनिंग (मीटर + कैश/AD + स्टॉक) — एक ही जगह से ===== */
   const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 
   async function chainFor(date) {
@@ -438,9 +449,43 @@
       date, testing: C.testing, rateP: S.rates.petrol, rateD: S.rates.diesel, nz: {},
       driverInaam: 0, chaiKhana: 0, status: 'open', opening_locked: true
     };
-    if (ch) { applyChain(d, ch); d.rateP = ch.prev.rateP || d.rateP; d.rateD = ch.prev.rateD || d.rateD; }
+    if (ch) { applyChain(d, ch); const fresh = S.ratesSetAt === date; d.rateP = fresh ? S.rates.petrol : (ch.prev.rateP || d.rateP); d.rateD = fresh ? S.rates.diesel : (ch.prev.rateD || d.rateD); }
     else d.opening_locked = false;
     return d;
+  }
+
+  async function dayIsLocked(date) {
+    if (isOwner()) return false;
+    try { const s = await db.collection('days').doc(date).get(); return s.exists && s.data().status === 'submitted'; } catch (e) { return false; }
+  }
+  async function refreshDaySum(date) {
+    try {
+      const ds = await db.collection('days').doc(date).get(); if (!ds.exists) return;
+      const rs = await db.collection('ledger').where('date', '==', date).get();
+      const o = K.compute(ds.data(), rs.docs.map(x => x.data()));
+      await db.collection('days').doc(date).update({ 'sum.sale': o.sale, 'sum.close': o.close, 'sum.litP': o.litP, 'sum.litD': o.litD });
+    } catch (e) { }
+  }
+  APP.dayIsLocked = dayIsLocked; APP.refreshDaySum = refreshDaySum;
+  const LOCKMSG = '❌ इस तारीख का हिसाब जमा (लॉक) हो चुका है — मालिक से अनलॉक करवाएँ';
+
+  /* सिर्फ बदले हुए खाने सेव हों — पुराना फ़ॉर्म किसी और का लिखा न मिटाए */
+  const baseOf = x => JSON.parse(JSON.stringify(x || {}, (k, v) => k === 'at' ? undefined : v));
+  function dayPatch(base, d) {
+    const walk = (b, n) => {
+      const out = {};
+      Object.keys(n).forEach(k => {
+        const nv = n[k], bv = b ? b[k] : undefined;
+        if (nv && typeof nv === 'object' && !Array.isArray(nv) && Object.getPrototypeOf(nv) === Object.prototype) {
+          const sub = walk(bv && typeof bv === 'object' ? bv : {}, nv);
+          if (Object.keys(sub).length) out[k] = sub;
+        } else if (JSON.stringify(nv) !== JSON.stringify(bv)) out[k] = nv;
+      });
+      return out;
+    };
+    const p = walk(base || {}, d);
+    ['sum', 'at', 'by', 'status'].forEach(k => { if (d[k] !== undefined) p[k] = d[k]; });
+    return p;
   }
 
   let autoSaveTimer = null;
@@ -459,16 +504,15 @@
     let ds, rs, ch;
     try {
       const [dsR, rsR, chR] = await Promise.all([
-        db.collection('days').doc(date).get().catch(() => ({ exists: false, data: () => null })),
-        db.collection('ledger').where('date', '==', date).get().catch(() => ({ docs: [] })),
-        chainFor(date).catch(() => null)
+        db.collection('days').doc(date).get(),
+        db.collection('ledger').where('date', '==', date).get(),
+        chainFor(date)
       ]);
       ds = dsR; rs = rsR; ch = chR;
     } catch (e) { main.innerHTML = errBox(e); return; }
 
     let d = ds.exists ? ds.data() : null;
-    // Fix: Removed K.isOpening because it doesn't exist
-    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date, ch);
     const frozen = ds.exists && ds.data().status === 'submitted';
     if (S.draft[date]) d = Object.assign({}, d, S.draft[date]);
@@ -520,8 +564,8 @@
 
     <div class="card"><h3>मीटर रीडिंग</h3>
       <div class="nz h"><span></span><span>ओपनिंग</span><span>क्लोज़िंग</span><span style="text-align:right">नेट L</span></div>
-      <b class="mut">पेट्रोल</b>${K.NZ.filter(k => k.startsWith('p')).map(k => nzr(k, k.toUpperCase())).join('')}
-      <b class="mut">डीज़ल</b>${K.NZ.filter(k => k.startsWith('d')).map(k => nzr(k, k.toUpperCase())).join('')}
+      <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
+      <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <div id="nzwarn"></div>
       ${(!locked && isOwner() && ch) ? `
       <div class="btns" style="margin-top:8px">
@@ -587,6 +631,7 @@
       ${locked ? '' : '<button class="btn g" data-do="submit">✅ जमा करें (लॉक)</button>'}
       ${isOwner() && d.status === 'submitted' ? '<button class="btn o" data-do="unlock">🔓 अनलॉक</button>' : ''}
       <button class="btn" data-do="report">📤 कॉम्पैक्ट रिपोर्ट</button>
+      ${locked ? '' : '<button class="btn o" data-do="importShifts">📥 शिफ्ट से भरें</button>'}
       ${locked ? '' : '<button class="btn w" data-do="scan">📷 AI रजिस्टर स्कैन</button>'}
     </div>`;
 
@@ -598,7 +643,7 @@
         const el = $('#f-openStock' + f); el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; el.focus(); b.remove();
       };
     });
-    const state = { d, rows, date, locked, chain: ch, chainDiff };
+    const state = { d, rows, date, locked, chain: ch, chainDiff, base: ds.exists ? baseOf(ds.data()) : {} };
     S.cur = state;
     renderRows(state);
     recalc();
@@ -656,7 +701,7 @@
         ? getExpItems().filter(x => x.label || num(x.amount)).map(x => ({ label: x.label, amount: num(x.amount) }))
         : (st.d.kharchaItems || [])
     });
-    K.NZ.forEach(k => { d.nz[k] = Object.assign({ o: '', c: '' }, ((st.d.nz || {})[k] || {})); });
+    K.NZ.forEach(k => { d.nz[k] = Object.assign({ o: '', c: '' }, K.activeNz().includes(k) ? {} : ((st.d.nz || {})[k] || {})); });
     $$('.nzi').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
     return d;
   }
@@ -679,7 +724,7 @@
     // Update Meter Net Liters
     K.NZ.forEach(k => { const e = $('#net-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     $('#nzwarn').innerHTML = o.warn.map(w => '<div class="warn">' + esc(w) + '</div>').join('') +
-      (o.filled < K.NZ.length ? `<div class="mut">${o.filled}/${K.NZ.length} नोज़ल भरे हैं</div>` : '');
+      (o.filled < K.activeNz().length ? `<div class="mut">${o.filled}/${K.activeNz().length} नोज़ल भरे हैं</div>` : '');
       
     // Update Stock Section (Petrol & Diesel)
     const tol = num(C.stockTolerance) || 25;
@@ -729,10 +774,12 @@
     const st = S.cur; if(!st) return;
     const d = readForm(); const o = K.compute(d, st.rows);
     if (silent && !st.d.at && o.filled === 0 && !num(d.paytm) && !num(d.swipe) && !num(d.malikDiya) && !K.khTotal(d)) return;
-    
     if (submit && !silent) {
-      if (!d.openCash || num(d.openCash) < 0) { /* basic validation */ }
-      if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
+      const ch = st.chain;
+      const v = K.validate(d, st.rows, { isOwner: isOwner(), prevPending: (ch && !ch.prevSubmitted) ? dmy(ch.prevDate) : '', gap: ch ? ch.gap : 0, prevDate: ch ? dmy(ch.prevDate) : '' });
+      if (v.errors.length) { alert('❌ अभी जमा नहीं हो सकता:\n\n• ' + v.errors.join('\n• ')); return; }
+      if (v.warns.length) { if (!confirm('⚠️ ध्यान दें:\n\n• ' + v.warns.join('\n• ') + '\n\nफिर भी जमा करके लॉक करें?')) return; }
+      else if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
     }
     d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, expStockP: o.expStockP, expStockD: o.expStockD, actStockP: o.actStockP, actStockD: o.actStockD, diffP: o.diffP, diffD: o.diffD,
       openCash: num(d.openCash), openStockP: num(d.openStockP), openStockD: num(d.openStockD),
@@ -743,7 +790,8 @@
     S.draft[st.date] = d;
 
     try {
-      await commit(db.collection('days').doc(st.date).set(d));
+      await commit(db.collection('days').doc(st.date).set(dayPatch(st.base, d), { merge: true }));
+      st.base = baseOf(d);
       S.rates = { petrol: d.rateP, diesel: d.rateD }; delete S.draft[st.date];
       
       // --- SBI Bank Deposit Auto Sync ---
@@ -878,7 +926,6 @@
     q('e-cancel').onclick = () => m.close();
     q('e-save').onclick = async () => {
       const partyId = q('e-party').value, party = partyById(priv, partyId);
-      if (!party) return toast('पार्टी नहीं मिली, रिफ्रेश करें');
       const data = { partyId, partyName: party.name, date: q('e-date').value, time: q('e-time').value || nowTime(), kind: priv ? 'udhar' : kind, note: q('e-note').value.trim() };
       if (!data.date) return toast('तारीख चुनें');
       if (data.kind === 'udhar') {
@@ -904,6 +951,7 @@
 
       const sbtn = q('e-save');
       if (sbtn.disabled) return;                       
+      if (!priv && (await dayIsLocked(data.date) || (e && e.date !== data.date && await dayIsLocked(e.date)))) return toast(LOCKMSG);
       if (!e && data.kind === 'udhar' && !priv) {
         const dup = await findDupEntry(data);
         if (dup) {
@@ -930,6 +978,8 @@
       try {
         await commit(b.commit());
         m.close(); toast('सेव हो गया ✔');
+        if (e) audit('ledger_edit', { party: party.name, was: { amount: e.amount, litre: e.litre, date: e.date, kind: e.kind }, now: { amount: data.amount, litre: data.litre, date: data.date, kind: data.kind }, priv });
+        if (!priv) { refreshDaySum(data.date); if (e && e.date !== data.date) refreshDaySum(e.date); }
         const savedParty = Object.assign({}, party);
         S.parties[priv ? 'priv' : 'pub'] = null;
         if (S.tab === 'day') dayView(S.date);
@@ -1069,18 +1119,8 @@
       </div>
       <div class="card" style="overflow-x:auto">
         <table>
-          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th><th class="n">एक्शन</th></tr>
-          ${st.rows.map(r => `<tr>
-            <td>${dmy(r.date)}</td>
-            <td>${esc(r.vehicle || '-')}<br><small class="mut">${esc(r.note||'')}</small></td>
-            <td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
-            <td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td>
-            <td class="n">${money(r.run)}</td>
-            <td class="n" style="white-space:nowrap">
-              <button class="btn sm w" data-edit-row="${r.id}">✏️</button>
-              <button class="btn sm r" data-del-row="${r.id}">🗑</button>
-            </td>
-          </tr>`).join('')}
+          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th></tr>
+          ${st.rows.map(r => `<tr><td>${dmy(r.date)}</td><td>${esc(r.vehicle || '-')}<br><small class="mut">${esc(r.note||'')}</small></td><td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td><td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td><td class="n">${money(r.run)}</td></tr>`).join('')}
         </table>
       </div>`;
       
@@ -1090,28 +1130,6 @@
     $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
     $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
-    
-    // 🔥 Edit/Delete Listener for Ledger
-    $$('[data-edit-row]').forEach(b => b.onclick = () => {
-      const row = all.find(x => x.id === b.dataset.editRow);
-      if (row) entryModal({ entry: row, date: row.date, priv: priv });
-    });
-    $$('[data-del-row]').forEach(b => b.onclick = async () => {
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
-      const row = all.find(x => x.id === b.dataset.delRow);
-      if (!row) return;
-      b.disabled = true;
-      try {
-        const b2 = db.batch();
-        b2.delete(db.collection(col).doc(row.id));
-        const delta = -sigEntry(priv, row);
-        if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
-        await b2.commit(); // Direct commit for speed
-        toast('एंट्री हटा दी गई ✔');
-        S.parties[priv ? 'priv' : 'pub'] = null;
-        partyView(id, priv);
-      } catch (e) { b.disabled = false; toast('नहीं हटा: ' + e.message); }
-    });
   }
   APP.partyView = partyView;
 
@@ -1285,6 +1303,7 @@
     save() { saveDay(false); },
     submit() { saveDay(true); },
     async unlock() {
+      audit('day_unlock', { date: S.cur.date });
       await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
     },
     report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
@@ -1295,6 +1314,40 @@
       const date = S.cur.date, d = Object.assign({}, S.draft[date] || readForm());
       applyChain(d, ch); d.opening_locked = true; S.draft[date] = d;
       await dayView(date); await saveDay(false, true); toast('कल से जुड़ गया ✔');
+    },
+    async importShifts() {
+      const date = S.cur.date;
+      let sh;
+      try { sh = await db.collection('sm_shifts').where('date', '==', date).get(); } catch (e) { return toast('शिफ्ट नहीं मिली: ' + e.message); }
+      const list = sh.docs.map(x => x.data());
+      if (!list.length) return toast('इस दिन की कोई सेल्समैन शिफ्ट नहीं मिली');
+      const clo = {}, warns = []; let paytm = 0, swipe = 0; const exps = [];
+      list.forEach(x => {
+        K.NZ.forEach(k => {
+          const n = x.nz && x.nz[k];
+          if (!n || !K.has(n.o) || !K.has(n.c)) return;
+          if (!(k in clo) || num(n.c) > clo[k]) clo[k] = num(n.c);
+          const dOpen = $('.nzi[data-k="' + k + '"][data-f="o"]');
+          if (dOpen && K.has(dOpen.value) && Math.abs(num(dOpen.value) - num(n.o)) > 0.01 && !(num(n.o) > num(dOpen.value))) warns.push(k.toUpperCase() + ': शिफ्ट ओपनिंग ' + n.o + ' ≠ दिन की ओपनिंग ' + dOpen.value);
+        });
+        paytm += num(x.paytm); swipe += num(x.swipe);
+        if (num(x.expAmt)) exps.push({ label: (x.name || '') + ': ' + (x.expLabel || 'खर्चा'), amount: num(x.expAmt) });
+      });
+      const m = modal(`<h3>📥 शिफ्ट से भरें · ${dmy(date)}</h3>
+        ${list.map(x => `<div class="kv"><span><b>${esc(x.name || x.sid)}</b><br><small class="mut">Paytm ${money(x.paytm)} · स्वाइप ${money(x.swipe)} · खर्चा ${money(x.expAmt)}</small></span><b>${money((x.sum || {}).sale)}</b></div>`).join('')}
+        <div class="mut" style="margin-top:8px;font-size:13px">भरे जाएँगे: ${Object.keys(clo).length} नोज़ल की क्लोज़िंग · Paytm ${money(paytm)} · स्वाइप ${money(swipe)} · ${exps.length} खर्चे</div>
+        ${warns.length ? '<div class="warn" style="margin-top:8px">' + warns.map(esc).join('<br>') + '</div>' : ''}
+        <div class="btns" style="margin-top:10px"><button class="btn g" id="is-ok">✅ भर दो</button><button class="btn w" id="is-no">रद्द</button></div>`);
+      $('#is-no', m).onclick = () => m.close();
+      $('#is-ok', m).onclick = () => {
+        const fire = el => el.dispatchEvent(new Event('input', { bubbles: true }));
+        Object.keys(clo).forEach(k => { const el = $('.nzi[data-k="' + k + '"][data-f="c"]'); if (el && !el.disabled) { el.value = clo[k]; fire(el); } });
+        const pe = $('#f-paytm'), se = $('#f-swipe');
+        if (pe && !pe.disabled && paytm > 0) { pe.value = r2(paytm); fire(pe); }
+        if (se && !se.disabled && swipe > 0) { se.value = r2(swipe); fire(se); }
+        if (exps.length) mergeExpItems(exps);
+        m.close(); recalc(); triggerAutoSave(); toast('शिफ्ट से भर गया — जाँचकर 💾 सेव करें');
+      };
     },
     scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
     editE(data) {
@@ -1313,6 +1366,7 @@
       collectDraft();
       const row = S.cur.rows.find(r => r.id === data.id);
       if (!row) return;
+      if (await dayIsLocked(row.date)) return toast(LOCKMSG);
       if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
       try {
         const b = db.batch();
@@ -1320,6 +1374,8 @@
         const delta = -K.signed(row); 
         if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
         await commit(b.commit());
+        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '' });
+        refreshDaySum(row.date);
         toast('एंट्री हटा दी गई ✔');
         S.parties.pub = null;
         dayView(S.date);
