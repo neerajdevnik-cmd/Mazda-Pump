@@ -22,8 +22,8 @@
     let snap, cSnap, RSH = { sh: [], cs: [] };
     try {
       if (mode === 'active') {
-        snap = await db().collection('runsheets').where('date', '==', today()).where('status', '==', 'active').get();
-        cSnap = await db().collection('cash_submissions').where('date', '==', today()).where('status', '==', 'pending').get();
+        snap = await db().collection('runsheets').where('status', '==', 'active').get();
+        cSnap = await db().collection('cash_submissions').where('status', '==', 'pending').get();
       } else {
         snap = await db().collection('runsheets').where('date', '>=', APP.shiftDate(today(), -90)).get();
         const from = APP.shiftDate(today(), -90);
@@ -52,7 +52,7 @@
             <div class="a">
               <b>${esc(c.salesmanName)}</b> · ${money(c.total)}<br>
               <small class="mut">${Object.keys(c.breakdown).map(n => '₹'+n+'x'+c.breakdown[n]).join(', ')}</small>
-              <small class="mut">${c.time}</small>
+              <small class="mut">${dmy(c.date)} ${c.time}</small>
             </div>
             <button class="btn sm g" data-approve="${c.id}">✔ अप्रूव करें</button>
           </div>
@@ -61,12 +61,12 @@
     }
 
     const histInfo = sh => {
-      const s = RSH.sh.find(x => x.sid === sh.sid && x.date === sh.date);
-      const got = RSH.cs.filter(x => x.sid === sh.sid && x.date === sh.date && x.status === 'approved').reduce((a, x) => a + num(x.total), 0);
+      const s = RSH.sh.find(x => x.rsId === sh.id) || RSH.sh.find(x => !x.rsId && x.sid === sh.sid && x.date === sh.date);
+      const got = RSH.cs.filter(x => (x.rsId ? x.rsId === sh.id : (x.sid === sh.sid && x.date === sh.date)) && x.status === 'approved').reduce((a, x) => a + num(x.total), 0);
       return s ? `<div class="mut" style="font-size:12px;">बिक्री ${money((s.sum || {}).sale)} · कैश होना चाहिए ${money((s.sum || {}).expected)} · मिला ${money(got)}</div>` : '';
     };
     let listHtml = activeSheets.length ? activeSheets.map(sheet => {
-      const st = sheet.status === 'active' ? '<span class="chip g">चालू (Active)</span>' : `<span class="chip r">बंद (${dmy(sheet.date)})</span>`;
+      const st = sheet.status === 'active' ? '<span class="chip ' + (sheet.date !== today() ? 'o' : 'g') + '">चालू (Active)' + (sheet.date !== today() ? ' · ' + dmy(sheet.date) + ' से' : '') + '</span>' : `<span class="chip r">बंद (${dmy(sheet.date)})</span>`;
       const nzOpen = Object.keys(sheet.openings || {}).map(k => `${k.toUpperCase()}: ${sheet.openings[k]}`).join(' | ');
       return `
         <div class="card" style="margin-bottom:10px;padding:12px;">
@@ -118,14 +118,31 @@
           approvedBy: S.user ? S.user.email : 'Manager',
           approvedAt: APP.FV.serverTimestamp()
         });
+        APP.audit('cash_approve', { id: cid });
         toast('कैश अप्रूव हो गया ✔'); APP.views.runsheet(mode);
       } catch(e) { btn.disabled = false; toast('एरर: ' + e.message); }
     });
 
     $$('[data-close]').forEach(b => b.onclick = async () => {
-      if (!confirm('क्या आप इस शिफ्ट को बंद करना चाहते हैं? इसके बाद यह हिस्ट्री में चली जाएगी।')) return;
+      const sh = activeSheets.find(x => x.id === b.dataset.close); if (!sh) return;
+      const warn = [], closings = {};
       try {
-        await db().collection('runsheets').doc(b.dataset.close).update({ status: 'closed', endTime: APP.nowTime() });
+        let s1 = await db().collection('sm_shifts').doc(sh.id).get();
+        if (!s1.exists) s1 = await db().collection('sm_shifts').doc(sh.sid + '_' + sh.date).get();
+        const sd = s1.exists ? s1.data() : null;
+        (sh.nozzles || []).forEach(k => {
+          const c = sd && sd.nz && sd.nz[k] ? sd.nz[k].c : '';
+          if (c === '' || c == null || isNaN(Number(c))) warn.push(k.toUpperCase() + ' की क्लोज़िंग नहीं भरी');
+          else closings[k] = num(c);
+        });
+        const pc = await db().collection('cash_submissions').where('status', '==', 'pending').get();
+        const mine = pc.docs.filter(d => { const x = d.data(); return x.sid === sh.sid && (!x.rsId || x.rsId === sh.id); });
+        if (mine.length) warn.push('कैश अप्रूवल बाकी है (' + mine.length + ')');
+      } catch (e) { }
+      if (!confirm((warn.length ? '⚠️ ' + warn.join('\n⚠️ ') + '\n\n' : '') + 'क्या आप इस शिफ्ट को बंद करना चाहते हैं? इसके बाद यह हिस्ट्री में चली जाएगी।')) return;
+      try {
+        await db().collection('runsheets').doc(sh.id).update({ status: 'closed', endTime: APP.nowTime(), closings, closeWarn: warn });
+        APP.audit('shift_close', { sid: sh.sid, rs: sh.id, date: sh.date, warn });
         toast('शिफ्ट बंद हो गई ✔'); APP.views.runsheet(mode);
       } catch (e) { toast('एरर: ' + e.message); }
     });
@@ -142,6 +159,10 @@
         ${salesmen.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
       </select>
       
+      <div class="row" style="margin-top:8px">
+        <div><label>आज का पेट्रोल रेट</label><input id="rs-rateP" inputmode="decimal" value="${S.rates.petrol || ''}"></div>
+        <div><label>आज का डीज़ल रेट</label><input id="rs-rateD" inputmode="decimal" value="${S.rates.diesel || ''}"></div>
+      </div>
       <label style="margin-top:10px;">मीटर चुनें और ओपनिंग रीडिंग डालें</label>
       <div id="rs-nz-grid" style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:6px;">
         ${nzKeys.map(k => `
@@ -189,7 +210,9 @@
       if (!selectedNz.length) return toast('कम से कम एक मीटर चुनें');
       if (missingOpen) return toast('चुने गए सभी मीटर की ओपनिंग रीडिंग डालें');
 
-      const snap = await db().collection('runsheets').where('date', '==', today()).where('status', '==', 'active').get();
+      const rateP = num($('#rs-rateP', m).value), rateD = num($('#rs-rateD', m).value);
+      if (!(rateP > 0) || !(rateD > 0)) return toast('आज का पेट्रोल व डीज़ल रेट भरें');
+      const snap = await db().collection('runsheets').where('status', '==', 'active').get();
       const activeNz = [];
       snap.docs.forEach(d => { activeNz.push(...d.data().nozzles); });
 
@@ -198,10 +221,11 @@
 
       try {
         await db().collection('runsheets').add({
-          date: today(), sid: sid, salesmanName: smObj.name, nozzles: selectedNz, openings: openings,
+          date: today(), sid: sid, salesmanName: smObj.name, nozzles: selectedNz, openings: openings, rateP, rateD,
           status: 'active', startTime: APP.nowTime(), createdAt: APP.FV.serverTimestamp(),
           createdBy: S.user ? S.user.email : 'manager'
         });
+        S.rates = { petrol: rateP, diesel: rateD }; S.ratesSetAt = today(); S.smRates = null;
         m.close(); toast('रनशीट शुरू हो गई ✔'); APP.views.runsheet();
       } catch (e) { toast('एरर: ' + e.message); }
     };
