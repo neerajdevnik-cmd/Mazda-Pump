@@ -438,7 +438,7 @@
     } catch (e) { main.innerHTML = errBox(e); return; }
     
     let d = ds.exists ? ds.data() : null;
-    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !r.opening).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date);
     const frozen = ds.exists && ds.data().status === 'submitted';
     
@@ -1022,11 +1022,12 @@
         <button class="btn sm o" id="addU">+ उधार</button>
         <button class="btn sm g" id="addJ">+ जमा</button>
         <button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>
+        ${priv && isOwner() ? '<button class="btn sm g" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
       <div class="card">
         <h3>${esc(p.name)}</h3>
         <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${esc((p.vehicles || []).join(', '))}</p>
-        <div class="due">कुल बैलेंस: ${money(st.close)}</div>
+        <div class="due">कुल बैलेंस: ${money(priv ? p.bal : st.close)}</div>
       </div>
       <div class="card" style="overflow-x:auto">
         <table>
@@ -1040,14 +1041,29 @@
     $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
     $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
     $('#addOB').onclick = () => openingBalanceModal(id, priv);
+    if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
   }
   APP.partyView = partyView;
+
+  async function closePrivKhata(p, all) {
+    const bal = r2(num(p.bal));
+    if (!(bal > 0.01)) return toast('इस खाते में कोई बकाया नहीं है');
+    if (!confirm(p.name + ' का ' + money(bal) + ' पूरा मिल गया?\nखाता बंद होकर "हिस्ट्री" में चला जाएगा।')) return;
+    try {
+      const pend = all.filter(x => x.status === 'pending');
+      for (let i = 0; i < pend.length; i += 400) { const b = db.batch(); pend.slice(i, i + 400).forEach(x => b.update(db.collection('priv_ledger').doc(x.id), { status: 'paid', paidAt: FV.serverTimestamp() })); await b.commit(); }
+      await db.collection('priv_parties').doc(p.id).update({ bal: 0, closedAmount: bal, closedAt: FV.serverTimestamp() });
+      audit('priv_close', { party: p.name, amount: bal });
+      S.parties.priv = null; toast('खाता बंद ✔'); APP.views.priv();
+    } catch (e) { toast('नहीं हुआ: ' + e.message); }
+  }
 
   function openingBalanceModal(partyId, priv) {
     const m = modal(`<h3>⚖️ पिछला बैलेंस (Opening Balance)</h3>
       <p class="mut" style="font-size:12px">इससे पहले का हिसाब मैन्युअल लेजर में है, यहाँ से आगे का हिसाब ऐप में रहेगा।</p>
-      <label>तारीख</label><input type="date" id="ob-date" value="${todayISO()}">
-      <label>बकाया रकम (₹) (अगर हमें लेने हैं तो)</label><input id="ob-amt" inputmode="decimal">
+      <label>तारीख (जिस दिन से ऐप में हिसाब शुरू)</label><input type="date" id="ob-date" value="${todayISO().slice(0, 8)}01">
+      ${priv ? '' : '<label>किस तरह का बैलेंस?</label><select id="ob-type"><option value="due">हमें लेना है (बकाया)</option><option value="adv">पार्टी का एडवांस हमारे पास है</option></select>'}
+      <label>रकम (₹)</label><input id="ob-amt" inputmode="decimal">
       <label>नोट</label><input id="ob-note" value="पिछले हिसाब का बैलेंस (Opening Balance)">
       <div class="btns"><button class="btn g" id="ob-save">सेव</button><button class="btn w" id="ob-cancel">रद्द</button></div>`);
     $('#ob-cancel', m).onclick = () => m.close();
@@ -1059,7 +1075,7 @@
       
       const data = {
         partyId, partyName: APP.partyById(priv, partyId).name,
-        date, time: '00:00', kind: 'udhar',
+        date, time: '00:00', opening: true, kind: (!priv && $('#ob-type', m).value === 'adv') ? 'jama' : 'udhar', ...((!priv && $('#ob-type', m).value === 'adv') ? { mode: 'cash' } : {}),
         vehicle: '', fuel: '', rate: 0, litre: 0,
         amount: amt, note, by: S.user.email, at: FV.serverTimestamp()
       };
