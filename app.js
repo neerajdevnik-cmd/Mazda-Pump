@@ -405,8 +405,8 @@
       d.openCash = pc.close;
       
       // New Stock Opening calculation based on previous day's Dip
-      d.openStockP = pc.actStockP !== null ? pc.actStockP : (prev.openStockP || 0);
-      d.openStockD = pc.actStockD !== null ? pc.actStockD : (prev.openStockD || 0);
+      d.openStockP = pc.actStockP !== null ? pc.actStockP : Math.max(0, pc.expStockP || 0);
+      d.openStockD = pc.actStockD !== null ? pc.actStockD : Math.max(0, pc.expStockD || 0);
       
     } else {
       d.opening_locked = false;
@@ -464,6 +464,8 @@
     
     const locked = (d.status === 'submitted' && !isOwner()) || isViewer();
     const dis = locked ? 'disabled' : '';
+    const stkRO = v => (!locked && num(v) > 0) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : '';
+    const stkBtn = f => (!locked && num(f === 'P' ? d.openStockP : d.openStockD) > 0) ? `<button class="btn sm w" type="button" id="stk-tg${f}" style="margin-top:4px;font-size:11px;padding:6px">🔓 एडिट करें</button>` : '';
     const isOpeningLocked = d.opening_locked !== false;
     const ro = isOpeningLocked ? 'readonly style="background:#f0f0f0;color:#555;font-weight:bold;"' : '';
 
@@ -500,7 +502,7 @@
 
     <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
       <div class="row">
-        <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockP" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockP || '')}"></div>
+        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockP" inputmode="decimal" ${stkRO(d.openStockP)} value="${esc(d.openStockP || '')}" ${dis}>${stkBtn('P')}</div>
         <div>
           <label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}
           ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="petrol" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
@@ -515,7 +517,7 @@
 
     <div class="card"><h3>🛢️ डीज़ल स्टॉक (लीटर)</h3>
       <div class="row">
-        <div><label>ओपनिंग स्टॉक (Locked)</label><input id="f-openStockD" readonly style="background:#f0f0f0;font-weight:bold" value="${esc(d.openStockD || '')}"></div>
+        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockD" inputmode="decimal" ${stkRO(d.openStockD)} value="${esc(d.openStockD || '')}" ${dis}>${stkBtn('D')}</div>
         <div>
           <label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}
           ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="diesel" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
@@ -560,6 +562,13 @@
     </div>`;
 
     setExpItems(Array.isArray(d.kharchaItems) ? d.kharchaItems : [], locked);
+    ['P', 'D'].forEach(f => {
+      const b = $('#stk-tg' + f); if (!b) return;
+      b.onclick = () => {
+        if (!confirm('ओपनिंग स्टॉक पिछले दिन की डिप से अपने-आप आता है।\nबदलने पर आज का "फर्क" भी बदल जाएगा। बदलें?')) return;
+        const el = $('#f-openStock' + f); el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; el.focus(); b.remove();
+      };
+    });
     const state = { d, rows, date, locked };
     S.cur = state;
     renderRows(state);
