@@ -16,12 +16,12 @@
       const old = document.querySelector('#smc-card'); if (old) old.remove();
       const by = {};
       const get = (id, name) => by[id] = by[id] || { name: name || id, exp: 0, ok: 0, pend: 0, hasShift: false };
-      sh.docs.forEach(d => { const x = d.data(); const o = get(x.sid, x.name); o.exp = r2(num((x.sum || {}).expected)); o.hasShift = true; });
+      sh.docs.forEach(d => { const x = d.data(); const o = get(x.sid, x.name); o.exp = r2(o.exp + num((x.sum || {}).expected)); o.hasShift = true; });
       const pend = [];
       cs.docs.forEach(d => { const x = d.data(), o = get(x.sid, x.salesmanName); if (x.status === 'approved') o.ok += num(x.total); else { o.pend += num(x.total); pend.push({ id: d.id, who: x.salesmanName, t: num(x.total) }); } });
       const active = rs.docs.filter(d => d.data().status === 'active').length;
       const act = new Set(rs.docs.filter(d => d.data().status === 'active').map(d => d.data().sid));
-      const ids = Object.keys(by).filter(id => act.has(id));
+      const ids = Object.keys(by);
       if (!ids.length && !active) return;
       const box = document.createElement('div'); box.id = 'smc-card'; box.dataset.d = st.date; box.className = 'card';
       box.innerHTML = '<h3>🧑‍💼 Salesman cash</h3>' + (active ? '<div class="warn">⚠️ ' + active + ' शिफ्ट अभी चालू है — बंद करके कैश लें</div>' : '') +
@@ -34,7 +34,7 @@
       box.querySelectorAll('[data-smc]').forEach(b => b.onclick = async () => {
         if (!confirm('कैश गिनकर देख लिया? अप्रूव करने पर रकम सेल्समैन के खाते में जुड़ जाएगी।')) return;
         b.disabled = true;
-        try { await db().collection('cash_submissions').doc(b.dataset.smc).update({ status: 'approved', approvedBy: (S.user && S.user.email) || 'Manager', approvedAt: APP.FV.serverTimestamp() }); toast('कैश अप्रूव ✔'); box.remove(); card(); }
+        try { await db().collection('cash_submissions').doc(b.dataset.smc).update({ status: 'approved', approvedBy: (S.user && S.user.email) || 'Manager', approvedAt: APP.FV.serverTimestamp() }); APP.audit('cash_approve', { id: b.dataset.smc }); toast('कैश अप्रूव ✔'); box.remove(); card(); }
         catch (e) { b.disabled = false; toast('एरर: ' + e.message); }
       });
     } finally { busy = false; }
