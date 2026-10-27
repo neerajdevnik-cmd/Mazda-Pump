@@ -4,8 +4,8 @@
   const APP = window.APP || {};
   const C = APP.C, K = APP.K, S = APP.S, $ = APP.$, $$ = APP.$$, esc = APP.esc, num = APP.num;
   const r2 = (n) => (K && K.r2 ? K.r2(n) : Number(n || 0).toFixed(2));
-  const money = APP.money, dmy = APP.dmy, toast = APP.toast, modal = APP.modal;
-  const db = () => APP.db;
+  const money = APP.money, lit = APP.lit, dmy = APP.dmy, toast = APP.toast, modal = APP.modal;
+  const db = () => APP.db, FV = () => APP.FV;
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
 
   APP.views = APP.views || {};
@@ -13,28 +13,68 @@
   /* ======================= MOC BPCL VECTOR EMBLEM ======================= */
   const MOC_BPCL_LOGO = `<img src="./logo.png" alt="" width="64" height="64" style="display:block;width:64px;height:64px;margin:0 auto 6px auto;border-radius:50%">`;
 
-  /* ======================= GAADI CASH ======================= */
-  APP.views.gaadicash = async function () {
+  /* ======================= GAADI CASH (WITH HISTORY & DELETE) ======================= */
+  APP.views.gaadicash = async function (mode) {
+    mode = mode || 'active';
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">गाड़ी कैश लोड हो रहा है…</p>';
+    
     let snap, pSnap;
-    try { [snap, pSnap] = await Promise.all([db().collection('gaadi_cash').orderBy('date', 'desc').limit(40).get(), db().collection('gaadi_cash').where('status', '==', 'pending').get()]); } catch (e) { snap = { docs: [] }; pSnap = { docs: [] }; }
+    try { 
+      if (mode === 'active') {
+        [snap, pSnap] = await Promise.all([db().collection('gaadi_cash').orderBy('date', 'desc').limit(40).get(), db().collection('gaadi_cash').where('status', '==', 'pending').get()]); 
+      } else {
+        // History mode: Fetch only paid
+        snap = await db().collection('gaadi_cash').where('status', '==', 'paid').orderBy('date', 'desc').limit(100).get();
+        pSnap = { docs: [] };
+      }
+    } catch (e) { snap = { docs: [] }; pSnap = { docs: [] }; }
+    
     const seen = {}, list = [];
-    pSnap.docs.concat(snap.docs).forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; list.push({ id: d.id, ...d.data() }); } });
+    pSnap.docs.concat(snap.docs).forEach(d => { 
+      if (!seen[d.id]) { 
+        seen[d.id] = 1; 
+        list.push({ id: d.id, ...d.data() }); 
+      } 
+    });
     list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    
     const totPending = pSnap.docs.reduce((a, d) => a + num(d.data().amount), 0);
     const LOCAL_GC = 'लोकल / बिना पार्टी (गाड़ी कैश)';
 
+    let listHtml = list.map(item => `
+      <div class="item">
+        <div class="a">
+          <b>${esc(item.vehicle)} · ${esc(item.partyName || 'लोकल')}</b>
+          <small>${dmy(item.date)}</small>
+        </div>
+        <div style="text-align:right">
+          <b class="neg">${money(item.amount)}</b><br>
+          ${mode === 'active' 
+            ? (item.status === 'paid' ? '<span class="chip g">Paid</span>' : `<button class="btn sm g" data-gc-id="${item.id}">✔ Paid</button>`)
+            : `<span class="chip g">Paid</span> <button class="btn sm r" data-del-gc="${item.id}" style="margin-left:4px;">🗑</button>`
+          }
+        </div>
+      </div>`).join('') || '<p class="mut" style="text-align:center;padding:20px;">कोई रिकॉर्ड नहीं</p>';
+
     main.innerHTML = `
-      <div class="card"><div class="kv"><span>कुल बाकी गाड़ी कैश</span><b class="neg">${money(totPending)}</b></div></div>
-      <div class="btns" style="margin-bottom:12px"><button class="btn o" id="gc-add">+ नया गाड़ी कैश दें</button></div>
-      <div class="card">
-        ${list.length ? list.map(item => `
-          <div class="item">
-            <div class="a"><b>${esc(item.vehicle)} · ${esc(item.partyName || 'लोकल')}</b><small>${dmy(item.date)}</small></div>
-            <div style="text-align:right"><b class="neg">${money(item.amount)}</b><br>${item.status === 'paid' ? '<span class="chip g">Paid</span>' : `<button class="btn sm g" data-gc-id="${item.id}">✔ Paid</button>`}</div>
-          </div>`).join('') : '<p class="mut">कोई रिकॉर्ड नहीं</p>'}
-      </div>`;
+      <div class="card" style="background:#0b3d91;color:#fff;">
+        <div class="row" style="align-items:center;">
+          <div style="flex:1">
+            <h3 style="color:#fff;margin:0;">🚚 गाड़ी कैश</h3>
+            <div style="font-size:12px;opacity:.85;margin-top:4px;">${mode === 'active' ? 'कुल बाकी: ' + money(totPending) : 'पुरानी हिस्ट्री'}</div>
+          </div>
+          <div style="flex:0 0 auto;">
+            <button class="btn sm w" id="gc-toggle">${mode === 'active' ? '📜 हिस्ट्री देखें' : '⬅️ वापस'}</button>
+          </div>
+        </div>
+      </div>
+      
+      ${mode === 'active' ? '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="gc-add">+ नया गाड़ी कैश दें</button></div>' : ''}
+      
+      <div class="card">${listHtml}</div>`;
+
+    $('#gc-toggle').onclick = () => APP.views.gaadicash(mode === 'active' ? 'history' : 'active');
 
     const gcWrite = async (party, veh, amt, kind, note) => {
       const ref = db().collection('ledger').doc(), b = db().batch();
@@ -44,43 +84,62 @@
       b.update(db().collection('parties').doc(party.id), { bal: APP.FV.increment(kind === 'udhar' ? amt : -amt) });
       await b.commit(); return ref.id;
     };
-    $('#gc-add').onclick = async () => {
-      let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
-      const m = modal(`<h3>नया गाड़ी कैश</h3>
-        <label>पार्टी</label><select id="gc-pp"><option value="">— लोकल / बिना पार्टी —</option>${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
-        <label>गाड़ी नंबर</label><input id="gc-v" style="text-transform:uppercase">
-        <label>रुपये</label><input id="gc-a" inputmode="decimal">
-        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी; बिना पार्टी हो तो "लोकल / बिना पार्टी (गाड़ी कैश)" खाते में जुड़ेगी। दोनों हाल में आज के कैश से कम होगी।</div>
-        <div class="btns" style="margin-top:10px"><button class="btn g" id="gc-sv">सेव</button><button class="btn w" id="gc-cl">रद्द</button></div>`);
-      $('#gc-cl', m).onclick = () => m.close();
-      $('#gc-sv', m).onclick = async () => {
-        const v = $('#gc-v', m).value.trim().toUpperCase(), a = num($('#gc-a', m).value), p = ps.find(x => x.id === $('#gc-pp', m).value);
-        if (!v || !(a > 0)) return toast('गाड़ी नंबर व रकम सही भरें');
-        const btn = $('#gc-sv', m); if (btn.disabled) return; btn.disabled = true;
-        try {
-          let pp = p;
-          if (!pp) {
-            pp = ps.find(x => x.name === LOCAL_GC);
-            if (!pp) { const ref = db().collection('parties').doc(); await ref.set({ name: LOCAL_GC, phone: '', vehicles: [], bal: 0, createdAt: APP.FV.serverTimestamp() }); pp = { id: ref.id, name: LOCAL_GC }; }
-          }
-          const lid = await gcWrite(pp, v, a, 'udhar', 'गाड़ी कैश');
-          await db().collection('gaadi_cash').add({ vehicle: v, partyId: pp.id, partyName: pp.name, ledgerId: lid, amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
-          APP.S.parties = null; m.close(); toast('सेव हो गया'); APP.views.gaadicash();
-        } catch (e) { btn.disabled = false; toast('सेव नहीं हुआ: ' + e.message); }
+
+    if (mode === 'active' && $('#gc-add')) {
+      $('#gc-add').onclick = async () => {
+        let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
+        const m = modal(`<h3>नया गाड़ी कैश</h3>
+          <label>पार्टी</label><select id="gc-pp"><option value="">— लोकल / बिना पार्टी —</option>${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+          <label>गाड़ी नंबर</label><input id="gc-v" style="text-transform:uppercase">
+          <label>रुपये</label><input id="gc-a" inputmode="decimal">
+          <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी; बिना पार्टी हो तो "लोकल / बिना पार्टी (गाड़ी कैश)" खाते में जुड़ेगी। दोनों हाल में आज के कैश से कम होगी।</div>
+          <div class="btns" style="margin-top:10px"><button class="btn g" id="gc-sv">सेव</button><button class="btn w" id="gc-cl">रद्द</button></div>`);
+        $('#gc-cl', m).onclick = () => m.close();
+        $('#gc-sv', m).onclick = async () => {
+          const v = $('#gc-v', m).value.trim().toUpperCase(), a = num($('#gc-a', m).value), p = ps.find(x => x.id === $('#gc-pp', m).value);
+          if (!v || !(a > 0)) return toast('गाड़ी नंबर व रकम सही भरें');
+          const btn = $('#gc-sv', m); if (btn.disabled) return; btn.disabled = true;
+          try {
+            let pp = p;
+            if (!pp) {
+              pp = ps.find(x => x.name === LOCAL_GC);
+              if (!pp) { const ref = db().collection('parties').doc(); await ref.set({ name: LOCAL_GC, phone: '', vehicles: [], bal: 0, createdAt: APP.FV.serverTimestamp() }); pp = { id: ref.id, name: LOCAL_GC }; }
+            }
+            const lid = await gcWrite(pp, v, a, 'udhar', 'गाड़ी कैश');
+            await db().collection('gaadi_cash').add({ vehicle: v, partyId: pp.id, partyName: pp.name, ledgerId: lid, amount: a, date: APP.todayISO(), status: 'pending', createdAt: APP.FV.serverTimestamp() });
+            APP.S.parties = null; m.close(); toast('सेव हो गया'); APP.views.gaadicash('active');
+          } catch (e) { btn.disabled = false; toast('सेव नहीं हुआ: ' + e.message); }
+        };
       };
-    };
-    $$('[data-gc-id]').forEach(b => {
-      b.onclick = async () => {
-        const it = list.find(x => x.id === b.dataset.gcId); if (!it) return;
-        if (!confirm('क्या ' + money(it.amount) + ' वापस मिल गया?' + (it.partyId ? '\nये पार्टी के खाते में नकद जमा लिखा जाएगा।' : ''))) return;
-        b.disabled = true;
-        try {
-          if (it.partyId) await gcWrite({ id: it.partyId, name: it.partyName }, it.vehicle, num(it.amount), 'jama', 'गाड़ी कैश वापस');
-          await db().collection('gaadi_cash').doc(it.id).update({ status: 'paid' });
-          APP.S.parties = null; toast('Paid हो गया'); APP.views.gaadicash();
-        } catch (e) { b.disabled = false; toast('नहीं हुआ: ' + e.message); }
-      };
-    });
+    }
+
+    if (mode === 'active') {
+      $$('[data-gc-id]').forEach(b => {
+        b.onclick = async () => {
+          const it = list.find(x => x.id === b.dataset.gcId); if (!it) return;
+          if (!confirm('क्या ' + money(it.amount) + ' वापस मिल गया?' + (it.partyId ? '\nये पार्टी के खाते में नकद जमा लिखा जाएगा।' : ''))) return;
+          b.disabled = true;
+          try {
+            if (it.partyId) await gcWrite({ id: it.partyId, name: it.partyName }, it.vehicle, num(it.amount), 'jama', 'गाड़ी कैश वापस');
+            await db().collection('gaadi_cash').doc(it.id).update({ status: 'paid', paidAt: APP.FV.serverTimestamp() });
+            APP.S.parties = null; toast('Paid हो गया'); APP.views.gaadicash('active');
+          } catch (e) { b.disabled = false; toast('नहीं हुआ: ' + e.message); }
+        };
+      });
+    } else {
+      // History Delete
+      $$('[data-del-gc]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('क्या आप इस रिकॉर्ड को हमेशा के लिए हिस्ट्री से डिलीट करना चाहते हैं?')) return;
+          b.disabled = true;
+          try {
+            await db().collection('gaadi_cash').doc(b.dataset.delGc).delete();
+            toast('हिस्ट्री से हटा दिया गया ✔');
+            APP.views.gaadicash('history');
+          } catch (e) { b.disabled = false; toast('डिलीट नहीं हुआ: ' + e.message); }
+        };
+      });
+    }
   };
 
   /* ======================= STOCK REPORT (MONTHLY) ======================= */
@@ -156,28 +215,28 @@
 
         <div class="card">
           <h3>⛽ पेट्रोल का हिसाब</h3>
-          ${kvEl('टैंकर से आया (कुल)', APP.lit(totTankerP))}
-          ${kvEl('मीटर से बिक्री (कुल)', APP.lit(totLitP), 'big')}
-          ${kvEl('टेस्टिंग (कुल)', APP.lit(totTestP))}
+          ${kvEl('टैंकर से आया (कुल)', lit(totTankerP))}
+          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitP), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', lit(totTestP))}
           ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffP) + r2(totDiffP) + ' L', color(totDiffP))}
         </div>
 
         <div class="card">
           <h3>⛽ डीज़ल का हिसाब</h3>
-          ${kvEl('टैंकर से आया (कुल)', APP.lit(totTankerD))}
-          ${kvEl('मीटर से बिक्री (कुल)', APP.lit(totLitD), 'big')}
-          ${kvEl('टेस्टिंग (कुल)', APP.lit(totTestD))}
+          ${kvEl('टैंकर से आया (कुल)', lit(totTankerD))}
+          ${kvEl('मीटर से बिक्री (कुल)', lit(totLitD), 'big')}
+          ${kvEl('टेस्टिंग (कुल)', lit(totTestD))}
           ${kvEl('वेरिएशन (कम/ज्यादा)', sign(totDiffD) + r2(totDiffD) + ' L', color(totDiffD))}
         </div>
 
         <div class="card">
           <h3>⛽ नोज़ल-वाइज पेट्रोल बिक्री</h3>
-          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
+          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
         </div>
 
         <div class="card">
           <h3>🛢️ नोज़ल-वाइज डीज़ल बिक्री</h3>
-          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
+          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
         </div>
 
         <div class="card" style="overflow-x:auto">
@@ -818,18 +877,194 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     toast(`${filled} बॉक्स भरे · ${wrote} एंट्री जुड़ीं — अब 💾 सेव दबाएँ`);
   };
 
+  /* ======================= 3:4 RATIO DAILY REPORT (GALLA LOGIC) ======================= */
   APP.shareCompactDayReport = async function (st, d) {
-    toast('कॉम्पैक्ट रिपोर्ट तैयार हो रही है…');
-    const main = $('#main');
-    if (!main) return;
-    const cv = await html2canvas(main, { scale: 2 });
-    cv.toBlob(blob => {
+    if (!st || !d) return toast('डेटा नहीं मिला');
+    toast('रिपोर्ट तैयार हो रही है…');
+    const o = st.o || K.compute(d, st.rows);
+    const inr = n => Number(num(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    const activeNz = K.activeNz();
+
+    // Meter Readings
+    const nzRows = activeNz.map(k => {
+      const n = d.nz[k] || {};
+      const nz = o.nz[k] || { net: 0, ok: false };
+      return `<div class="nzi"><b>${k.toUpperCase()}</b><span>${n.o || '—'} → ${n.c || '—'}</span><b class="net">${nz.ok ? inr(nz.net) + ' L' : '—'}</b></div>`;
+    });
+    const mid = Math.ceil(nzRows.length / 2);
+    const nzHtml = `<div class="nz-col">${nzRows.slice(0, mid).join('')}</div><div class="nz-col">${nzRows.slice(mid).join('')}</div>`;
+
+    // Stock
+    const diffP = o.diffP, diffD = o.diffD;
+    const tol = num(C.stockTolerance) || 25;
+    const diffCls = v => (v == null) ? 'mut' : Math.abs(v) > tol ? 'red' : Math.abs(v) <= 0.5 ? 'grn' : 'org';
+
+    // Udhar (Max 6 to fit 3:4)
+    const MAX_U = 6;
+    const allU = st.rows.filter(r => r.kind === 'udhar');
+    const uShown = allU.slice(0, MAX_U), uMore = allU.length - uShown.length;
+    const uHtml = uShown.length
+      ? uShown.map(r => `<div class="ri"><span>${esc(r.partyName)}${r.vehicle ? ' (' + esc(r.vehicle) + ')' : ''} <b>${r.litre ? inr(r.litre)+'L' : ''}</b></span><b class="red">-${inr(r.amount)}</b></div>`).join('') + (uMore > 0 ? `<div class="ri mut"><span>+ ${uMore} और उधार एंट्री</span></div>` : '')
+      : `<div class="ri mut"><span>कोई उधार नहीं</span></div>`;
+
+    // Kharcha (Max 4 to fit)
+    const MAX_KH = 4;
+    const khList = K.khList(d);
+    const khShown = khList.slice(0, MAX_KH), khMore = khList.length - khShown.length;
+    const khHtml = khShown.length
+      ? khShown.map(x => `<div class="ri"><span>${esc(x.label)}</span><b class="red">-${inr(x.amount)}</b></div>`).join('') + (khMore > 0 ? `<div class="ri mut"><span>+ ${khMore} और खर्चे</span></div>` : '')
+      : `<div class="ri mut"><span>कोई खर्चा नहीं</span></div>`;
+
+    // Jama (Max 3)
+    const MAX_J = 3;
+    const allJ = st.rows.filter(r => r.kind === 'jama');
+    const jShown = allJ.slice(0, MAX_J), jMore = allJ.length - jShown.length;
+    const jHtml = jShown.length
+      ? `<div class="rp-sec"><div class="rp-sec-hd"><span>✅ पार्टी जमा</span><span class="grn">+${money(o.jCash + o.jPaytm + o.jSwipe)}</span></div>${jShown.map(r => `<div class="ri"><span>${esc(r.partyName)} · ${APP.MODE[r.mode] || r.mode}</span><b class="grn">+${inr(r.amount)}</b></div>`).join('')}${jMore > 0 ? `<div class="ri mut"><span>+ ${jMore} और</span></div>` : ''}</div>`
+      : '';
+
+    const W = 900, H = 1200;   /* exactly 3:4 */
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;';
+    
+    // Galla Logic Variables
+    const gallaIn = num(d.openCash) + o.sale + o.jCash + o.jPaytm + o.jSwipe;
+    const gallaOut = num(d.paytm) + num(d.swipe) + o.udhar + o.totalKharcha + num(d.malikDiya);
+    const actualCash = o.close;
+
+    wrap.innerHTML = `
+      <style>
+        .rp{width:${W}px;height:${H}px;background:#fff;color:#1b1f27;padding:26px 30px;box-sizing:border-box;font-family:'Noto Sans Devanagari','Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+        .rp *{box-sizing:border-box}
+        .rp-hd{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:3px solid #0b3d91}
+        .rp-hd-l{display:flex;align-items:center;gap:11px}
+        .rp-hd-l img{width:50px;height:50px;border-radius:50%;border:2px solid #fdb813;background:#fff}
+        .rp-nm{font-size:19px;font-weight:800;color:#0b3d91;line-height:1.1}
+        .rp-sub{font-size:11px;color:#6a758c;margin-top:2px}
+        .rp-hd-r{text-align:right}
+        .rp-dt{font-size:13px;font-weight:700;color:#0b3d91}
+        .rp-sl{font-size:26px;font-weight:900;color:#0a7d33;line-height:1;margin-top:3px;letter-spacing:-.5px}
+        .rp-sl-lb{font-size:9px;color:#6a758c;text-transform:uppercase;letter-spacing:.5px}
+        .rp-rates{display:flex;gap:7px}
+        .rp-rate{flex:1;background:#f4f6fa;border-radius:9px;padding:6px 7px;text-align:center;border:1px solid #e5e7eb}
+        .rp-rate span{font-size:9.5px;color:#6a758c;display:block}
+        .rp-rate b{font-size:14px;color:#1b1f27}
+        .rp-sec{background:#f9fafb;border-radius:9px;padding:8px 10px;border:1px solid #e5e7eb}
+        .rp-sec-hd{font-size:11.5px;font-weight:800;color:#0b3d91;margin-bottom:5px;display:flex;justify-content:space-between}
+        .rp-nz{display:flex;gap:12px}
+        .nz-col{flex:1}
+        .nzi{display:grid;grid-template-columns:26px 1fr 52px;gap:6px;font-size:11.5px;padding:2px 0;border-bottom:1px dashed #e5e7eb;align-items:center}
+        .nzi:last-child{border-bottom:0}
+        .nzi b:first-child{color:#0b3d91}
+        .nzi span{font-family:monospace;font-size:10.5px;color:#5b6577}
+        .nzi .net{text-align:right;font-variant-numeric:tabular-nums}
+        .rp-stk{display:flex;gap:9px}
+        .sk{flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:7px 9px;text-align:center}
+        .sk-lb{font-size:9.5px;color:#6a758c;text-transform:uppercase;letter-spacing:.4px}
+        .sk-v{font-size:16px;font-weight:800;margin:2px 0;font-variant-numeric:tabular-nums}
+        .sk-sb{font-size:9.5px;color:#8a93a6}
+        .red{color:#c62828!important} .grn{color:#0a7d33!important} .org{color:#e08a00!important} .mut{color:#97a2b8!important}
+        .ri{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:2.5px 0;border-bottom:1px dashed #e5e7eb}
+        .ri:last-child{border-bottom:0}
+        .ri span{color:#3b4457;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+        .ri b{font-variant-numeric:tabular-nums;white-space:nowrap}
+        .rp-2c{display:flex;gap:9px}
+        .rp-2c > .rp-sec{flex:1}
+        .rp-spacer{flex:1;min-height:0}
+        .rp-tot{background:linear-gradient(135deg,#0b3d91,#1456c4);color:#fff;border-radius:11px;padding:11px 16px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 12px rgba(11,61,145,.28)}
+        .rp-tot-l{font-size:11.5px;opacity:.9;letter-spacing:.3px}
+        .rp-tot-v{font-size:25px;font-weight:900;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+        .rp-ft{text-align:center;font-size:9px;color:#97a2b8;padding-top:5px;border-top:1px solid #eef2fa;line-height:1.4}
+      </style>
+      <div class="rp">
+        <div class="rp-hd">
+          <div class="rp-hd-l">
+            <img src="./logo.png" alt="">
+            <div>
+              <div class="rp-nm">${esc(C.pump.name)}</div>
+              <div class="rp-sub">${esc(C.pump.nameEn)} · ${esc(C.pump.roCode || '')}</div>
+            </div>
+          </div>
+          <div class="rp-hd-r">
+            <div class="rp-dt">${dmy(st.date)}</div>
+            <div class="rp-sl">${money(o.sale)}</div>
+            <div class="rp-sl-lb">कुल बिक्री</div>
+          </div>
+        </div>
+
+        <div class="rp-rates">
+          <div class="rp-rate"><span>पेट्रोल रेट</span><b>₹${num(d.rateP).toFixed(2)}</b></div>
+          <div class="rp-rate"><span>डीज़ल रेट</span><b>₹${num(d.rateD).toFixed(2)}</b></div>
+          <div class="rp-rate"><span>पेट्रोल बिक्री</span><b>${inr(o.litP)} L</b></div>
+          <div class="rp-rate"><span>डीज़ल बिक्री</span><b>${inr(o.litD)} L</b></div>
+          <div class="rp-rate"><span>टेस्टिंग</span><b>${num(d.testing)} L</b></div>
+        </div>
+
+        <div class="rp-sec">
+          <div class="rp-sec-hd"><span>⛽ मीटर रीडिंग (O → C)</span><span>${o.filled}/${activeNz.length} भरे</span></div>
+          <div class="rp-nz">${nzHtml}</div>
+        </div>
+
+        <div class="rp-sec">
+          <div class="rp-sec-hd"><span>🛢️ स्टॉक वेरिएशन</span></div>
+          <div class="rp-stk">
+            <div class="sk"><div class="sk-lb">⛽ पेट्रोल</div><div class="sk-v ${diffCls(diffP)}">${diffP == null ? '—' : (diffP > 0 ? '+' : '') + diffP.toFixed(2) + ' L'}</div><div class="sk-sb">डिप: ${o.actStockP != null ? inr(o.actStockP) + ' L' : 'नहीं'}</div></div>
+            <div class="sk"><div class="sk-lb">🛢️ डीज़ल</div><div class="sk-v ${diffCls(diffD)}">${diffD == null ? '—' : (diffD > 0 ? '+' : '') + diffD.toFixed(2) + ' L'}</div><div class="sk-sb">डिप: ${o.actStockD != null ? inr(o.actStockD) + ' L' : 'नहीं'}</div></div>
+          </div>
+        </div>
+
+        <div class="rp-2c">
+          <div class="rp-sec"><div class="rp-sec-hd"><span>🚚 उधार (${allU.length})</span><span class="red">${money(o.udhar)}</span></div>${uHtml}</div>
+          <div class="rp-sec"><div class="rp-sec-hd"><span>💸 खर्चा</span><span class="red">${money(o.totalKharcha)}</span></div>${khHtml}</div>
+        </div>
+
+        ${jHtml}
+
+        <!-- GALLA LOGIC (BADHANE WALE / GHATANE WALE) -->
+        <div class="rp-sec">
+          <div class="rp-sec-hd"><span>💰 कैश फ्लो</span></div>
+          <div class="rp-2c">
+            <div>
+              <div class="ri"><span>बिक्री + AD + जमा</span><b class="grn">+${money(gallaIn)}</b></div>
+              <div class="ri"><span>पिछला कैश (AD)</span><b>${money(d.openCash)}</b></div>
+            </div>
+            <div>
+              <div class="ri"><span>कुल खर्च + कटौती</span><b class="red">-${money(gallaOut)}</b></div>
+              <div class="ri"><span>असली नकद (दराज़)</span><b>${d.physicalCash ? money(d.physicalCash) : '—'}</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-spacer"></div>
+
+        <div class="rp-tot">
+          <div class="rp-tot-l">असली कैश (बचा)</div>
+          <div class="rp-tot-v">${money(actualCash)}</div>
+        </div>
+
+        <div class="rp-ft">${esc(C.pump.addressEn)} · ${esc(C.pump.phone)}<br>Generated ${new Date().toLocaleString('en-IN')}</div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+
+    try {
+      await Promise.all(Array.from(wrap.querySelectorAll('img')).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(res => { img.onload = res; img.onerror = res; });
+      }));
+      const frame = wrap.querySelector('.rp');
+      const canvas = await html2canvas(frame, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
       const file = new File([blob], `report-${st.date}.png`, { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], text: 'दैनिक रिपोर्ट - ' + dmy(st.date) });
+        await navigator.share({ files: [file], text: 'दैनिक रिपोर्ट - ' + dmy(st.date) });
       } else {
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+        toast('रिपोर्ट डाउनलोड हो गई ✔');
       }
-    });
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') toast('रिपोर्ट नहीं बनी: ' + (e.message || ''));
+    }
+    document.body.removeChild(wrap);
   };
 })();
