@@ -23,5 +23,6 @@
     return chart[chart.length - 1][1];
   }
 
-  window.DipChart = { getLiters, PETROL_DATA, DIESEL_DATA };
+  const maxDip = t => { const c = t === 'diesel' ? DIESEL_DATA : PETROL_DATA; return c[c.length - 1][0]; };
+  window.DipChart = { getLiters, maxDip, PETROL_DATA, DIESEL_DATA };
 })();
