@@ -1,5 +1,5 @@
-const V = 'mazda-v11';
-const SHELL = ['./', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js', 'app.js', 'views2.js', 'features.js', 'features2.js', 'salesman.js', 'shop.js', 'runsheet.js', 'preset_parties.js', 'manifest.json', 'logo.png', 'icon-192.png', 'icon-512.png'];
+const V = 'mazda-v12';
+const SHELL = ['./', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js', 'app.js', 'views2.js', 'features.js', 'features2.js', 'salesman.js', 'shop.js', 'runsheet.js', 'monthly.js', 'preset_parties.js', 'manifest.json', 'logo.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.allSettled(SHELL.map(f => c.add(f)))).then(() => self.skipWaiting()));
 });
