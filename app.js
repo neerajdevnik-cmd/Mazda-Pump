@@ -31,7 +31,11 @@
     t.textContent = msg; t.classList.add('on');
     clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3000);
   }
-  function commit(p) { return Promise.race([p, new Promise(r => setTimeout(r, 2500))]); }
+  function commit(p) {
+    let done = false;
+    p.then(() => { done = true; }, () => { done = true; });
+    return Promise.race([p, new Promise(r => setTimeout(() => { if (!done) toast('⏳ नेट धीमा है — डेटा फ़ोन में सुरक्षित है, नेट आते ही अपने-आप जुड़ जाएगा'); r(); }, 2500))]);
+  }
   function audit(action, detail) {
     try {
       const byUser = S.salesman ? (S.salesman.name + ' (Salesman)') : (S.user ? S.user.email : 'Unknown');
@@ -226,7 +230,7 @@
       if (s && s.pin === pin) {
         try {
           if (!auth.currentUser) await auth.signInAnonymously();
-          localStorage.setItem('mazda_sm', JSON.stringify(s));
+          localStorage.setItem('mazda_sm', JSON.stringify({ id: s.id, name: s.name }));
           S.salesman = s;
           S.role = 'salesman';
           S.user = { email: s.id + '@salesman.mazda' };
@@ -286,6 +290,7 @@
 
     auth.onAuthStateChanged(u => {
       if (isViewer()) return;
+      if (u && u.isAnonymous) { if (!S.role && !S.salesman) loginView(); return; }
       if (!u) {
         if (!S.salesman) { S.user = null; return loginView(); }
       } else {
@@ -687,6 +692,7 @@
     if (isViewer()) return toast('आप केवल देख सकते हैं');
     const st = S.cur; if(!st) return;
     const d = readForm(); const o = K.compute(d, st.rows);
+    if (silent && !st.d.at && o.filled === 0 && !num(d.paytm) && !num(d.swipe) && !num(d.malikDiya) && !K.khTotal(d)) return;
     if (submit && !silent) {
       if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
     }
@@ -865,6 +871,9 @@
           if (!confirm('⚠️ ऐसी ही एंट्री पहले से मौजूद है:\n' + dup.partyName + ' · ' + dup.vehicle + ' · ' + money(dup.amount) + ' · ' + (dup.time || '') + '\nकिसने की: ' + by + '\n\nफिर भी दोबारा जोड़ें?')) return;
         }
       }
+      if (!e && data.kind === 'udhar' && !priv && num(party.limit) > 0 && num(party.bal) + data.amount > num(party.limit)) {
+        if (!confirm('⚠️ ' + party.name + ' की उधार सीमा ' + money(party.limit) + ' है।\nअभी बकाया ' + money(party.bal) + ' + यह ' + money(data.amount) + ' = ' + money(num(party.bal) + data.amount) + '\n\nफिर भी उधार दें?')) return;
+      }
       sbtn.disabled = true;
 
       const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
@@ -872,7 +881,11 @@
       const b = db.batch(); b.set(ref, data);
       const newSig = sigEntry(priv, data);
       const delta = newSig - (e ? sigEntry(priv, e) : 0);
-      if (delta) b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(delta) });
+      if (e && e.partyId && e.partyId !== partyId) {
+        const oldSig = sigEntry(priv, e);
+        if (oldSig) b.update(db.collection(pcol).doc(e.partyId), { bal: FV.increment(-oldSig) });
+        if (newSig) b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(newSig) });
+      } else if (delta) b.update(db.collection(pcol).doc(partyId), { bal: FV.increment(delta) });
 
       try {
         await commit(b.commit());
@@ -911,7 +924,7 @@
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
-          <div class="a"><b>${esc(p.name)}</b><small>${(p.vehicles || []).join(', ')}</small></div>
+          <div class="a"><b>${esc(p.name)}</b><small>${esc((p.vehicles || []).join(', '))}</small></div>
           <span class="chip ${b > 0 ? 'r' : 'g'}">${money(b)}</span>
         </div>`;
       }).join('') : '<p class="mut">कोई पार्टी नहीं मिली</p>';
@@ -1010,7 +1023,7 @@
       </div>
       <div class="card">
         <h3>${esc(p.name)}</h3>
-        <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${(p.vehicles || []).join(', ')}</p>
+        <p class="mut">${esc(p.phone || 'फोन नंबर नहीं')} | गाड़ियां: ${esc((p.vehicles || []).join(', '))}</p>
         <div class="due">कुल बैलेंस: ${money(st.close)}</div>
       </div>
       <div class="card" style="overflow-x:auto">
