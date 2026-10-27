@@ -312,7 +312,7 @@
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-    const cutStr = cutoff.toISOString().slice(0, 10);
+    const cutStr = APP.shiftDate(APP.todayISO(), -30);
     let ps, ls;
     try { ps = await APP.getParties(false, true); ls = await db().collection('ledger').get(); }
     catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
