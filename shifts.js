@@ -20,7 +20,8 @@
       const pend = [];
       cs.docs.forEach(d => { const x = d.data(), o = get(x.sid, x.salesmanName); if (x.status === 'approved') o.ok += num(x.total); else { o.pend += num(x.total); pend.push({ id: d.id, who: x.salesmanName, t: num(x.total) }); } });
       const active = rs.docs.filter(d => d.data().status === 'active').length;
-      const ids = Object.keys(by);
+      const act = new Set(rs.docs.filter(d => d.data().status === 'active').map(d => d.data().sid));
+      const ids = Object.keys(by).filter(id => act.has(id));
       if (!ids.length && !active) return;
       const box = document.createElement('div'); box.id = 'smc-card'; box.dataset.d = st.date; box.className = 'card';
       box.innerHTML = '<h3>🧑‍💼 Salesman cash</h3>' + (active ? '<div class="warn">⚠️ ' + active + ' शिफ्ट अभी चालू है — बंद करके कैश लें</div>' : '') +
