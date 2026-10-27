@@ -267,7 +267,7 @@
   function boot() {
     firebase.initializeApp(C.firebase);
     auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-    
+    db.settings({ ignoreUndefinedProperties: true }); // 🔥 Fix for Firestore Assertion Error
 
     const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === 'Mazda@123') {
@@ -362,7 +362,7 @@
   function go(tab, arg) {
     if (isSalesman() && !['salesman', 'sm_udhar', 'more'].includes(tab)) tab = 'salesman';
     S.tab = tab;
-    $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
     if (tab === 'ledger') return ledgerView(arg);
@@ -382,7 +382,6 @@
     return s.empty ? null : s.docs[0].data();
   }
   
-  /* ===== कल के क्लोज़ से आज की ओपनिंग (मीटर + कैश/AD + स्टॉक) — एक ही जगह से ===== */
   const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 
   async function chainFor(date) {
@@ -1059,8 +1058,18 @@
       </div>
       <div class="card" style="overflow-x:auto">
         <table>
-          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th></tr>
-          ${st.rows.map(r => `<tr><td>${dmy(r.date)}</td><td>${esc(r.vehicle || '-')}<br><small class="mut">${esc(r.note||'')}</small></td><td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td><td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td><td class="n">${money(r.run)}</td></tr>`).join('')}
+          <tr><th>तारीख</th><th>गाड़ी / विवरण</th><th class="n">उधार</th><th class="n">जमा</th><th class="n">बैलेंस</th><th class="n">एक्शन</th></tr>
+          ${st.rows.map(r => `<tr>
+            <td>${dmy(r.date)}</td>
+            <td>${esc(r.vehicle || '-')}<br><small class="mut">${esc(r.note||'')}</small></td>
+            <td class="n neg">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
+            <td class="n pos">${r.kind === 'jama' ? money(r.amount) : ''}</td>
+            <td class="n">${money(r.run)}</td>
+            <td class="n" style="white-space:nowrap">
+              <button class="btn sm w" data-edit-row="${r.id}">✏️</button>
+              <button class="btn sm r" data-del-row="${r.id}">🗑</button>
+            </td>
+          </tr>`).join('')}
         </table>
       </div>`;
       
@@ -1070,6 +1079,27 @@
     $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
     $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
+    
+    // 🔥 Edit/Delete Listener for Ledger
+    $$('[data-edit-row]').forEach(b => b.onclick = () => {
+      const row = all.find(x => x.id === b.dataset.editRow);
+      if (row) entryModal({ entry: row, date: row.date, priv: priv });
+    });
+    $$('[data-del-row]').forEach(b => b.onclick = async () => {
+      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
+      const row = all.find(x => x.id === b.dataset.delRow);
+      if (!row) return;
+      try {
+        const b2 = db.batch();
+        b2.delete(db.collection(col).doc(row.id));
+        const delta = -sigEntry(priv, row);
+        if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
+        await commit(b2.commit());
+        toast('एंट्री हटा दी गई ✔');
+        S.parties[priv ? 'priv' : 'pub'] = null;
+        partyView(id, priv);
+      } catch (e) { toast('नहीं हटा: ' + e.message); }
+    });
   }
   APP.partyView = partyView;
 
