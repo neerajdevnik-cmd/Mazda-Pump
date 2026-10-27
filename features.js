@@ -93,7 +93,7 @@
     try {
       const cols = ['days', 'ledger', 'parties', 'priv_ledger', 'priv_parties', 'gaadi_cash',
                     'bank_deposits', 'audit', 'workers', 'attendance', 'salary_payments',
-                    'rate_history', 'day_costs', 'day_photos'];
+                    'rate_history', 'day_costs', 'day_photos', 'runsheets', 'sm_shifts', 'cash_submissions', 'shop'];
       const out = {};
       for (const c of cols) {
         try {
@@ -187,72 +187,6 @@
     } catch (e) { alert('स्टेटमेंट नहीं बना: ' + e.message); }
   };
 
-  /* ============ MONTHLY REPORT ============ */
-  APP.views.monthreport = async function () {
-    const main = $('#main'); if (!main) return;
-    main.innerHTML = '<p class="mut">महीने की रिपोर्ट लोड हो रही है…</p>';
-    const now = new Date();
-    const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    let daySnap, costSnap;
-    try {
-      daySnap = await db().collection('days').where('date', '>=', ym + '-01').where('date', '<=', ym + '-31').get();
-      costSnap = await db().collection('day_costs').where('__name__', '>=', ym + '-01').where('__name__', '<=', ym + '-31').get();
-    } catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
-    const days = daySnap.docs.map(x => x.data()).sort((a, b) => a.date.localeCompare(b.date));
-    const costs = {};
-    costSnap.docs.forEach(d => { costs[d.id] = d.data(); });
-    const tot = { sale: 0, litP: 0, litD: 0, close: 0, kharcha: 0, profit: 0, cost: 0 };
-    let best = null, worst = null;
-    days.forEach(d => {
-      const s = d.sum || {};
-      const sale = num(s.sale);
-      tot.sale += sale; tot.litP += num(s.litP); tot.litD += num(s.litD); tot.close += num(s.close);
-      tot.kharcha += K.khTotal(d);
-      const cc = costs[d.date] || {};
-      const cg = num(s.litP) * num(cc.costP) + num(s.litD) * num(cc.costD);
-      tot.cost += cg; tot.profit += (sale - cg);
-      if (!best || sale > num((best.sum || {}).sale)) best = d;
-      if (!worst || sale < num((worst.sum || {}).sale)) worst = d;
-    });
-    const maxSale = Math.max(1, ...days.map(d => num((d.sum || {}).sale)));
-    const bars = days.map(d => {
-      const s = num((d.sum || {}).sale);
-      const h = Math.max(4, Math.round(s / maxSale * 120));
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0">' +
-        '<div style="width:100%;height:' + h + 'px;background:#0b3d91;border-radius:2px 2px 0 0;max-height:120px"></div>' +
-        '<div style="font-size:9px;color:#666;margin-top:2px">' + d.date.slice(8) + '</div></div>';
-    }).join('');
-    const pc = tot.profit >= 0 ? 'pos' : 'neg';
-    main.innerHTML =
-      '<div class="card"><h3>📅 ' + esc(monthLabel(ym)) + '</h3>' +
-        kv('कुल बिक्री', money(tot.sale), 'big') +
-        kv('पेट्रोल', APP.lit(tot.litP)) +
-        kv('डीज़ल', APP.lit(tot.litD)) +
-        kv('कुल खर्चा', money(tot.kharcha)) +
-        K.khSummary(days).map(x => '<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ' + esc(x.label) + '</span><span class="mut">' + money(x.amount) + '</span></div>').join('') +
-        kv('कुल बचा कैश', money(tot.close)) +
-        kv('खरीद लागत', money(tot.cost)) +
-        kv('कुल मुनाफा', money(tot.profit), pc + ' big') +
-        kv('हिसाब किए दिन', days.length) +
-      '</div>' +
-      '<div class="card"><h3>रोज़ाना बिक्री</h3>' +
-        '<div style="display:flex;align-items:flex-end;height:140px;gap:2px;padding:6px;background:#f8f9fc;border-radius:8px;overflow-x:auto">' +
-          (bars || '<p class="mut" style="margin:auto">डेटा नहीं</p>') +
-        '</div></div>' +
-      (best ? '<div class="card"><h3>🏆 सबसे अच्छा दिन</h3>' + kv(dmy(best.date), money(num((best.sum || {}).sale)), 'pos') + '</div>' : '') +
-      (worst && worst !== best ? '<div class="card"><h3>⚠️ सबसे कम</h3>' + kv(dmy(worst.date), money(num((worst.sum || {}).sale)), 'neg') + '</div>' : '') +
-      '<div class="card" style="overflow-x:auto"><h3>दिन-वार</h3>' +
-        '<table><tr><th>तारीख</th><th class="n">P</th><th class="n">D</th><th class="n">बिक्री</th><th class="n">मुनाफा</th></tr>' +
-        days.map(d => {
-          const cc = costs[d.date] || {};
-          const cg = num((d.sum || {}).litP) * num(cc.costP) + num((d.sum || {}).litD) * num(cc.costD);
-          const pr = num((d.sum || {}).sale) - cg;
-          return '<tr><td>' + dmy(d.date) + '</td><td class="n">' + num((d.sum || {}).litP).toFixed(1) + '</td><td class="n">' + num((d.sum || {}).litD).toFixed(1) + '</td><td class="n">' + money((d.sum || {}).sale) + '</td><td class="n ' + (pr >= 0 ? 'pos' : 'neg') + '">' + (cc.costP ? money(pr) : '-') + '</td></tr>';
-        }).join('') +
-        '</table></div>' +
-      '<div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
-  };
-
   /* ============ AUDIT LOG ============ */
   APP.views.audit = async function () {
     const main = $('#main'); if (!main) return;
@@ -265,82 +199,8 @@
       '<div class="card"><h3>🔍 बदलाव का रिकॉर्ड</h3>' +
         (list.length ? list.map(x => '<div class="item"><div class="a"><b>' + esc(x.action || '?') + '</b><small>' +
           esc(x.by || '?') + ' · ' + (x.at && x.at.toDate ? x.at.toDate().toLocaleString('hi-IN') : '') +
-          '</small></div></div>').join('') : '<p class="mut">कोई लॉग नहीं</p>') +
+          '</small><small class="mut" style="word-break:break-all">' + esc(String(x.detail || '').slice(0, 220)) + '</small></div></div>').join('') : '<p class="mut">कोई लॉग नहीं</p>') +
       '</div><div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
-  };
-
-  /* ============ DASHBOARD ============ */
-  APP.views.dashboard = async function () {
-    const main = $('#main'); if (!main) return;
-    main.innerHTML = '<p class="mut">डैशबोर्ड लोड हो रहा है…</p>';
-    const t = new Date();
-    const todayStr = today();
-    const y = new Date(t); y.setDate(y.getDate() - 1);
-    const pad = n => String(n).padStart(2, '0');
-    const yStr = y.getFullYear() + '-' + pad(y.getMonth() + 1) + '-' + pad(y.getDate());
-    const w = new Date(t); w.setDate(w.getDate() - 7);
-    const wStr = w.getFullYear() + '-' + pad(w.getMonth() + 1) + '-' + pad(w.getDate());
-    let snap;
-    try { snap = await db().collection('days').where('date', '>=', wStr).get(); }
-    catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
-    const days = snap.docs.map(x => x.data());
-    const td = days.find(d => d.date === todayStr);
-    const yd = days.find(d => d.date === yStr);
-    const week = days.filter(d => d.date >= wStr);
-    const weekSale = week.reduce((a, d) => a + num((d.sum || {}).sale), 0);
-    main.innerHTML =
-      '<div class="card"><h3>📊 आज (' + dmy(todayStr) + ')</h3>' +
-        kv('बिक्री', money((td && td.sum || {}).sale), 'big') +
-        kv('कैश बचा', money((td && td.sum || {}).close)) +
-        kv('पेट्रोल', APP.lit((td && td.sum || {}).litP)) +
-        kv('डीज़ल', APP.lit((td && td.sum || {}).litD)) +
-      '</div>' +
-      '<div class="card"><h3>कल (' + dmy(yStr) + ')</h3>' +
-        kv('बिक्री', money((yd && yd.sum || {}).sale)) +
-        kv('कैश बचा', money((yd && yd.sum || {}).close)) +
-      '</div>' +
-      '<div class="card"><h3>पिछले 7 दिन</h3>' +
-        kv('कुल बिक्री', money(weekSale), 'big') +
-        kv('औसत/दिन', money(weekSale / Math.max(1, week.length))) +
-        kv('हिसाब दिन', week.length) +
-      '</div>' +
-      '<div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
-  };
-
-  /* ============ REMINDERS ============ */
-  APP.views.reminders = async function () {
-    const main = $('#main'); if (!main) return;
-    main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-    const cutStr = APP.shiftDate(APP.todayISO(), -30);
-    let ps, ls;
-    try { ps = await APP.getParties(false, true); ls = await db().collection('ledger').get(); }
-    catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
-    const lastU = {};
-    ls.docs.forEach(d => {
-      const r = d.data();
-      if (r.kind === 'udhar' && r.partyId && (!lastU[r.partyId] || r.date > lastU[r.partyId])) lastU[r.partyId] = r.date;
-    });
-    const old = ps.filter(p => num(p.bal) > 0 && lastU[p.id] && lastU[p.id] < cutStr).sort((a, b) => num(b.bal) - num(a.bal));
-    const tot = old.reduce((a, p) => a + num(p.bal), 0);
-    main.innerHTML =
-      '<div class="card"><h3>⏰ 30+ दिन का उधार</h3>' + kv('कुल बकाया', money(tot), 'neg') + kv('पार्टी संख्या', old.length) + '</div>' +
-      (old.length ? old.map(p => {
-        const ph = (p.phone || '').replace(/\D/g, '');
-        const w = waNum(p.phone);
-        return '<div class="card"><div class="kv"><span>' + esc(p.name) + '</span><b class="neg">' + money(p.bal) + '</b></div>' +
-          '<div class="mut" style="font-size:12px">आखिरी उधार: ' + dmy(lastU[p.id]) + (p.phone ? ' · 📞 ' + esc(p.phone) : '') + '</div>' +
-          '<div class="btns" style="margin-top:8px">' +
-            (ph ? '<a class="btn sm w" href="tel:' + esc(p.phone) + '">📞 कॉल</a>' : '') +
-            (w ? '<button class="btn sm g" data-wa="' + w + '" data-name="' + esc(p.name) + '" data-bal="' + p.bal + '">💬 WhatsApp</button>' : '') +
-          '</div></div>';
-      }).join('') : '<div class="card"><p class="mut">कोई पुराना बकाया नहीं 👍</p></div>') +
-      '<div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
-    $$('[data-wa]').forEach(b => b.onclick = () => {
-      const text = '*' + C.pump.name + '*\n\nप्रिय ' + b.dataset.name + ',\n\nआपका बकाया ₹' + b.dataset.bal +
-        ' है।\nकृपया जल्द भुगतान करें।\n\nधन्यवाद!\n📞 ' + C.pump.phone;
-      window.open('https://wa.me/' + b.dataset.wa + '?text=' + encodeURIComponent(text), '_blank');
-    });
   };
 
   /* ============ CUSTOMERS ============ */
@@ -558,7 +418,6 @@
   /* ============ DAYVIEW EXTRAS: cash box, cost fields, register photo, dup check ============ */
   function injectDayExtras() {
     injectCashBox();
-    injectCostFields();
     injectPhotoBtn();
     injectPartyActions();
     if (document.querySelector('#sum')) checkDuplicates();
@@ -692,11 +551,10 @@
     clearTimeout(dupTimer);
     dupTimer = setTimeout(async () => {
       try {
-        const snap = await db().collection('ledger').where('date', '==', S.date).get();
-        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const rows = (S.cur && S.cur.rows) || [];
         const seen = {}, dups = [];
         rows.forEach(r => {
-          const key = (r.kind || '') + '|' + (r.partyId || '') + '|' + (r.vehicle || '') + '|' + num(r.amount).toFixed(2);
+          const key = (r.kind || '') + '|' + (r.partyId || '') + '|' + (r.vehicle || '') + '|' + num(r.amount).toFixed(2) + '|' + (r.time || '');
           if (seen[key]) dups.push(r); else seen[key] = r;
         });
         const main = document.querySelector('#main');
@@ -729,7 +587,7 @@
         const nz = d.nz && d.nz[k]; let net = 0;
         if (nz && nz.o !== undefined && nz.c !== undefined && K.has(nz.o) && K.has(nz.c)) {
           const g = num(nz.c) - num(nz.o);
-          net = Math.max(0, g - num(d.testing || 5));
+          net = Math.max(0, g - (K.has(d.testing) ? num(d.testing) : 5));
         }
         out[k] = net; sums[k] += net;
       });
