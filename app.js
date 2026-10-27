@@ -383,34 +383,54 @@
     return s.empty ? null : s.docs[0].data();
   }
   
-  async function newDay(date) {
+  /* ===== कल के क्लोज़ से आज की ओपनिंग (मीटर + कैश/AD + स्टॉक) — एक ही जगह से ===== */
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+
+  async function chainFor(date) {
+    const dbPrev = await prevDay(date);
+    if (!dbPrev) return null;
+    const prev = Object.assign({}, dbPrev, S.draft[dbPrev.date] || {});
+    const rs = await db.collection('ledger').where('date', '==', prev.date).get();
+    const pc = K.compute(prev, rs.docs.map(x => x.data()));
+    const nz = {};
+    K.NZ.forEach(k => { const c = prev.nz && prev.nz[k] ? prev.nz[k].c : ''; nz[k] = K.has(c) ? c : ''; });
+    return {
+      prev, pc, nz, prevDate: prev.date,
+      openCash: pc.close,
+      openStockP: pc.actStockP !== null ? pc.actStockP : Math.max(0, pc.expStockP || 0),
+      openStockD: pc.actStockD !== null ? pc.actStockD : Math.max(0, pc.expStockD || 0),
+      estP: pc.actStockP === null, estD: pc.actStockD === null,
+      gap: daysBetween(prev.date, date) - 1,
+      prevSubmitted: prev.status === 'submitted'
+    };
+  }
+
+  function applyChain(d, ch) {
+    d.nz = d.nz || {};
+    K.NZ.forEach(k => { d.nz[k] = Object.assign({ c: '' }, d.nz[k] || {}, { o: ch.nz[k] }); });
+    d.openCash = ch.openCash; d.openStockP = ch.openStockP; d.openStockD = ch.openStockD;
+    d.chainPrev = ch.prevDate;
+  }
+
+  function chainMismatch(d, ch) {
+    const out = [], eq = (x, y) => Math.abs(num(x) - num(y)) < 0.01;
+    K.NZ.forEach(k => {
+      const o = d.nz && d.nz[k] ? d.nz[k].o : '', c = ch.nz[k];
+      if ((K.has(o) || K.has(c)) && !(K.has(o) && K.has(c) && eq(o, c))) out.push(k.toUpperCase() + ' ओपनिंग ' + (K.has(o) ? o : '–') + ' ≠ कल की क्लोज़िंग ' + (K.has(c) ? c : '–'));
+    });
+    if (!eq(d.openCash, ch.openCash)) out.push('पिछला कैश ' + money(d.openCash) + ' ≠ कल का बचा कैश ' + money(ch.openCash));
+    if (!eq(d.openStockP, ch.openStockP)) out.push('पेट्रोल ओपनिंग स्टॉक ' + lit(d.openStockP) + ' ≠ कल की डिप ' + lit(ch.openStockP));
+    if (!eq(d.openStockD, ch.openStockD)) out.push('डीज़ल ओपनिंग स्टॉक ' + lit(d.openStockD) + ' ≠ कल की डिप ' + lit(ch.openStockD));
+    return out;
+  }
+
+  async function newDay(date, ch) {
     const d = {
       date, testing: C.testing, rateP: S.rates.petrol, rateD: S.rates.diesel, nz: {},
       driverInaam: 0, chaiKhana: 0, status: 'open', opening_locked: true
     };
-    
-    let prev = null;
-    const prevDateStr = shiftDate(date, -1);
-    const draftStr = localStorage.getItem('mazda_draft_' + prevDateStr);
-    if (draftStr) { try { prev = JSON.parse(draftStr); } catch(e) {} }
-    
-    if (!prev) prev = await prevDay(date);
-    
-    if (prev) {
-      const rs = prev.date ? await db.collection('ledger').where('date', '==', prev.date).get() : { docs: [] };
-      const pc = K.compute(prev, rs.docs.map(x => x.data()));
-      
-      K.NZ.forEach(k => { d.nz[k] = { o: prev.nz && prev.nz[k] ? prev.nz[k].c : '', c: '' }; });
-      d.rateP = prev.rateP || d.rateP; d.rateD = prev.rateD || d.rateD;
-      d.openCash = pc.close;
-      
-      // New Stock Opening calculation based on previous day's Dip
-      d.openStockP = pc.actStockP !== null ? pc.actStockP : Math.max(0, pc.expStockP || 0);
-      d.openStockD = pc.actStockD !== null ? pc.actStockD : Math.max(0, pc.expStockD || 0);
-      
-    } else {
-      d.opening_locked = false;
-    }
+    if (ch) { applyChain(d, ch); d.rateP = ch.prev.rateP || d.rateP; d.rateD = ch.prev.rateD || d.rateD; }
+    else d.opening_locked = false;
     return d;
   }
 
@@ -427,46 +447,34 @@
   async function dayView(date) {
     date = (typeof date === 'string' && date) ? date : (S.date || todayISO()); S.date = date;
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    let ds, rs, prev;
+    let ds, rs, ch;
     try {
-      const [dsR, rsR, prevR] = await Promise.all([
-        db.collection('days').doc(date).get(), 
+      const [dsR, rsR, chR] = await Promise.all([
+        db.collection('days').doc(date).get(),
         db.collection('ledger').where('date', '==', date).get(),
-        prevDay(date)
+        chainFor(date)
       ]);
-      ds = dsR; rs = rsR; prev = prevR;
+      ds = dsR; rs = rsR; ch = chR;
     } catch (e) { main.innerHTML = errBox(e); return; }
-    
+
     let d = ds.exists ? ds.data() : null;
     const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    if (!d) d = await newDay(date);
+    if (!d) d = await newDay(date, ch);
     const frozen = ds.exists && ds.data().status === 'submitted';
-    
-    if (prev && d.opening_locked !== false) {
-      if (!d.nz) d.nz = {};
-      K.NZ.forEach(k => {
-        if (!d.nz[k]) d.nz[k] = {};
-        if (frozen && K.has(d.nz[k].o)) return;
-        d.nz[k].o = prev.nz && prev.nz[k] ? prev.nz[k].c : '';
-      });
+    if (S.draft[date]) d = Object.assign({}, d, S.draft[date]);
+
+    let chainDiff = [];
+    if (ch && d.opening_locked !== false) {
+      if (frozen) chainDiff = chainMismatch(d, ch);
+      else applyChain(d, ch);
     }
 
-    if (S.draft[date]) {
-      d = Object.assign({}, d, S.draft[date]);
-      if (d.opening_locked !== false && prev) {
-        K.NZ.forEach(k => {
-          if(!d.nz[k]) d.nz[k] = {};
-          if (frozen && K.has(d.nz[k].o)) return;
-          d.nz[k].o = prev.nz && prev.nz[k] ? prev.nz[k].c : '';
-        });
-      }
-    }
-    
     const locked = (d.status === 'submitted' && !isOwner()) || isViewer();
     const dis = locked ? 'disabled' : '';
-    const stkRO = v => (!locked && num(v) > 0) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : '';
-    const stkBtn = f => (!locked && num(f === 'P' ? d.openStockP : d.openStockD) > 0) ? `<button class="btn sm w" type="button" id="stk-tg${f}" style="margin-top:4px;font-size:11px;padding:6px">🔓 एडिट करें</button>` : '';
-    const isOpeningLocked = d.opening_locked !== false;
+    const chainLock = !!(ch && d.opening_locked !== false);
+    const stkRO = () => (!locked && chainLock) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : '';
+    const stkBtn = () => '';
+    const isOpeningLocked = chainLock;
     const ro = isOpeningLocked ? 'readonly style="background:#f0f0f0;color:#555;font-weight:bold;"' : '';
 
     const inp = (id, v, ph) => `<input id="${id}" inputmode="decimal" value="${esc(v == null ? '' : v)}" placeholder="${ph || ''}" ${dis}>`;
@@ -480,8 +488,19 @@
     const minDate = isOwner() ? '' : shiftDate(todayISO(), -2);
     const splitBtn = f => locked ? '' : `<button class="btn sm w" type="button" data-do="splitF" data-f="${f}" style="padding:2px 8px;font-size:12px">✂️ बाँटें</button>`;
 
+    let chainHtml = '';
+    if (ch) {
+      const n = [];
+      if (ch.gap > 0) n.push('⚠️ ' + dmy(ch.prevDate) + ' के बाद ' + ch.gap + ' दिन का हिसाब नहीं बना — ओपनिंग ' + dmy(ch.prevDate) + ' से आई है');
+      if (!ch.prevSubmitted) n.push('⚠️ ' + dmy(ch.prevDate) + ' का हिसाब अभी जमा नहीं हुआ — उसमें बदलाव हुआ तो आज की ओपनिंग भी बदलेगी');
+      if (ch.estP || ch.estD) n.push('ℹ️ ' + dmy(ch.prevDate) + ' की ' + [ch.estP ? 'पेट्रोल' : '', ch.estD ? 'डीज़ल' : ''].filter(Boolean).join(' और ') + ' डिप नहीं डली थी — ओपनिंग स्टॉक अंदाज़े से है');
+      if (chainDiff.length) n.push('❌ इस जमा हिसाब की ओपनिंग कल से मेल नहीं खाती:<br>' + chainDiff.map(esc).join('<br>'));
+      chainHtml = n.map(x => '<div class="warn" style="margin-bottom:8px">' + x + '</div>').join('');
+      if (chainDiff.length && isOwner() && !locked) chainHtml += '<div class="btns" style="margin:-4px 0 10px"><button class="btn sm o" data-do="relink">🔗 कल से दोबारा जोड़ें</button></div>';
+    }
+
     main.innerHTML = `
-    <div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
+    ${chainHtml}<div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
       <input type="date" id="f-date" value="${date}" max="${todayISO()}" ${minDate ? 'min="' + minDate + '"' : ''}></div>
       <div style="flex:0 0 auto;align-self:end">${locked ? '<span class="chip g">जमा ✔ लॉक</span>' : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
 
@@ -491,10 +510,10 @@
 
     <div class="card"><h3>मीटर रीडिंग</h3>
       <div class="nz h"><span></span><span>ओपनिंग</span><span>क्लोज़िंग</span><span style="text-align:right">नेट L</span></div>
-      <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].map((k, i) => nzr(k, 'P' + (i + 1))).join('')}
-      <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].map((k, i) => nzr(k, 'D' + (i + 1))).join('')}
+      <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
+      <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <div id="nzwarn"></div>
-      ${(!locked && isOwner()) ? `
+      ${(!locked && isOwner() && ch) ? `
       <div class="btns" style="margin-top:8px">
         <button class="btn sm w" id="toggle-open" type="button">${isOpeningLocked ? '🔓 ओपनिंग एडिट करें' : '🔒 ओपनिंग लॉक करें (पिछले दिन से जोड़ें)'}</button>
       </div>` : ''}
@@ -535,7 +554,7 @@
       <div class="btns">${locked ? '' : '<button class="btn o" data-do="addU">+ उधार</button><button class="btn g" data-do="addJ">+ जमा</button>'}</div></div>
 
     <div class="card"><h3>कैश और भुगतान</h3>
-      <label>पिछला कैश (ओपनिंग)</label>${inp('f-openCash', d.openCash)}
+      <label>पिछला कैश / AD (कल का बचा कैश)${chainLock ? ' 🔒' : ''}</label><input id="f-openCash" inputmode="decimal" value="${esc(d.openCash == null ? '' : d.openCash)}" ${dis} ${(!locked && chainLock) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : ''}>
       <div class="row"><div><label>Paytm/UPI कुल</label>${inp('f-paytm', d.paytm)}</div><div><label>स्वाइप कुल</label>${inp('f-swipe', d.swipe)}</div></div>
       
       <div class="row" style="margin-top:8px">
@@ -569,7 +588,7 @@
         const el = $('#f-openStock' + f); el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; el.focus(); b.remove();
       };
     });
-    const state = { d, rows, date, locked };
+    const state = { d, rows, date, locked, chain: ch, chainDiff };
     S.cur = state;
     renderRows(state);
     recalc();
@@ -577,35 +596,28 @@
     $('#f-date').onchange = e => { collectDraft(); dayView(e.target.value || todayISO()); };
     
     if ($('#toggle-open')) {
+      const setRO = ro => {
+        const els = $$('.nzi[data-f="o"]').concat(['f-openCash', 'f-openStockP', 'f-openStockD'].map(id => $('#' + id)).filter(Boolean));
+        els.forEach(el => {
+          if (ro) { el.setAttribute('readonly', true); el.style.background = '#f0f0f0'; el.style.fontWeight = 'bold'; }
+          else { el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; }
+        });
+      };
       $('#toggle-open').onclick = () => {
-        if (S.cur.d.opening_locked !== false) {
-          if (!confirm('⚠️ अगर आप ओपनिंग एडिट करेंगे तो पिछले दिन की क्लोजिंग से उसका लिंक टूट जाएगा! क्या आप आगे बढ़ना चाहते हैं?')) return;
-          S.cur.d.opening_locked = false;
-          $$('.nzi[data-f="o"]').forEach(el => {
-             el.removeAttribute('readonly');
-             el.style.background = '';
-             el.style.color = '';
-          });
-          $('#toggle-open').textContent = '🔒 ओपनिंग लॉक करें (पिछले दिन से जोड़ें)';
-          triggerAutoSave();
+        const cur = S.cur;
+        if (cur.d.opening_locked !== false) {
+          if (!confirm('⚠️ ओपनिंग (मीटर, कैश, स्टॉक) एडिट करेंगे तो कल की क्लोज़िंग से लिंक टूट जाएगा। आगे बढ़ें?')) return;
+          cur.d.opening_locked = false; setRO(false);
+          $('#toggle-open').textContent = '🔒 ओपनिंग लॉक करें (कल से जोड़ें)';
         } else {
-          S.cur.d.opening_locked = true;
-          const pDate = shiftDate(S.cur.date, -1);
-          db.collection('days').doc(pDate).get().then(ps => {
-             const pnz = ps.exists ? (ps.data().nz || {}) : {};
-             $$('.nzi[data-f="o"]').forEach(el => {
-                const k = el.dataset.k;
-                el.value = pnz[k] ? pnz[k].c : '';
-                el.setAttribute('readonly', true);
-                el.style.background = '#f0f0f0';
-                el.style.color = '#555';
-                el.style.fontWeight = 'bold';
-             });
-             recalc();
-             triggerAutoSave();
-          });
+          const c2 = cur.chain; if (!c2) return toast('कल का हिसाब नहीं मिला');
+          cur.d.opening_locked = true;
+          $$('.nzi[data-f="o"]').forEach(el => { el.value = c2.nz[el.dataset.k]; });
+          $('#f-openCash').value = c2.openCash; $('#f-openStockP').value = c2.openStockP; $('#f-openStockD').value = c2.openStockD;
+          setRO(true);
           $('#toggle-open').textContent = '🔓 ओपनिंग एडिट करें';
         }
+        recalc(); triggerAutoSave();
       };
     }
 
@@ -628,12 +640,13 @@
       openStockP: g('f-openStockP'), openStockD: g('f-openStockD'),
       tankerP: g('f-tankerP'), tankerD: g('f-tankerD'), 
       dipP: g('f-dipP'), dipD: g('f-dipD'), nz: {},
+      physicalCash: $('#f-physicalCash') ? g('f-physicalCash') : (st.d.physicalCash == null ? '' : st.d.physicalCash),
       opening_locked: st.d.opening_locked !== false,
       kharchaItems: $('#expbox')
         ? getExpItems().filter(x => x.label || num(x.amount)).map(x => ({ label: x.label, amount: num(x.amount) }))
         : (st.d.kharchaItems || [])
     });
-    K.NZ.forEach(k => { d.nz[k] = { o: '', c: '' }; });
+    K.NZ.forEach(k => { d.nz[k] = Object.assign({ o: '', c: '' }, K.activeNz().includes(k) ? {} : ((st.d.nz || {})[k] || {})); });
     $$('.nzi').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
     return d;
   }
@@ -656,23 +669,24 @@
     // Update Meter Net Liters
     K.NZ.forEach(k => { const e = $('#net-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     $('#nzwarn').innerHTML = o.warn.map(w => '<div class="warn">' + esc(w) + '</div>').join('') +
-      (o.filled < 8 ? `<div class="mut">${o.filled}/8 नोज़ल भरे हैं</div>` : '');
+      (o.filled < K.activeNz().length ? `<div class="mut">${o.filled}/${K.activeNz().length} नोज़ल भरे हैं</div>` : '');
       
     // Update Stock Section (Petrol & Diesel)
+    const tol = num(C.stockTolerance) || 25;
     const setStkHtml = (prefix, exp, act, diff, tanker, sale) => {
       const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
-      let warnStock = '';
-      if (act !== null && act < (prefix==='P'?1200:1000)) warnStock = `<div class="warn" style="margin-top:6px">⚠️ स्टॉक खत्म होने वाला है! (${act} L बचा है)</div>`;
-      
-      let html = kvEl('कुल उपलब्ध (ओपनिंग + टैंकर)', lit(num(d['openStock'+prefix]) + num(tanker))) +
-                 kvEl('आज की बिक्री (मीटर से)', lit(sale)) +
-                 kvEl('होना चाहिए (Expected)', lit(exp)) +
-                 kvEl('डिप के हिसाब से है (Actual)', act !== null ? lit(act) : '-', 'big');
-                 
+      let html = kvEl('कल की डिप (ओपनिंग स्टॉक)', lit(num(d['openStock' + prefix]))) +
+                 kvEl('+ टैंकर आया', lit(num(tanker))) +
+                 kvEl('− आज की बिक्री (मीटर)', lit(sale)) +
+                 kvEl('= होना चाहिए', lit(exp)) +
+                 kvEl('आज की डिप (असली स्टॉक)', act !== null ? lit(act) : 'डिप डालें', 'big');
       if (diff !== null) {
-        html += `<div class="${Math.abs(diff) > 0.5 ? (diff < 0 ? 'err' : 'warn') : 'ok'}" style="margin-top:6px">फर्क (Variation): <b>${diff > 0 ? '+' : ''}${r2(diff)} L</b></div>`;
+        const a = Math.abs(diff), sg = diff > 0 ? '+' : '';
+        html += a <= 0.5 ? '<div class="ok" style="margin-top:6px">✔ स्टॉक बराबर है</div>'
+          : a <= tol ? `<div class="warn" style="margin-top:6px">≈ फर्क ${sg}${r2(diff)} L (डिप की सटीकता के अंदर)</div>`
+          : `<div class="err" style="margin-top:6px">⚠️ स्टॉक ${diff < 0 ? 'कम' : 'ज़्यादा'}: <b>${sg}${r2(diff)} L</b> — जाँचें</div>`;
       }
-      if (warnStock) html += warnStock;
+      if (act !== null && act < (prefix === 'P' ? 1200 : 1000)) html += `<div class="warn" style="margin-top:6px">⚠️ स्टॉक खत्म होने वाला है! (${act} L बचा है)</div>`;
       return html;
     };
 
@@ -706,9 +720,15 @@
     const d = readForm(); const o = K.compute(d, st.rows);
     if (silent && !st.d.at && o.filled === 0 && !num(d.paytm) && !num(d.swipe) && !num(d.malikDiya) && !K.khTotal(d)) return;
     if (submit && !silent) {
-      if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
+      const ch = st.chain;
+      const v = K.validate(d, st.rows, { isOwner: isOwner(), prevPending: (ch && !ch.prevSubmitted) ? dmy(ch.prevDate) : '', gap: ch ? ch.gap : 0, prevDate: ch ? dmy(ch.prevDate) : '' });
+      if (v.errors.length) { alert('❌ अभी जमा नहीं हो सकता:\n\n• ' + v.errors.join('\n• ')); return; }
+      if (v.warns.length) { if (!confirm('⚠️ ध्यान दें:\n\n• ' + v.warns.join('\n• ') + '\n\nफिर भी जमा करके लॉक करें?')) return; }
+      else if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
     }
-    d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, expStockP: o.expStockP, expStockD: o.expStockD, actStockP: o.actStockP, actStockD: o.actStockD, diffP: o.diffP, diffD: o.diffD };
+    d.sum = { sale: o.sale, litP: o.litP, litD: o.litD, close: o.close, expStockP: o.expStockP, expStockD: o.expStockD, actStockP: o.actStockP, actStockD: o.actStockD, diffP: o.diffP, diffD: o.diffD,
+      openCash: num(d.openCash), openStockP: num(d.openStockP), openStockD: num(d.openStockD),
+      physical: K.has(d.physicalCash) ? num(d.physicalCash) : null, physDiff: K.has(d.physicalCash) ? r2(num(d.physicalCash) - o.close) : null };
     d.status = submit ? 'submitted' : (st.d.status || 'open');
     d.by = S.user.email; d.at = FV.serverTimestamp();
     
@@ -1227,6 +1247,14 @@
       await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
     },
     report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
+    async relink() {
+      const ch = S.cur.chain; if (!ch) return;
+      if (!confirm('इस दिन की ओपनिंग (मीटर, कैश, स्टॉक) कल के क्लोज़ से दोबारा जोड़ें?')) return;
+      collectDraft();
+      const date = S.cur.date, d = Object.assign({}, S.draft[date] || readForm());
+      applyChain(d, ch); d.opening_locked = true; S.draft[date] = d;
+      await dayView(date); await saveDay(false, true); toast('कल से जुड़ गया ✔');
+    },
     scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
     editE(data) {
       collectDraft();
@@ -1257,7 +1285,7 @@
       } catch (e) { toast('नहीं हटा: ' + e.message); }
     }
   };
-  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal;
+  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
 
   window.addEventListener('load', boot);
 })();
