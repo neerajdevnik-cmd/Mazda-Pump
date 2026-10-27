@@ -43,11 +43,13 @@
       if (hasO && hasC) {
         filled++;
         const o = num(n.o), c = num(n.c);
-        if (c < o) {
+        const MM = num((window.CFG || {}).meterMax) || 10000000;
+        const roll = c < o && o >= MM * 0.9 && c <= MM * 0.1;
+        if (c < o && !roll) {
           warn.push(`${k.toUpperCase()}: क्लोजिंग (${c}) ओपनिंग (${o}) से कम है!`);
           nz[k] = { ok: false, net: 0 };
         } else {
-          const gross = r2(c - o);
+          const gross = roll ? r2(MM - o + c) : r2(c - o);
           const net = r2(Math.max(0, gross - t));
           nz[k] = { ok: true, gross, net };
           if (k.startsWith('p')) litP += net;
