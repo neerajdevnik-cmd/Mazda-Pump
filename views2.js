@@ -126,13 +126,12 @@
         K.NZ.forEach(k => {
           const n = d.nz && d.nz[k];
           if (n && K.has(n.o) && K.has(n.c)) {
-            const net = Math.max(0, (num(n.c) - num(n.o)) - testing);
-            if (k.startsWith('p')) { nzP[k] += net; activeP++; }
-            else { nzD[k] += net; activeD++; }
+            const tn = K.has(n.t) ? num(n.t) : testing;
+            const net = Math.max(0, (num(n.c) - num(n.o)) - tn);
+            if (k.startsWith('p')) { nzP[k] += net; activeP++; totTestP += tn; }
+            else { nzD[k] += net; activeD++; totTestD += tn; }
           }
         });
-        totTestP += (activeP * testing);
-        totTestD += (activeD * testing);
       });
       
       const pct = (val, tot) => tot > 0 ? ((val / tot) * 100).toFixed(1) + '%' : '0%';
