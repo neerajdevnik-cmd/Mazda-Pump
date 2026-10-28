@@ -188,7 +188,7 @@
   function validate(d, rows, ctx) {
     ctx = ctx || {};
     const errors = [], warns = [];
-    const o = compute(d, rows);
+    const o = (window.Calc && window.Calc.compute ? window.Calc.compute : compute)(d, rows);
     activeNz().forEach(k => {
       const n = (d.nz && d.nz[k]) || {}, L = k.toUpperCase();
       if (!has(n.o)) errors.push(L + ': ओपनिंग नहीं है (कल की क्लोज़िंग खाली थी?)');
