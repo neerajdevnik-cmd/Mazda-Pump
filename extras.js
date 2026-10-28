@@ -120,7 +120,9 @@
     refresh: '<path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h-4M6 22v-4h4"/>',
     warn: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
     truck: '<path d="M2 6h11v10H2zM13 9h4l4 4v3h-8z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>'
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 8h6M9 12h6"/>',
+    rupee: '<circle cx="12" cy="12" r="9"/><path d="M8.5 8h7M8.5 11h7M10 8c3.6 0 4.4 4.2-1.2 4.2l4.2 4"/>'
   };
   const svg = n => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + P[n] + '</svg>';
   const E = {
@@ -134,8 +136,12 @@
     const i = btn.querySelector('i'); if (!i || i.dataset.pi) return;
     const t = (btn.textContent || '').replace(i.textContent, '').trim();
     let k = null;
-    if (/हिसाब|होम|डैश|आज|दिन/.test(t)) k = 'doc';
-    else if (/खाते|खाता|पार्टी|उधार|ग्राहक/.test(t)) k = 'wallet';
+    if (/एंट्री|एन्ट्री/.test(t)) k = 'truck';
+    else if (/हिसाब|होम|डैश|आज|दिन/.test(t)) k = 'doc';
+    else if (/पैसा|रुपये/.test(t)) k = 'rupee';
+    else if (/पार्टी|ग्राहक/.test(t)) k = 'book';
+    else if (/वर्कर|स्टाफ/.test(t)) k = 'users';
+    else if (/खाते|खाता|उधार/.test(t)) k = 'wallet';
     else if (/गाड़ी|गाडी|कैश/.test(t)) k = 'car';
     else if (/स्टॉक|स्टाक|शॉप|दुकान/.test(t)) k = 'stock';
     else if (/निजी|प्राइवेट/.test(t)) k = 'user';
@@ -152,8 +158,12 @@
     const m = n.nodeValue.match(RE);
     if (!m) return;
     n.nodeValue = n.nodeValue.slice(m[0].length);
-    const s = document.createElement('span'); s.innerHTML = svg(E[m[1]]); s.style.display = 'contents';
-    el.insertBefore(s.firstChild, n);
+    const t = document.createElement('template'); t.innerHTML = svg(E[m[1]]);
+    if (el.tagName === 'H3') {
+      /* h3 flex + space-between hai: icon aur text ek saath rakhne ke liye wrap */
+      const w = document.createElement('span'); w.style.cssText = 'display:inline-flex;align-items:center;gap:8px;min-width:0';
+      el.insertBefore(w, n); w.appendChild(t.content.firstChild); w.appendChild(n);
+    } else el.insertBefore(t.content.firstChild, n);
     el.dataset.pi = '1';
   }
 
