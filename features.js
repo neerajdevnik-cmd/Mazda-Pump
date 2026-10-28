@@ -795,7 +795,7 @@
         const nz = d.nz && d.nz[k]; let net = 0;
         if (nz && nz.o !== undefined && nz.c !== undefined && K.has(nz.o) && K.has(nz.c)) {
           const g = num(nz.c) - num(nz.o);
-          net = Math.max(0, g - (K.has(d.testing) ? num(d.testing) : 5));
+          net = Math.max(0, g - (K.has(nz.t) ? num(nz.t) : (K.has(d.testing) ? num(d.testing) : 5)));
         }
         out[k] = net; sums[k] += net;
       });
