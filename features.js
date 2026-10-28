@@ -154,8 +154,12 @@
     /* ---------- छोटे हेल्पर ---------- */
     const inr = n => Number(num(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const litF = n => Number(num(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const drcr = n => (n < 0 ? inr(Math.abs(n)) + ' <span class="u">Cr</span>' : inr(n) + ' <span class="u">Dr</span>');
-    const drcrTxt = n => (n < 0 ? inr(Math.abs(n)) + ' Cr' : inr(n) + ' Dr');
+    /* ledger वाला ही सिस्टम: बकाया (उधार) = लाल व माइनस (−), एडवांस = हरा व प्लस (+) */
+    const sgn = n => (Math.abs(n) < 0.005 ? 0 : (n > 0 ? 1 : -1));
+    const balTxt = n => (sgn(n) === 0 ? '₹0.00' : (n > 0 ? '−₹' : '+₹') + inr(Math.abs(n)));
+    const balCls = n => (sgn(n) > 0 ? 'v-r' : sgn(n) < 0 ? 'v-g' : '');
+    const drcr = n => `<span class="${balCls(n)}">${balTxt(n)}</span>`;
+    const drcrTxt = balTxt;
     const FUEL = { petrol: 'पेट्रोल (Petrol)', diesel: 'डीज़ल (Diesel)' };
     const MODE = { cash: 'Cash / नकद', paytm: 'Paytm / UPI', upi: 'Paytm / UPI', swipe: 'Card Swipe', card: 'Card Swipe', bank: 'Bank Transfer', sbi: 'Bank Transfer' };
     const nowStr = () => { const d = new Date(), z = x => String(x).padStart(2, '0'); return `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
@@ -249,10 +253,10 @@
           </div>
         </div>
         <div class="sum">
-          <div class="sb"><div class="s1">Opening Balance</div><div class="s2">पिछला बैलेंस</div><div class="sv">₹${drcrTxt(st.open)}</div></div>
+          <div class="sb"><div class="s1">Opening Balance</div><div class="s2">पिछला बैलेंस</div><div class="sv ${balCls(st.open)}">${balTxt(st.open)}</div></div>
           <div class="sb"><div class="s1">Total Debit</div><div class="s2">कुल उधार</div><div class="sv red">₹${inr(st.totU)}</div></div>
           <div class="sb"><div class="s1">Total Credit</div><div class="s2">कुल जमा</div><div class="sv grn">₹${inr(st.totJ)}</div></div>
-          <div class="sb cl"><div class="s1">Closing Balance</div><div class="s2">अंतिम बकाया</div><div class="sv red big">₹${drcrTxt(st.close)}</div></div>
+          <div class="sb cl ${sgn(st.close) > 0 ? 'cl-r' : sgn(st.close) < 0 ? 'cl-g' : ''}"><div class="s1">Closing Balance</div><div class="s2">${sgn(st.close) < 0 ? 'अंतिम एडवांस' : 'अंतिम बकाया'}</div><div class="sv big ${balCls(st.close)}">${balTxt(st.close)}</div></div>
         </div>
         <div class="info">
           <span>एंट्री: <b>${cnt}</b></span>
@@ -260,7 +264,7 @@
           ${st.lastJama ? `<span>आखिरी जमा: <b>${dmy(st.lastJama.date)} · ₹${inr(st.lastJama.amount)}</b></span>` : ''}
           ${st.lastUdhar ? `<span>आखिरी उधार: <b>${dmy(st.lastUdhar.date)}</b></span>` : ''}
         </div>
-        <div class="sec">📒 लेन-देन का पूरा विवरण (Transaction Details)</div>`;
+        <div class="sec"><span>📒 लेन-देन का पूरा विवरण (Transaction Details)</span><span class="lgd"><b class="v-r">− लाल</b> = बकाया &nbsp;·&nbsp; <b class="v-g">+ हरा</b> = एडवांस</span></div>`;
 
       const contHead = pg => `
         <div class="hd mini">
@@ -272,7 +276,7 @@
         <div class="tot">
           <div class="tr"><span>कुल उधार / Total Debit</span><b class="red">₹${inr(st.totU)}</b></div>
           <div class="tr"><span>कुल जमा / Total Credit</span><b class="grn">₹${inr(st.totJ)}</b></div>
-          <div class="tr fin"><span>अंतिम बकाया / Closing Balance</span><b>₹${drcrTxt(st.close)}</b></div>
+          <div class="tr fin ${sgn(st.close) > 0 ? 'cl-r' : sgn(st.close) < 0 ? 'cl-g' : ''}"><span>${sgn(st.close) < 0 ? 'अंतिम एडवांस / Closing Advance' : 'अंतिम बकाया / Closing Balance'}</span><b>${balTxt(st.close)}</b></div>
         </div>
         <div class="sign"><div class="note">यह कंप्यूटर द्वारा बनाया गया स्टेटमेंट है। कोई अंतर दिखे तो 3 दिन के अंदर बताएँ।<br>This is a computer generated statement. | धन्यवाद — Thank you for your business!</div>
         <div class="sg"><div class="sl"></div>Authorised Signatory<br><b>${esc(C.pump.nameEn)}</b></div></div>`;
@@ -314,13 +318,17 @@
       .stm-wrap .pr{font-size:15px;font-weight:700;margin:2px 0 6px}
       .stm-wrap .sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
       .stm-wrap .sb{border:1px solid #d8dfee;border-radius:10px;padding:10px 6px;text-align:center;background:#fff}
-      .stm-wrap .sb.cl{background:#fdf1f1;border-color:#f0c9c9}
+      .stm-wrap .sb.cl{background:#f6f8fc;border-color:#d8dfee}
+      .stm-wrap .sb.cl.cl-r{background:#fdf1f1;border-color:#f0c9c9}
+      .stm-wrap .sb.cl.cl-g{background:#effaf1;border-color:#bfe3c8}
+      .stm-wrap .v-r{color:#b3261e}.stm-wrap .v-g{color:#1e7d34}
       .stm-wrap .s1{font-size:11.5px;color:#4a5468}.stm-wrap .s2{font-size:10.5px;color:#7b8498;margin-bottom:5px}
       .stm-wrap .sv{font-size:17px;font-weight:700;color:#1b2333;font-variant-numeric:tabular-nums;white-space:nowrap}
-      .stm-wrap .sv.red{color:#b3261e}.stm-wrap .sv.grn{color:#1e7d34}.stm-wrap .sv.big{font-size:18.5px}
+      .stm-wrap .sv.red,.stm-wrap .sv.v-r{color:#b3261e}.stm-wrap .sv.grn,.stm-wrap .sv.v-g{color:#1e7d34}.stm-wrap .sv.big{font-size:18.5px}
       .stm-wrap .info{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11.5px;color:#3b4457;margin:2px 0 10px}
       .stm-wrap .info b{color:#1b2333}
-      .stm-wrap .sec{font-size:14.5px;font-weight:700;color:#1f3a8a;margin:4px 0 7px}
+      .stm-wrap .sec{font-size:14.5px;font-weight:700;color:#1f3a8a;margin:4px 0 7px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+      .stm-wrap .lgd{font-size:10.5px;font-weight:500;color:#6b7385;white-space:nowrap}.stm-wrap .lgd b{font-weight:700}
       .stm-wrap table.tb{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
       .stm-wrap .tb th{background:#1f3a8a;color:#fff;padding:8px 8px;font-size:11px;font-weight:500;line-height:1.3;height:42px;text-align:left}
       .stm-wrap .tb th b{font-weight:700}
@@ -342,7 +350,9 @@
       .stm-wrap .tot{margin:14px 0 0 auto;width:330px;border:1px solid #d8dfee;border-radius:10px;overflow:hidden}
       .stm-wrap .tot .tr{display:flex;justify-content:space-between;padding:8px 14px;font-size:12.5px;border-bottom:1px solid #e6eaf3}
       .stm-wrap .tot .tr b{font-variant-numeric:tabular-nums}.stm-wrap .tot .red{color:#b3261e}.stm-wrap .tot .grn{color:#1e7d34}
-      .stm-wrap .tot .fin{background:#1f3a8a;color:#fff;font-size:14px;font-weight:700;border:0}
+      .stm-wrap .tot .fin{background:#f3f6fc;color:#1b2333;font-size:14.5px;font-weight:700;border:0;border-top:2px solid #1f3a8a}
+      .stm-wrap .tot .fin.cl-r{background:#fdf1f1}.stm-wrap .tot .fin.cl-r b{color:#b3261e}
+      .stm-wrap .tot .fin.cl-g{background:#effaf1}.stm-wrap .tot .fin.cl-g b{color:#1e7d34}
       .stm-wrap .sign{display:flex;justify-content:space-between;align-items:flex-end;margin-top:22px;gap:20px}
       .stm-wrap .note{font-size:10.5px;color:#6b7385;line-height:1.6;max-width:430px}
       .stm-wrap .sg{text-align:center;font-size:11px;color:#3b4457;min-width:170px}.stm-wrap .sl{border-top:1px solid #8a93a6;margin-bottom:5px}
@@ -367,8 +377,9 @@
       const from = $('#st-from', m).value, to = $('#st-to', m).value;
       if (!from || !to) return toast('तारीख चुनें');
       if (from > to) return toast('"कब से" तारीख "कब तक" से पहले की होनी चाहिए');
+      if (typeof html2canvas !== 'function') return toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
       m.close();
-      toast('इमेज तैयार हो रही है…');
+      toast('स्टेटमेंट की फोटो बन रही है…');
 
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;left:-9999px;top:0;';
@@ -376,23 +387,50 @@
       document.body.appendChild(wrap);
 
       try {
+        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (x) {}
         const pages = Array.from(wrap.querySelectorAll('.stm-page'));
         const files = [];
+        const safe = String(p.name || 'party').replace(/[^\wऀ-ॿ]+/g, '_');
         for (let i = 0; i < pages.length; i++) {
-          const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+          const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
           const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-          files.push(new File([blob], `statement-${p.name}-${i + 1}of${pages.length}.png`, { type: 'image/png' }));
+          files.push(new File([blob], `Statement_${safe}_${from}_${to}_${i + 1}of${pages.length}.png`, { type: 'image/png' }));
         }
-        if (navigator.canShare && navigator.canShare({ files })) {
-          await navigator.share({ files, text: `Account Statement — ${p.name} (${dmy(from)} से ${dmy(to)})` });
-        } else {
-          files.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); });
-          toast('डाउनलोड हो गया ✔');
-        }
-      } catch (e) { if (!e || e.name !== 'AbortError') toast('इमेज नहीं बनी'); }
-      document.body.removeChild(wrap);
+        previewStatement(files, `*${C.pump.name}*\nAccount Statement — ${p.name}\n${dmy(from)} से ${dmy(to)}`, p.name);
+      } catch (e) { toast('फोटो नहीं बनी: ' + ((e && e.message) || e)); }
+      finally { wrap.remove(); }
     };
   };
+
+  /* स्टेटमेंट की सारी फोटो एक साथ दिखाओ → फिर अलग टैप पर शेयर / सेव (iPhone बिना टैप के शेयर नहीं करने देता) */
+  function previewStatement(files, text, partyName) {
+    const urls = files.map(f => URL.createObjectURL(f));
+    const n = files.length;
+    const m = modal(
+      '<h3>📄 स्टेटमेंट की फोटो (' + n + ' पेज)</h3>' +
+      '<div class="mut" style="font-size:12px;margin-bottom:8px">' + esc(partyName || '') + ' — पहले देख लें, ठीक लगे तो भेजें या सेव करें।</div>' +
+      '<div style="max-height:60vh;overflow:auto;border:1px solid #e3e8f2;border-radius:10px;background:#eef2fa;padding:8px">' +
+        urls.map((u, i) => '<div style="font-size:11px;color:#6b7385;margin:0 0 3px">पेज ' + (i + 1) + ' / ' + n + '</div>' +
+          '<img src="' + u + '" style="width:100%;display:block;border-radius:6px;box-shadow:0 2px 8px rgba(10,42,102,.15);margin-bottom:10px;background:#fff">').join('') +
+      '</div>' +
+      '<div class="btns" style="margin-top:10px">' +
+        '<button class="btn g" id="sp-sh">📤 भेजें (WhatsApp आदि)</button>' +
+        '<button class="btn w" id="sp-dl">💾 फोन में सेव</button>' +
+        '<button class="btn w" id="sp-x">बंद</button>' +
+      '</div>');
+    const save = () => files.forEach((f, i) => setTimeout(() => {
+      const a = document.createElement('a'); a.href = urls[i]; a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }, i * 350));
+    m.querySelector('#sp-x').onclick = () => { m.close(); setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 500); };
+    m.querySelector('#sp-dl').onclick = () => { save(); toast('सेव हो रहा है ✔'); };
+    m.querySelector('#sp-sh').onclick = async () => {
+      try {
+        if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ files, text });
+        else { save(); toast('इस फोन में सीधा शेयर नहीं — फोटो सेव हो गई, WhatsApp में लगा दें'); }
+      } catch (e) { if (!e || e.name !== 'AbortError') toast('शेयर नहीं हो पाया — "💾 फोन में सेव" दबाएँ'); }
+    };
+  }
 
   /* ============ AUDIT LOG ============ */
   APP.views.audit = async function () {
