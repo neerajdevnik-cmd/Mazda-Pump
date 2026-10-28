@@ -964,6 +964,21 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
   }
   APP.layoutDailyReport = layoutDailyReport;
 
+  /* रिपोर्ट की फोटो: पहले दिखाओ, फिर अलग टैप पर शेयर (iPhone बिना टैप के शेयर नहीं करने देता) */
+  APP.showReportPreview = function (files, text) {
+    const urls = files.map(f => URL.createObjectURL(f));
+    const m = APP.modal('<h3>📸 हिसाब की फोटो</h3><div style="max-height:62vh;overflow:auto;border:1px solid #e3e8f2;border-radius:8px">' + urls.map(u => '<img src="' + u + '" style="width:100%;display:block">').join('') + '</div><div class="btns" style="margin-top:10px"><button class="btn g" id="rp-sh">📤 भेजें (WhatsApp आदि)</button><button class="btn w" id="rp-dl">💾 फोन में सेव</button><button class="btn w" id="rp-x">बंद</button></div>');
+    const save = () => files.forEach((f, i) => { const a = document.createElement('a'); a.href = urls[i]; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); });
+    m.querySelector('#rp-x').onclick = () => { m.close(); setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 500); };
+    m.querySelector('#rp-dl').onclick = save;
+    m.querySelector('#rp-sh').onclick = async () => {
+      try {
+        if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ files, text });
+        else save();
+      } catch (e) { if (!e || e.name !== 'AbortError') APP.toast('शेयर नहीं हो पाया — "💾 फोन में सेव" दबाएँ'); }
+    };
+  };
+
   APP.shareCompactDayReport = async function (st, d) {
     if (typeof html2canvas !== 'function') return toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
     toast('हिसाब की फोटो बन रही है…');
@@ -977,8 +992,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         files.push(new File([blob], 'Hisab_' + st.date + (L.pages.length > 1 ? '_' + (i + 1) + 'of' + L.pages.length : '') + '.png', { type: 'image/png' }));
       }
       const text = '*' + C.pump.name + '*\nदैनिक हिसाब ' + dmy(st.date) + '\nकुल बिक्री: ' + money(L.o.sale) + ' · बचा कैश: ' + money(L.o.close);
-      if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, text }); } catch (e) { if (!e || e.name !== 'AbortError') throw e; } }
-      else { files.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }); toast('डाउनलोड हो गया ✔'); }
+      APP.showReportPreview(files, text);
     } catch (e) { alert('फोटो नहीं बनी: ' + e.message); }
     finally { if (L && L.host) L.host.remove(); }
   };
