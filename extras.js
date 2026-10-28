@@ -166,7 +166,6 @@
 
   function run() {
     try {
-      headerLogo();
       document.querySelectorAll('nav button').forEach(navIcon);
       document.querySelectorAll('.btn, .card h3, .sheet h3').forEach(swapEmoji);
     } catch (e) { }
