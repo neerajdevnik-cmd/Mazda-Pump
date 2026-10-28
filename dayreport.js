@@ -89,11 +89,8 @@
     try {
       const imgs = Array.from(wrap.querySelectorAll('img')); await Promise.all(imgs.map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
       const cv = await html2canvas(wrap.firstChild, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-      cv.toBlob(blob => {
-        const file = new File([blob], 'hisab-' + st.date + '.png', { type: 'image/png' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], text: 'दैनिक हिसाब - ' + dmy(st.date) }).catch(() => { });
-        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); }
-      });
+      const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+      APP.showReportPreview([new File([blob], 'hisab-' + st.date + '.png', { type: 'image/png' })], 'दैनिक हिसाब - ' + dmy(st.date));
     } catch (e) { APP.toast('फोटो नहीं बनी: ' + e.message); } finally { wrap.remove(); }
   };
   console.log('[Mazda dayreport.js] loaded ✓');
