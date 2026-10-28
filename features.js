@@ -177,12 +177,13 @@
     };
 
     /* ---------- पेज बनाने वाला ---------- */
-    const genHTML = (from, to) => {
+    const genHTML = (from, to, mode) => {
+      const IMG = mode === 'img';   // इमेज = 3:4 फ्रेम (810x1080), प्रिंट/PDF = A4
       const st = K.stmt(allRows, from, to);
       const cnt = st.rows.length;
       const no = stNo(to), gen = nowStr();
 
-      const CAP1 = 13, CAPN = 21, TOT_NEED = 6;
+      const CAP1 = IMG ? 11 : 13, CAPN = IMG ? 19 : 21, TOT_NEED = 6;
       const chunks = [];
       let i = 0;
       chunks.push(st.rows.slice(i, i += CAP1));
@@ -285,7 +286,8 @@
           <div class="ft"><span>${esc(C.pump.nameEn)} · ${esc(p.name)} · ${no}</span><span>Page ${idx + 1} / ${N}</span></div>
         </section>`;
       });
-      return { html: `<style>${STMT_CSS}</style><div class="stm-wrap">${pages.join('')}</div>`, n: N };
+      const css = IMG ? STMT_CSS.replace(/794px/g, '810px').replace(/1123px/g, '1080px').replace('.stm-wrap .tb td{height:43px', '.stm-wrap .tb td{height:41px') : STMT_CSS;
+      return { html: `<style>${css}</style><div class="stm-wrap">${pages.join('')}</div>`, n: N };
     };
 
     const STMT_CSS = `
@@ -370,7 +372,7 @@
 
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;left:-9999px;top:0;';
-      wrap.innerHTML = genHTML(from, to).html;
+      wrap.innerHTML = genHTML(from, to, 'img').html;
       document.body.appendChild(wrap);
 
       try {
@@ -600,6 +602,7 @@
   }, true);
 
   function injectPartyActions() {
+    return; // बटन अब पार्टी के पेज में ही बने हैं (app.js)
     const back = document.querySelector('#main #back'); if (!back) return;
     if (document.querySelector('#main #stmt-share')) return;
     const pid = window.__mazdaLastPartyId; if (!pid) return;
