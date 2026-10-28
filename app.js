@@ -1215,7 +1215,7 @@
                   </td>
                   <td class="dr">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
                   <td class="cr">${r.kind === 'jama' ? money(r.amount) : ''}</td>
-                  <td class="bal">${money(r.run)}</td>
+                  <td class="bal" style="color:${r.run > 0.005 ? '#c0392b' : r.run < -0.005 ? '#0a7d33' : 'inherit'}">${Math.abs(r.run) < 0.005 ? '₹0' : (r.run > 0 ? '-' : '+') + '₹' + Math.abs(r.run).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                   <td>
                     <div class="action-btns">
                       <button class="edit" data-edit-row="${r.id}">✏️</button>
@@ -1518,6 +1518,16 @@
     }
   };
   APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
+
+  /* आज का हिसाब: हर text अपने box के अंदर रहे */
+  (function () {
+    const st = document.createElement('style'); st.id = 'sum-fix';
+    st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
+#sum .kv span{font-size:12.5px;color:#555;line-height:1.25;overflow-wrap:anywhere}
+#sum .kv b{font-size:clamp(14px,4.3vw,17px);line-height:1.2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+#sum > div:first-child{flex-wrap:wrap;gap:4px 12px}`;
+    document.head.appendChild(st);
+  })();
 
   window.addEventListener('load', boot);
 })();
