@@ -2,6 +2,8 @@
 (function () {
   'use strict';
   const C = window.CFG, K = window.Calc, num = K.num, r2 = K.r2;
+  if (!K.isOpening) K.isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
+  if (!K.activeNz) K.activeNz = () => K.NZ.slice();
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -14,6 +16,8 @@
   const shiftDate = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   const FUEL = { petrol: 'पेट्रोल', diesel: 'डीज़ल' };
   const MODE = { cash: 'नकद', paytm: 'Paytm/UPI', swipe: 'स्वाइप', bank: 'बैंक' };
+  const AUTO_LBL = { cash: 'नकद जमा', paytm: 'Paytm/UPI से जमा', swipe: 'स्वाइप (कार्ड) से जमा', bank: 'बैंक ट्रांसफर से जमा' };
+  const AUTO_NOTES = Object.values(AUTO_LBL);
 
   const APP = window.APP = {
     C, K, $, $$, esc, num, r2, money, lit, pad, todayISO, nowTime, dmy, shiftDate, FUEL, MODE,
@@ -358,7 +362,6 @@
     $('#app').innerHTML = `
       <header>
         <div style="display:flex;align-items:center;gap:10px">
-          <img src="./logo.png" alt="" style="width:38px;height:38px;border-radius:50%;background:#fff;flex:none">
           <div>
             <b>${esc(C.pump.name)}</b>
             <small>${titleRole} · ${userName}</small>
@@ -382,8 +385,8 @@
 
   function go(tab, arg) {
     if (isSalesman() && !['salesman', 'sm_udhar', 'more'].includes(tab)) tab = 'salesman';
-    S.tab = tab;
-    $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    S.tab = tab; S.partyView = null;
+    $$('nav button').forEach(b => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.classList.toggle('active', on); });
     window.scrollTo(0, 0);
     if (tab === 'day') return dayView(arg);
     if (tab === 'ledger') return ledgerView(arg);
@@ -506,15 +509,16 @@
   async function dayView(date) {
     date = (typeof date === 'string' && date) ? date : (S.date || todayISO()); S.date = date;
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    let ds, rs, ch;
+    let ds, rs, ch, chainErr = null;
     try {
       const [dsR, rsR, chR] = await Promise.all([
         db.collection('days').doc(date).get(),
         db.collection('ledger').where('date', '==', date).get(),
-        chainFor(date)
+        chainFor(date).catch(e => { chainErr = e; return null; })
       ]);
       ds = dsR; rs = rsR; ch = chR;
-    } catch (e) { main.innerHTML = errBox(e); return; }
+    } catch (e) { main.innerHTML = errBox(e) + '<div class="btns" style="margin-top:10px"><button class="btn" onclick="APP.dayView(\'' + date + '\')">🔄 दोबारा कोशिश</button></div>'; return; }
+    if (chainErr && !ds.exists) { main.innerHTML = errBox('कल का हिसाब लोड नहीं हुआ: ' + (chainErr.message || chainErr)) + '<div class="btns" style="margin-top:10px"><button class="btn" onclick="APP.dayView(\'' + date + '\')">🔄 दोबारा कोशिश</button></div>'; return; }
 
     let d = ds.exists ? ds.data() : null;
     const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
@@ -557,6 +561,7 @@
       chainHtml = n.map(x => '<div class="warn" style="margin-bottom:8px">' + x + '</div>').join('');
       if (chainDiff.length && isOwner() && !locked) chainHtml += '<div class="btns" style="margin:-4px 0 10px"><button class="btn sm o" data-do="relink">🔗 कल से दोबारा जोड़ें</button></div>';
     }
+    if (chainErr) chainHtml += '<div class="warn" style="margin-bottom:8px">⚠️ कल का हिसाब लोड नहीं हुआ — ओपनिंग जाँचकर ही सेव करें</div>';
 
     main.innerHTML = `
     ${chainHtml}<div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
@@ -572,6 +577,10 @@
       <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
       <div id="nzwarn"></div>
+      ${(!locked && isOwner() && ch) ? `
+      <div class="btns" style="margin-top:8px">
+        <button class="btn sm w" id="toggle-open" type="button">${isOpeningLocked ? '🔓 ओपनिंग एडिट करें' : '🔒 ओपनिंग लॉक करें (पिछले दिन से जोड़ें)'}</button>
+      </div>` : ''}
     </div>
 
     <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
@@ -651,6 +660,32 @@
     
     $('#f-date').onchange = e => { collectDraft(); dayView(e.target.value || todayISO()); };
     
+    if ($('#toggle-open')) {
+      const setRO = ro => {
+        const els = $$('.nzi[data-f="o"]').concat(['f-openCash', 'f-openStockP', 'f-openStockD'].map(id => $('#' + id)).filter(Boolean));
+        els.forEach(el => {
+          if (ro) { el.setAttribute('readonly', true); el.style.background = '#f0f0f0'; el.style.fontWeight = 'bold'; }
+          else { el.removeAttribute('readonly'); el.style.background = ''; el.style.fontWeight = ''; }
+        });
+      };
+      $('#toggle-open').onclick = () => {
+        const cur = S.cur;
+        if (cur.d.opening_locked !== false) {
+          if (!confirm('⚠️ ओपनिंग (मीटर, कैश, स्टॉक) एडिट करेंगे तो कल की क्लोज़िंग से लिंक टूट जाएगा। आगे बढ़ें?')) return;
+          cur.d.opening_locked = false; setRO(false);
+          $('#toggle-open').textContent = '🔒 ओपनिंग लॉक करें (कल से जोड़ें)';
+        } else {
+          const c2 = cur.chain; if (!c2) return toast('कल का हिसाब नहीं मिला');
+          cur.d.opening_locked = true;
+          $$('.nzi[data-f="o"]').forEach(el => { el.value = c2.nz[el.dataset.k]; });
+          $('#f-openCash').value = c2.openCash; $('#f-openStockP').value = c2.openStockP; $('#f-openStockD').value = c2.openStockD;
+          setRO(true);
+          $('#toggle-open').textContent = '🔓 ओपनिंग एडिट करें';
+        }
+        recalc(); triggerAutoSave();
+      };
+    }
+
     $$('#main input').forEach(i => {
       if (i.id !== 'f-date' && !i.closest('#expbox')) {
         i.addEventListener('input', () => { recalc(); triggerAutoSave(); });
@@ -685,7 +720,7 @@
   function renderRows(st) {
     const rows = st.rows;
     $('#rowsbox').innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="a"><b>${esc(r.partyName)}</b>
-      <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FUEL[r.fuel] || '') + ' ' + lit(r.litre) : '') : 'जमा · ' + (MODE[r.mode] || '') + (r.note ? ' · ' + esc(r.note) : '')}</small>
+      <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FUEL[r.fuel] || '') + ' ' + lit(r.litre) : '') : 'जमा · ' + (MODE[r.mode] || '') + (r.note && !AUTO_NOTES.includes(r.note) ? ' · ' + esc(r.note) : '')}</small>
       ${r.src === 'salesman' ? `<small style="color:${r.verified ? '#0a7d33' : '#b26a00'}">👤 ${esc(r.by)} ने की · ${r.verified ? '✔ मिलान हो गया' : '⏳ मिलान बाकी'}</small>` : ''}</div>
       <div style="text-align:right"><b class="${r.kind === 'udhar' ? 'neg' : 'pos'}">${r.kind === 'udhar' ? '' : '+'}${money(r.amount)}</b>
       ${isOwner() ? `<div>${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
@@ -726,22 +761,38 @@
 
     const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
     
-    // Asli hisab ka naya format (Galla badhane wale + Galla ghatane wale)
-    $('#sum').innerHTML =
-      kvEl('पेट्रोल बिक्री', lit(o.litP) + ' = ' + money(o.amtP)) + 
-      kvEl('डीज़ल बिक्री', lit(o.litD) + ' = ' + money(o.amtD)) +
-      kvEl('+ पिछला कैश (AD)', money(d.openCash)) +
-      kvEl('+ पार्टी जमा (नकद/UPI)', money(o.jCash + o.jPaytm + o.jSwipe)) +
-      kvEl('= कुल गल्ला (बढ़ा)', money(o.kul), 'big') +
-      '<div style="border-top:1px dashed #ccc;margin:8px 0"></div>' +
-      kvEl('− Paytm कुल', money(d.paytm)) + 
-      kvEl('− स्वाइप कुल', money(d.swipe)) + 
-      kvEl('− उधार दिया', money(o.udhar)) +
-      kvEl('− SBI बैंक जमा', money(d.malikDiya)) +
-      kvEl('− कुल खर्चा', money(o.totalKharcha)) +
-      K.khList(d).map(x => `<div class="kv" style="padding:2px 0 2px 14px;font-size:13px"><span class="mut">• ${esc(x.label)}</span><span class="mut">${money(x.amount)}</span></div>`).join('') +
-      '<div style="border-top:1px dashed #ccc;margin:8px 0"></div>' +
-      kvEl('असली कैश (बचा)', money(o.close), 'big' + (o.close < 0 ? ' neg' : ''));
+    // ---- NAYA HISAB LAYOUT (Galla vs Kharcha) ----
+    const gallaIn = r2(num(d.openCash) + o.sale + o.jCash + o.jPaytm + o.jSwipe);
+    const gallaOut = r2(num(d.paytm) + num(d.swipe) + o.udhar + o.totalKharcha + num(d.malikDiya));
+
+    $('#sum').innerHTML = `
+      <div style="font-size:13px; color:#555; margin-bottom:8px; display:flex; justify-content:space-between;">
+        <span>पेट्रोल: <b>${lit(o.litP)}</b> (${money(o.amtP)})</span>
+        <span>डीज़ल: <b>${lit(o.litD)}</b> (${money(o.amtD)})</span>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <div style="flex:1; min-width:0; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:8px;">
+          <div style="font-weight:bold; color:#166534; margin-bottom:4px; font-size:13px; text-align:center;">💰 गल्ला (आमदनी)</div>
+          ${kvEl('बिक्री', money(o.sale))}
+          ${kvEl('पिछला कैश (AD)', money(d.openCash))}
+          ${kvEl('पार्टी जमा', money(o.jCash + o.jPaytm + o.jSwipe))}
+          <div class="kv" style="border-top:1px solid #bbf7d0; margin-top:4px; padding-top:4px; font-weight:bold; color:#166534; border-bottom:0;"><span>कुल गल्ला</span><b>${money(gallaIn)}</b></div>
+        </div>
+        <div style="flex:1; min-width:0; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:8px;">
+          <div style="font-weight:bold; color:#991b1b; margin-bottom:4px; font-size:13px; text-align:center;">💸 खर्चा (निकासी)</div>
+          ${kvEl('Paytm + स्वाइप', money(num(d.paytm) + num(d.swipe)))}
+          ${kvEl('उधार दिया', money(o.udhar))}
+          ${kvEl('DG/चाय/अन्य', money(o.totalKharcha))}
+          ${kvEl('SBI जमा', money(d.malikDiya))}
+          <div class="kv" style="border-top:1px solid #fecaca; margin-top:4px; padding-top:4px; font-weight:bold; color:#991b1b; border-bottom:0;"><span>कुल खर्चा</span><b>${money(gallaOut)}</b></div>
+        </div>
+      </div>
+      <div style="padding:12px; background:#0b3d91; color:#fff; border-radius:8px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 10px rgba(11,61,145,0.3);">
+        <span style="font-size:15px; font-weight:600;">असली कैश (बचा)</span>
+        <span style="font-size:22px; font-weight:bold;">${money(o.close)}</span>
+      </div>
+    `;
+    // ---------------------------------------------
     
     st.o = o;
   }
@@ -753,7 +804,7 @@
     if (silent && !st.d.at && o.filled === 0 && !num(d.paytm) && !num(d.swipe) && !num(d.malikDiya) && !K.khTotal(d)) return;
     if (submit && !silent) {
       const ch = st.chain;
-      const v = K.validate(d, st.rows, { isOwner: isOwner(), prevPending: (ch && !ch.prevSubmitted) ? dmy(ch.prevDate) : '', gap: ch ? ch.gap : 0, prevDate: ch ? dmy(ch.prevDate) : '' });
+      const v = (K.validate || (() => ({ errors: [], warns: [] })))(d, st.rows, { isOwner: isOwner(), prevPending: (ch && !ch.prevSubmitted) ? dmy(ch.prevDate) : '', gap: ch ? ch.gap : 0, prevDate: ch ? dmy(ch.prevDate) : '' });
       if (v.errors.length) { alert('❌ अभी जमा नहीं हो सकता:\n\n• ' + v.errors.join('\n• ')); return; }
       if (v.warns.length) { if (!confirm('⚠️ ध्यान दें:\n\n• ' + v.warns.join('\n• ') + '\n\nफिर भी जमा करके लॉक करें?')) return; }
       else if (!confirm('क्या आप आज का हिसाब जमा करके लॉक करना चाहते हैं?')) return;
@@ -854,7 +905,14 @@
       $$('.seg button', m).forEach(b => b.classList.toggle('on', b.dataset.k === kind));
       q('blkU').style.display = kind === 'udhar' ? '' : 'none'; q('blkJ').style.display = kind === 'jama' ? '' : 'none';
       q('e-slip-btn').style.display = kind === 'udhar' ? '' : 'none';
+      syncNote();
     };
+    const syncNote = () => {
+      if (kind !== 'jama') return;
+      const nt = q('e-note'), v = nt.value.trim();
+      if (!v || AUTO_NOTES.includes(v)) nt.value = AUTO_LBL[q('e-mode').value] || '';
+    };
+    q('e-mode').onchange = syncNote;
     $$('.seg button', m).forEach(b => b.onclick = () => { kind = b.dataset.k; showKind(); });
     const fillVeh = () => {
       const p = partyById(priv, q('e-party').value) || {}; const vs = p.vehicles || [];
@@ -911,6 +969,7 @@
       } else {
         data.mode = q('e-mode').value; data.amount = num(q('e-amtJ').value);
         if (!(data.amount > 0)) return toast('रुपये भरें');
+        if (!data.note) data.note = AUTO_LBL[data.mode] || '';
       }
       if (priv) { data.status = e ? e.status : 'pending'; }
       const who = S.salesman ? S.salesman.name : S.user.email;
@@ -957,7 +1016,8 @@
         if (!priv) { refreshDaySum(data.date); if (e && e.date !== data.date) refreshDaySum(e.date); }
         const savedParty = Object.assign({}, party);
         S.parties[priv ? 'priv' : 'pub'] = null;
-        if (S.tab === 'day') dayView(S.date);
+        if (S.partyView) partyView(S.partyView.id, S.partyView.priv);
+        else if (S.tab === 'day') dayView(S.date);
         else if (S.tab === 'ledger') ledgerView();
         else if (S.tab === 'priv') partyView(partyId, true);
         else if (APP.views && APP.views[S.tab]) APP.views[S.tab]();
@@ -967,12 +1027,13 @@
   }
 
   async function ledgerView() {
+    S.partyView = null;
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties; try { parties = await getParties(false, true); } catch (e) { main.innerHTML = errBox(e); return; }
-    const due = parties.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
+    const due = parties.filter(p => num(p.bal) > 0);
     main.innerHTML = `
       <div class="card">
-        <div class="kv"><span>कुल बकाया (लेना है)</span><b class="neg">-₹${due.toLocaleString('en-IN', {maximumFractionDigits: 2})}</b></div>
+        <div class="kv"><span>कुल बकाया (लेना है)</span><b class="neg">${money(due.reduce((a, p) => a + num(p.bal), 0))}</b></div>
       </div>
       <div class="row search"><input id="q" placeholder="पार्टी या गाड़ी खोजें…"></div>
       <div class="card" id="plist"></div>
@@ -988,7 +1049,7 @@
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
-        // MINUS amount (Udhar) = Red, PLUS amount (Advance) = Green
+        // MINUS amount (Udhar) = Red, PLUS amount (Advance) = Green (UI fix)
         const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
         const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
@@ -1074,15 +1135,25 @@
 
   async function partyView(id, priv) {
     const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
+    S.partyView = { id, priv: !!priv };
     const main = $('#main'); main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
-    const [ps, es] = await Promise.all([db.collection(pcol).doc(id).get(), db.collection(col).where('partyId', '==', id).get()]);
-    if (!ps.exists) return;
+    let ps, es;
+    try { [ps, es] = await Promise.all([db.collection(pcol).doc(id).get(), db.collection(col).where('partyId', '==', id).get()]); }
+    catch (e) { main.innerHTML = errBox(e); return; }
+    if (!ps.exists) { S.partyView = null; main.innerHTML = '<div class="err">पार्टी नहीं मिली</div>'; return; }
     const p = { id, ...ps.data() };
     const all = es.docs.map(x => ({ id: x.id, ...x.data() }));
     const st = K.stmt(all, null, null);
     
     const tDr = st.rows.filter(r => r.kind === 'udhar').reduce((a, b) => a + num(b.amount), 0);
     const tCr = st.rows.filter(r => r.kind === 'jama').reduce((a, b) => a + num(b.amount), 0);
+    const ph = String(p.phone || '').replace(/\D/g, '').replace(/^0+/, ''), wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
+    const mism = !priv && Math.abs(num(p.bal) - st.close) > 0.5;
+    const desc = r => {
+      if (r.opening) return '<b>पिछला बैलेंस</b>' + (r.note && !/Opening Balance/i.test(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
+      if (r.kind === 'udhar') return '<b>' + esc(r.vehicle || '-') + '</b>' + (r.fuel ? '<br><small class="mut">' + (FUEL[r.fuel] || '') + ' · ' + lit(r.litre) + (num(r.rate) ? ' × ₹' + num(r.rate) : '') + '</small>' : '') + (r.note ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
+      return '<b>जमा</b> · ' + esc(MODE[r.mode] || 'नकद') + (r.note && !AUTO_NOTES.includes(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
+    };
 
     // COLOR FIX: Minus amount red, Plus amount green
     const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
@@ -1101,6 +1172,7 @@
       <div class="card" style="padding:12px;">
         <h3 style="margin:0;color:#0b3d91">${esc(p.name)}</h3>
         <p class="mut" style="margin-top:4px">${esc(p.phone || 'फोन नंबर नहीं')} | ${esc((p.vehicles || []).join(', '))}</p>
+        ${ph ? `<div class="btns" style="margin:6px 0 2px"><a href="tel:${esc(p.phone)}" class="btn sm g">📞 कॉल</a>${wa ? `<a href="https://wa.me/${wa}" target="_blank" class="btn sm g">💬 WhatsApp</a>` : ''}</div>` : ''}
         
         <div class="ledger-summary">
           <div class="ledger-box debit">
@@ -1117,6 +1189,7 @@
           </div>
         </div>
         
+        ${mism && isOwner() ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
         <button class="btn full" id="shareStmt" style="margin-top:8px;background:#0b3d91">📄 प्रोफेशनल स्टेटमेंट देखें / भेजें</button>
       </div>
 
@@ -1138,8 +1211,7 @@
                 <tr>
                   <td class="dt">${dmy(r.date)}</td>
                   <td>
-                    ${esc(r.vehicle || (r.kind === 'jama' ? 'जमा' : '-'))}
-                    <br><small class="mut">${esc(r.note||'')}</small>
+                    ${desc(r)}
                   </td>
                   <td class="dr">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
                   <td class="cr">${r.kind === 'jama' ? money(r.amount) : ''}</td>
@@ -1157,7 +1229,7 @@
         </div>
       </div>`;
       
-    $('#back').onclick = () => priv ? APP.views.priv() : ledgerView();
+    $('#back').onclick = () => { S.partyView = null; priv ? APP.views.priv() : ledgerView(); };
     if (isOwner() && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
     $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
     $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
@@ -1165,22 +1237,30 @@
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
     
     $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
+    if ($('#fixBal')) $('#fixBal').onclick = async () => {
+      if (!confirm('पार्टी का बैलेंस ' + money(p.bal) + ' से बदलकर ' + money(st.close) + ' (एंट्रियों के जोड़ के बराबर) करें?')) return;
+      try { await commit(db.collection(pcol).doc(id).update({ bal: st.close })); audit('party_bal_fix', { party: p.name, was: p.bal, now: st.close }); toast('बैलेंस ठीक हो गया ✔'); S.parties[priv ? 'priv' : 'pub'] = null; partyView(id, priv); }
+      catch (e) { toast('नहीं हुआ: ' + e.message); }
+    };
     
     $$('[data-edit-row]').forEach(b => b.onclick = () => {
       const row = all.find(x => x.id === b.dataset.editRow);
       if (row) entryModal({ entry: row, date: row.date, priv: priv });
     });
     $$('[data-del-row]').forEach(b => b.onclick = async () => {
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
       const row = all.find(x => x.id === b.dataset.delRow);
       if (!row) return;
+      if (!priv && await dayIsLocked(row.date)) return toast(LOCKMSG);
+      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?\n\n' + dmy(row.date) + ' · ' + (row.kind === 'udhar' ? 'उधार ' : 'जमा ') + money(row.amount))) return;
       b.disabled = true;
       try {
         const b2 = db.batch();
         b2.delete(db.collection(col).doc(row.id));
         const delta = -sigEntry(priv, row);
         if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
-        await b2.commit();
+        await commit(b2.commit());
+        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '', priv });
+        if (!priv) refreshDaySum(row.date);
         toast('एंट्री हटा दी गई ✔');
         S.parties[priv ? 'priv' : 'pub'] = null;
         partyView(id, priv);
