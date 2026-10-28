@@ -325,7 +325,7 @@
         const w = waNum(p.phone);
         return '<div class="card"><div class="item"><div class="a"><b>' + esc(p.name) + '</b><small>' +
           (p.vehicles || []).join(', ') + '</small></div>' +
-          '<span class="chip ' + (b > 0 ? 'r' : 'g') + '">' + money(b) + '</span></div>' +
+          '<span class="chip ' + (b > 0.005 ? 'r' : b < -0.005 ? 'g' : '') + '">' + (Math.abs(b) < 0.005 ? '₹0' : (b > 0 ? '-' : '+') + money(Math.abs(b))) + '</span></div>' +
           '<div class="btns" style="margin-top:8px">' +
             (ph ? '<a href="tel:' + esc(p.phone) + '" class="btn sm w">📞 कॉल</a>' : '') +
             (w ? '<a href="https://wa.me/' + w + '" target="_blank" class="btn sm g">💬 WhatsApp</a>' : '') +
