@@ -21,7 +21,7 @@
 
   const APP = window.APP = {
     C, K, $, $$, esc, num, r2, money, lit, pad, todayISO, nowTime, dmy, shiftDate, FUEL, MODE,
-    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, range: 'month' },
+    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, range: 'month', _costCache: {} },
     views: {}
   };
   const S = APP.S;
@@ -73,7 +73,7 @@
   const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
   const EXP_HINTS = ['पंचर', 'सफाई', 'बिजली', 'मरम्मत', 'स्टेशनरी', 'पानी', 'ट्रांसपोर्ट', 'स्टाफ'];
   const KHF = { kharcha: 'f-kharcha', driverInaam: 'f-driverInaam', chaiKhana: 'f-chaiKhana' };
-  
+
   function expEditor(o) {
     const must = (o.mustTotal === undefined || o.mustTotal === null) ? null : r2(o.mustTotal);
     let lines = (o.lines || []).map(x => ({ cat: x.cat || 'other', label: x.label || '', amount: x.amount == null ? '' : x.amount }));
@@ -278,7 +278,6 @@
       shell();
     };
   }
-
 
   function boot() {
     try {
@@ -656,7 +655,23 @@
     renderRows(state);
     recalc();
     
-    $('#f-date').onchange = e => { collectDraft(); dayView(e.target.value || todayISO()); };
+    // Analytics card injection (async, doesn't block)
+    if (APP.ANALYTICS && APP.ANALYTICS.getDayCardHtml && !isViewer()) {
+      APP.ANALYTICS.getDayCardHtml(date).then(html => {
+        if (!html) return;
+        if (document.querySelector('#day-analytics-card-wrapper')) return;
+        const dateInput = $('#f-date');
+        if (!dateInput) return;
+        const dateCard = dateInput.closest('.card');
+        if (!dateCard) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'day-analytics-card-wrapper';
+        wrap.innerHTML = html;
+        dateCard.after(wrap);
+      }).catch(() => {});
+    }
+    
+    $('#f-date').onchange = e => { collectDraft(); S._costCache = {}; dayView(e.target.value || todayISO()); };
     
     if ($('#toggle-open')) {
       const setRO = ro => {
@@ -725,6 +740,66 @@
       : '<p class="mut">आज कोई पार्टी एंट्री नहीं</p>';
   }
 
+  async function updateMarginCard(d, o, date) {
+    if (!APP.margins) return;
+    const cache = S._costCache || (S._costCache = {});
+    let rates = cache[date];
+    if (!rates || Date.now() - (rates._t || 0) > 5 * 60 * 1000) {
+      try {
+        const [p, dd] = await Promise.all([
+          APP.margins.getLatestPurchaseRate('petrol', date),
+          APP.margins.getLatestPurchaseRate('diesel', date)
+        ]);
+        let dc = null;
+        try {
+          const snap = await db().collection('day_costs').doc(date).get();
+          if (snap.exists) dc = snap.data();
+        } catch (e) {}
+        rates = {
+          petrol: p || (dc && num(dc.costP)) || 0,
+          diesel: dd || (dc && num(dc.costD)) || 0,
+          source: (p || dd) ? 'invoice' : 'manual',
+          _t: Date.now()
+        };
+        cache[date] = rates;
+      } catch (e) { return; }
+    }
+    const costP = num(rates.petrol), costD = num(rates.diesel);
+    const rateP = num(d.rateP), rateD = num(d.rateD);
+    const hasP = o.litP > 0 && costP > 0 && rateP > 0;
+    const hasD = o.litD > 0 && costD > 0 && rateD > 0;
+    if (!hasP && !hasD) {
+      const el = document.querySelector('#day-margin-card');
+      if (el) el.remove();
+      return;
+    }
+    const marginP = hasP ? r2((rateP - costP) * o.litP) : 0;
+    const marginD = hasD ? r2((rateD - costD) * o.litD) : 0;
+    const total = r2(marginP + marginD);
+    const pct = o.sale > 0 ? r2(total / o.sale * 100) : 0;
+    const totalCls = total >= 0 ? 'pos' : 'neg';
+    
+    let el = document.querySelector('#day-margin-card');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'day-margin-card';
+      el.className = 'card';
+      el.style.cssText = 'border-left:4px solid #16a34a;background:linear-gradient(180deg,#f0fdf4,#fff)';
+      const sumBox = document.querySelector('#sum');
+      if (sumBox) {
+        const sumCard = sumBox.closest('.card');
+        if (sumCard) sumCard.after(el);
+      } else return;
+    }
+    el.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<h3 style="margin:0;color:#166534;font-size:15px">💰 आज का अनुमानित मार्जिन</h3>' +
+      '<span class="mut" style="font-size:11px">' + (rates.source === 'invoice' ? 'बिल से' : 'manual rate') + '</span></div>' +
+      (hasP ? '<div class="kv" style="padding:4px 0"><span>⛽ पेट्रोल <span class="mut" style="font-size:11px">(' + lit(o.litP) + ' × ₹' + r2(rateP - costP) + '/L)</span></span><b class="' + (marginP >= 0 ? 'pos' : 'neg') + '">' + money(marginP) + '</b></div>' : '') +
+      (hasD ? '<div class="kv" style="padding:4px 0"><span>🛢️ डीज़ल <span class="mut" style="font-size:11px">(' + lit(o.litD) + ' × ₹' + r2(rateD - costD) + '/L)</span></span><b class="' + (marginD >= 0 ? 'pos' : 'neg') + '">' + money(marginD) + '</b></div>' : '') +
+      '<div class="kv" style="border-top:1px solid #bbf7d0;padding-top:6px;margin-top:4px;border-bottom:0"><span><b>कुल मार्जिन</b> <span class="mut" style="font-size:11px">(' + pct + '%)</span></span><b class="' + totalCls + '" style="font-size:16px">' + money(total) + '</b></div>';
+  }
+
   function recalc() {
     const st = S.cur; if (!st) return;
     const d = readForm(), o = K.compute(d, st.rows);
@@ -790,6 +865,9 @@
       </div>
     `;
     st.o = o;
+    
+    // Margin card injection
+    updateMarginCard(d, o, st.date).catch(() => {});
   }
 
   async function saveDay(submit, silent = false) {
@@ -859,6 +937,27 @@
   APP.findDupEntry = findDupEntry;
 
   const sigEntry = (priv, e) => priv ? (e.status === 'pending' ? num(e.amount) : 0) : K.signed(e);
+
+  function sendEntryWhatsApp(data, party, priv) {
+    if (!party.phone) return;
+    const ph = String(party.phone).replace(/\D/g, '').replace(/^0+/, '');
+    if (!ph) return;
+    const wa = ph.length === 10 ? '91' + ph : ph;
+    let msg;
+    if (data.kind === 'udhar') {
+      msg = `नमस्ते ${party.name} जी,\n\n`;
+      msg += `आपकी गाड़ी *${data.vehicle || ''}* पर भरा:\n`;
+      msg += `⛽ ${data.fuel === 'petrol' ? 'पेट्रोल' : 'डीज़ल'} ${r2(data.litre)} L × ₹${r2(data.rate)} = *₹${r2(data.amount)}*\n`;
+      msg += `📅 ${dmy(data.date)} ${data.time || ''}\n`;
+      msg += `\nमाज़दा ऑयल कंपनी`;
+    } else {
+      msg = `नमस्ते ${party.name} जी,\n\n`;
+      msg += `आपका *₹${r2(data.amount)}* का भुगतान प्राप्त हुआ।\n`;
+      msg += `📅 ${dmy(data.date)} ${data.time || ''}\n\n`;
+      msg += `धन्यवाद! 🙏\nमाज़दा ऑयल कंपनी`;
+    }
+    window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(msg), '_blank');
+  }
 
   async function entryModal(o) {
     if (isViewer()) return toast('आप केवल देख सकते हैं');
@@ -981,6 +1080,18 @@
       const sbtn = q('e-save');
       if (sbtn.disabled) return;                       
       if (!priv && (await dayIsLocked(data.date) || (e && e.date !== data.date && await dayIsLocked(e.date)))) return toast(LOCKMSG);
+      
+      // CIBIL-based credit limit check
+      if (!e && data.kind === 'udhar' && APP.cibil && APP.cibil.checkLimit) {
+        try {
+          const check = await APP.cibil.checkLimit(party, data.amount, priv);
+          if (check && !check.allow) {
+            if (check.blocked) { sbtn.disabled = false; return toast(check.reason || 'उधार सीमा पार'); }
+            if (!confirm((check.reason || '') + '\n\nफिर भी जोड़ें?')) { sbtn.disabled = false; return; }
+          }
+        } catch (x) { console.error('Credit check error', x); }
+      }
+      
       if (!e && data.kind === 'udhar' && !priv) {
         const dup = await findDupEntry(data);
         if (dup) {
@@ -1017,6 +1128,15 @@
         else if (S.tab === 'priv') partyView(partyId, true);
         else if (APP.views && APP.views[S.tab]) APP.views[S.tab]();
         if (APP.afterEntrySaved) { try { APP.afterEntrySaved({ data, party: savedParty, priv, isNew: !e, delta }); } catch (z) { console.error(z); } }
+        
+        // WhatsApp prompt (only for new entries, non-private, party has phone)
+        if (!e && !priv && party.phone) {
+          setTimeout(() => {
+            if (confirm('📤 ' + party.name + ' को WhatsApp पर भेजें?\n\n' + (data.kind === 'udhar' ? 'तेल भरने की पर्ची' : 'जमा की रसीद'))) {
+              sendEntryWhatsApp(data, party, priv);
+            }
+          }, 400);
+        }
       } catch (x) { sbtn.disabled = false; toast('सेव नहीं हुआ: ' + x.message); }
     };
   }
@@ -1046,8 +1166,9 @@
         const b = num(p.bal);
         const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
         const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
+        const cibilBadge = (APP.cibil && APP.cibil.badgeHtml) ? APP.cibil.badgeHtml(p) : '';
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
-          <div class="a"><b>${esc(p.name)}</b><small>${esc((p.vehicles || []).join(', '))}</small></div>
+          <div class="a"><b>${esc(p.name)}</b> ${cibilBadge}<small>${esc((p.vehicles || []).join(', '))}</small></div>
           <span class="chip ${cls}">${disp}</span>
         </div>`;
       }).join('') : '<p class="mut">कोई पार्टी नहीं मिली</p>';
@@ -1152,6 +1273,10 @@
 
     const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
     const balColor = st.close > 0 ? 'var(--r)' : (st.close < 0 ? 'var(--g)' : 'var(--t)');
+    
+    const cibilCard = (APP.cibil && APP.cibil.cardHtml) ? APP.cibil.cardHtml(p, all) : '';
+    const wasooliChip = (APP.cibil && APP.cibil.wasooliChip) ? APP.cibil.wasooliChip(p, all) : '';
+    const showPortalBtn = isOwner() && !viewer && APP.portal && APP.portal.openCodeModal;
 
     main.innerHTML = `
       <div class="btns" style="margin-bottom:10px">
@@ -1163,10 +1288,13 @@
         ${priv && isOwner() && !viewer ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
       
+      ${cibilCard}
+      
       <div class="card" style="padding:12px;">
-        <h3 style="margin:0;color:#0b3d91">${esc(p.name)}</h3>
+        <h3 style="margin:0;color:#0b3d91">${esc(p.name)} ${wasooliChip}</h3>
         <p class="mut" style="margin-top:4px">${esc(p.phone || 'फोन नंबर नहीं')} | ${esc((p.vehicles || []).join(', '))}</p>
         ${ph ? `<div class="btns" style="margin:6px 0 2px"><a href="tel:${esc(p.phone)}" class="btn sm g">📞 कॉल</a>${wa ? `<a href="https://wa.me/${wa}" target="_blank" class="btn sm g">💬 WhatsApp</a>` : ''}</div>` : ''}
+        ${showPortalBtn ? '<button class="btn full" id="portalBtn" style="margin-top:8px;background:#0a7d33;color:#fff">🔑 पोर्टल कोड / भेजें</button>' : ''}
         
         <div class="ledger-summary">
           <div class="ledger-box debit">
@@ -1235,6 +1363,7 @@
     if (!viewer && $('#addJ')) $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
     if (!viewer && $('#addOB')) $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
+    if ($('#portalBtn')) $('#portalBtn').onclick = () => APP.portal.openCodeModal(p, priv);
     
     $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
     if ($('#fixBal')) $('#fixBal').onclick = async () => {
