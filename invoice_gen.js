@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Professional Invoice Generator with UPI */
+/* Mazda Oil Company - Professional Invoice Generator with UPI (FIXED CORS & LINK) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -13,8 +13,9 @@
     const upiName = C.pump.upiName;
     // UPI Link with Amount Auto-fill
     const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${bal}&cu=INR&tn=${encodeURIComponent('Payment to ' + upiName)}`;
-    // Generate QR Code using a free public API
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}`;
+    
+    // Using quickchart.io as it supports CORS (html2canvas can capture it)
+    const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(upiLink)}&size=150&margin=1`;
 
     const invNo = 'INV-' + Date.now().toString().slice(-6);
     const dt = dmy(APP.todayISO());
@@ -60,7 +61,7 @@
       <h3>🧾 Professional Invoice</h3>
       <div style="padding:10px 0; max-height:70vh; overflow-y:auto;">${html}</div>
       <div class="btns" style="margin-top:10px;">
-        <button class="btn bpcl full" id="inv-share">📤 WhatsApp भेजें (Image)</button>
+        <button class="btn bpcl full" id="inv-share">📤 WhatsApp भेजें (Image + Link)</button>
         <button class="btn w full" id="inv-print">🖨️ Print / PDF</button>
         <button class="btn w full" id="inv-close">बंद करें</button>
       </div>
@@ -72,20 +73,27 @@
       toast('इमेज बन रही है...');
       try {
         const node = $('#inv-node', m);
-        const cv = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff' });
+        
+        // FIXED: Added useCORS and allowTaint to capture external QR
+        const cv = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, allowTaint: true });
+        
         cv.toBlob(async blob => {
           const file = new File([blob], 'invoice.png', { type: 'image/png' });
           const ph = String(party.phone || '').replace(/\D/g, '');
           const wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
-          const text = `नमस्ते ${party.name} जी, आपका माज़दा ऑयल कंपनी का बिल संलग्न है। कुल बकाया: ₹${bal.toFixed(2)}`;
+          
+          // FIXED: Added payment link in the text message
+          const text = `नमस्ते ${party.name} जी,\n\nआपका माज़दा ऑयल कंपनी का बिल संलग्न है।\n\n*कुल बकाया: ₹${bal.toFixed(2)}*\n\n💳 *UPI से भुगतान करने के लिए इस लिंक पर क्लिक करें:*\n${upiLink}\n\nया बिल में दिए गए QR कोड को स्कैन करें।`;
           
           if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file], text: text });
           } else {
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'invoice.png'; a.click();
-            toast('इमेज डाउनलोड हो गई');
+            // Fallback for WhatsApp Web
+            if (wa) window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank');
+            else toast('इमेज डाउनलोड हो गई, अब WhatsApp पर भेजें');
           }
-        });
+        }, 'image/png');
       } catch (e) { toast('फोटो नहीं बनी: ' + e.message); }
     };
 
