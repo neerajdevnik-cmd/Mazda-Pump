@@ -1,39 +1,126 @@
-const V = 'mazda-v31';
+const V = 'mazda-v32';
 const SHELL = [
-  './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
-  'app.js', 'views2.js', 'features.js', 'features2.js',
-  'salesman.js', 'shop.js', 'runsheet.js', 'monthly.js',
-  'shifts.js', 'extras.js', 'dayreport.js',
-  'tanker_report.js', 'analytics.js', 'margins.js',
-  'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
-  'portal_gen.js', 'preset_parties.js', 'manifest.json', 'logo.png', 'icon-192.png', 'icon-512.png',
-  'party.html', 'party_portal.js', 'party_manifest.json'
+  // Core
+  './',
+  'index.html',
+  'style.css',
+  'config.js',
+  'dip_chart.js',
+  'calc.js',
+  'app.js',
+  'views2.js',
+  'features.js',
+  'features2.js',
+  'salesman.js',
+  'shop.js',
+  'runsheet.js',
+  'monthly.js',
+  'shifts.js',
+  'extras.js',
+  'dayreport.js',
+  'preset_parties.js',
+
+  // Phase A - Tanker
+  'tanker_report.js',
+
+  // Phase B - Analytics + Margins
+  'analytics.js',
+  'margins.js',
+
+  // Phase C - CIBIL + App Lock + Vehicle
+  'cibil.js',
+  'applock.js',
+  'vehicle_profile.js',
+
+  // Phase D - Shop Orders
+  'shop_orders.js',
+
+  // Phase E - Vendors + Portal Generator
+  'vendors.js',
+  'portal_gen.js',
+
+  // Party Portal (separate app)
+  'party.html',
+  'party_portal.js',
+  'party_manifest.json',
+
+  // Assets
+  'manifest.json',
+  'logo.png',
+  'icon-180.png',
+  'icon-192.png',
+  'icon-512.png'
 ];
+
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(V).then(c => Promise.allSettled(SHELL.map(f => c.add(f)))).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(V)
+      .then(c => Promise.allSettled(SHELL.map(f => c.add(f))))
+      .then(() => self.skipWaiting())
+  );
 });
-self.addEventListener('activate', e => { 
-  e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())); 
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== V).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
+
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
+
+  // Only GET
   if (e.request.method !== 'GET') return;
-  if (u.hostname.endsWith('googleapis.com') || u.hostname.endsWith('firebaseio.com') || u.pathname.startsWith('/.netlify/functions/') || u.pathname === '/pay') return;
-  const same = u.origin === location.origin;
-  if (same) {
-    e.respondWith(new Promise(res => {
+
+  // Skip Firebase, Google APIs, Netlify functions
+  if (u.hostname.endsWith('googleapis.com') ||
+      u.hostname.endsWith('firebaseio.com') ||
+      u.hostname.endsWith('gstatic.com') ||
+      u.pathname.startsWith('/.netlify/functions/') ||
+      u.pathname === '/pay') return;
+
+  const sameOrigin = u.origin === location.origin;
+
+  if (sameOrigin) {
+    // Network-first with cache fallback (for HTML/JS/CSS updates)
+    e.respondWith(new Promise(resolve => {
       let done = false;
-      const t = setTimeout(() => { caches.match(e.request).then(h => { if (h && !done) { done = true; res(h); } }); }, 4000);
-      fetch(e.request).then(r => {
-        clearTimeout(t);
-        if (r.ok) { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); }
-        if (!done) { done = true; res(r); }
-      }).catch(() => {
-        clearTimeout(t);
-        caches.match(e.request).then(h => { if (!done) { done = true; res(h || Response.error()); } });
-      });
+
+      const timeout = setTimeout(() => {
+        caches.match(e.request).then(hit => {
+          if (hit && !done) { done = true; resolve(hit); }
+        });
+      }, 4000);
+
+      fetch(e.request)
+        .then(r => {
+          clearTimeout(timeout);
+          if (r && r.ok) {
+            const clone = r.clone();
+            caches.open(V).then(c => c.put(e.request, clone));
+          }
+          if (!done) { done = true; resolve(r); }
+        })
+        .catch(() => {
+          clearTimeout(timeout);
+          caches.match(e.request).then(hit => {
+            if (!done) { done = true; resolve(hit || Response.error()); }
+          });
+        });
     }));
   } else {
-    e.respondWith(caches.match(e.request).then(h => h || fetch(e.request).then(r => { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); return r; })));
+    // Cross-origin: cache-first
+    e.respondWith(
+      caches.match(e.request).then(hit => {
+        if (hit) return hit;
+        return fetch(e.request).then(r => {
+          const clone = r.clone();
+          caches.open(V).then(c => c.put(e.request, clone));
+          return r;
+        }).catch(() => Response.error());
+      })
+    );
   }
 });
