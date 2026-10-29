@@ -37,8 +37,7 @@
   let dTimer = null;
   document.addEventListener('input', e => {
     if (!S.cur || S.cur.locked || !e.target.closest('#main')) return;
-    if (e.target.id === 'f-date' ||
-        e.target.id === 'f-costP' || e.target.id === 'f-costD' || e.target.id === 'reg-photo-in') return;
+    if (e.target.id === 'f-date' || e.target.id === 'f-costP' || e.target.id === 'f-costD' || e.target.id === 'reg-photo-in') return;
     clearTimeout(dTimer);
     dTimer = setTimeout(() => { try { APP.collectDraft(); } catch (x) {} }, 500);
   });
@@ -93,7 +92,8 @@
     try {
       const cols = ['days', 'ledger', 'parties', 'priv_ledger', 'priv_parties', 'gaadi_cash',
                     'bank_deposits', 'audit', 'workers', 'attendance', 'salary_payments',
-                    'rate_history', 'day_costs', 'day_photos', 'runsheets', 'sm_shifts', 'cash_submissions', 'shop'];
+                    'rate_history', 'day_costs', 'day_photos', 'runsheets', 'sm_shifts', 'cash_submissions', 'shop',
+                    'tanker_reports', 'tanker_invoices', 'shop_orders', 'vendors', 'depot_holidays'];
       const out = {};
       for (const c of cols) {
         try {
@@ -101,7 +101,7 @@
           out[c] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) { out[c] = []; }
       }
-      out._meta = { exportedAt: new Date().toISOString(), app: 'mazda-pump', version: 3 };
+      out._meta = { exportedAt: new Date().toISOString(), app: 'mazda-pump', version: 4 };
       const stamp = today();
       if (fmt === 'csv') {
         const lines = ['collection,id,data'];
@@ -115,11 +115,12 @@
       } else {
         dlBlob(JSON.stringify(out, null, 2), 'mazda-backup-' + stamp + '.json', 'application/json');
       }
+      try { localStorage.setItem('mazda_last_backup', String(Date.now())); } catch(e) {}
       toast('बैकअप डाउनलोड ✔');
     } catch (e) { alert('बैकअप नहीं बना: ' + e.message); }
   };
 
-  /* ============ PROFESSIONAL PARTY STATEMENT (A4, multi-page, bilingual) ============ */
+  /* ============ PROFESSIONAL PARTY STATEMENT ============ */
   APP.sharePartyStatement = async function (partyId, priv) {
     const pcol = priv ? 'priv_parties' : 'parties';
     const lcol = priv ? 'priv_ledger' : 'ledger';
@@ -151,15 +152,12 @@
     `);
     $('#st-cancel', m).onclick = () => m.close();
 
-    /* ---------- छोटे हेल्पर ---------- */
     const inr = n => Number(num(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const litF = n => Number(num(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    /* ledger वाला ही सिस्टम: बकाया (उधार) = लाल व माइनस (−), एडवांस = हरा व प्लस (+) */
     const sgn = n => (Math.abs(n) < 0.005 ? 0 : (n > 0 ? 1 : -1));
     const balTxt = n => (sgn(n) === 0 ? '₹0.00' : (n > 0 ? '−₹' : '+₹') + inr(Math.abs(n)));
     const balCls = n => (sgn(n) > 0 ? 'v-r' : sgn(n) < 0 ? 'v-g' : '');
     const drcr = n => `<span class="${balCls(n)}">${balTxt(n)}</span>`;
-    const drcrTxt = balTxt;
     const FUEL = { petrol: 'पेट्रोल (Petrol)', diesel: 'डीज़ल (Diesel)' };
     const MODE = { cash: 'Cash / नकद', paytm: 'Paytm / UPI', upi: 'Paytm / UPI', swipe: 'Card Swipe', card: 'Card Swipe', bank: 'Bank Transfer', sbi: 'Bank Transfer' };
     const nowStr = () => { const d = new Date(), z = x => String(x).padStart(2, '0'); return `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
@@ -180,9 +178,8 @@
       return `<div class="pt">${veh}</div><div class="ps">${sub}</div>`;
     };
 
-    /* ---------- पेज बनाने वाला ---------- */
     const genHTML = (from, to, mode) => {
-      const IMG = mode === 'img';   // इमेज = 3:4 फ्रेम (810x1080), प्रिंट/PDF = A4
+      const IMG = mode === 'img';
       const st = K.stmt(allRows, from, to);
       const cnt = st.rows.length;
       const no = stNo(to), gen = nowStr();
@@ -380,12 +377,10 @@
       if (typeof html2canvas !== 'function') return toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
       m.close();
       toast('स्टेटमेंट की फोटो बन रही है…');
-
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;left:-9999px;top:0;';
       wrap.innerHTML = genHTML(from, to, 'img').html;
       document.body.appendChild(wrap);
-
       try {
         try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (x) {}
         const pages = Array.from(wrap.querySelectorAll('.stm-page'));
@@ -402,7 +397,6 @@
     };
   };
 
-  /* स्टेटमेंट की सारी फोटो एक साथ दिखाओ → फिर अलग टैप पर शेयर / सेव (iPhone बिना टैप के शेयर नहीं करने देता) */
   function previewStatement(files, text, partyName) {
     const urls = files.map(f => URL.createObjectURL(f));
     const n = files.length;
@@ -554,7 +548,7 @@
 
   /* ============ BANK DEPOSITS ============ */
   const isOwnerF = () => APP.isOwner && APP.isOwner();
-  const isAutoBank = id => String(id || '').indexOf('sbi_auto_') === 0;   // "मालिक को दिया" से अपने-आप बनी
+  const isAutoBank = id => String(id || '').indexOf('sbi_auto_') === 0;
 
   function bankModal(x, done) {
     const e = x || null;
@@ -616,7 +610,7 @@
     try { snap = await db().collection('bank_deposits').orderBy('date', 'desc').limit(50).get(); } catch (e) { snap = { docs: [] }; }
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => !x.removed);
     const tot = list.reduce((a, b) => a + num(b.amount), 0);
-    const canEdit = isOwnerF();
+    const canEdit = isOwnerF() && !isViewer();
     main.innerHTML =
       '<div class="card"><h3>🏦 बैंक जमा</h3>' + kv('कुल जमा', money(tot), 'pos') + kv('जमा संख्या', list.length) + '</div>' +
       (isViewer() ? '' : '<div class="btns" style="margin-bottom:12px"><button class="btn o" id="bn-add">+ नई जमा</button></div>') +
@@ -633,39 +627,10 @@
     $$('[data-bn-d]', main).forEach(b => b.onclick = () => bankRemove(list[+b.dataset.bnD], again));
   };
 
-  /* ============ PARTY VIEW BUTTONS (call/WA/statement) ============ */
-  document.addEventListener('click', e => {
-    const item = e.target.closest('#plist .item[data-id]');
-    if (item) window.__mazdaLastPartyId = item.dataset.id;
-  }, true);
-
-  function injectPartyActions() {
-    return; // बटन अब पार्टी के पेज में ही बने हैं (app.js)
-    const back = document.querySelector('#main #back'); if (!back) return;
-    if (document.querySelector('#main #stmt-share')) return;
-    const pid = window.__mazdaLastPartyId; if (!pid) return;
-    db().collection('parties').doc(pid).get().then(snap => {
-      if (!snap.exists) return;
-      const p = snap.data();
-      const ph = (p.phone || '').replace(/\D/g, ''), w = waNum(p.phone);
-      const wrap = document.createElement('span');
-      wrap.style.display = 'inline-flex'; wrap.style.gap = '6px';
-      let html = '';
-      if (ph) html += '<a href="tel:' + esc(p.phone) + '" class="btn sm g">📞</a>';
-      if (w) html += '<a href="https://wa.me/' + w + '" target="_blank" class="btn sm g">💬</a>';
-      html += '<button class="btn sm g" id="stmt-share">📤 स्टेटमेंट</button>';
-      wrap.innerHTML = html;
-      back.parentNode.appendChild(wrap);
-      const sb = document.getElementById('stmt-share');
-      if (sb) sb.onclick = () => APP.sharePartyStatement(pid, false);
-    }).catch(() => {});
-  }
-
-  /* ============ DAYVIEW EXTRAS: cash box, cost fields, register photo, dup check ============ */
+  /* ============ DAYVIEW EXTRAS ============ */
   function injectDayExtras() {
     injectCashBox();
     injectPhotoBtn();
-    injectPartyActions();
     if (document.querySelector('#sum')) checkDuplicates();
   }
   function injectCashBox() {
@@ -695,57 +660,6 @@
     const pc0 = S.cur && S.cur.d ? S.cur.d.physicalCash : '';
     if (pc0 !== undefined && pc0 !== null && pc0 !== '') inp.value = pc0;
     update();
-  }
-  function injectCostFields() {
-    if (document.querySelector('#f-costP')) return;
-    const h3s = document.querySelectorAll('#main .card h3');
-    let rateCard = null;
-    h3s.forEach(h => { if (h.textContent.includes('आज का रेट')) rateCard = h.closest('.card'); });
-    if (!rateCard) return;
-    const locked = S.cur && S.cur.locked;
-    const dis = locked ? ' disabled' : '';
-    const row = document.createElement('div');
-    row.className = 'row'; row.style.marginTop = '8px';
-    row.innerHTML =
-      '<div><label>खरीद रेट P (₹/L)</label><input id="f-costP" inputmode="decimal" placeholder="लागत रेट P"' + dis + '></div>' +
-      '<div><label>खरीद रेट D (₹/L)</label><input id="f-costD" inputmode="decimal" placeholder="लागत रेट D"' + dis + '></div>';
-    rateCard.appendChild(row);
-    const date = S.cur && S.cur.date;
-    if (!date) return;
-    db().collection('day_costs').doc(date).get().then(snap => {
-      if (snap.exists) {
-        const d = snap.data();
-        const pe = document.getElementById('f-costP'), de = document.getElementById('f-costD');
-        if (pe && d.costP) pe.value = d.costP;
-        if (de && d.costD) de.value = d.costD;
-      }
-    }).catch(() => {});
-    if (!locked) {
-      const save = async () => {
-        try {
-          await db().collection('day_costs').doc(date).set({
-            costP: num(document.getElementById('f-costP').value),
-            costD: num(document.getElementById('f-costD').value),
-            at: APP.FV.serverTimestamp()
-          }, { merge: true });
-          try {
-            const existing = await db().collection('rate_history').where('date', '==', date).limit(1).get();
-            const dayDoc = await db().collection('days').doc(date).get();
-            const dd = dayDoc.exists ? dayDoc.data() : {};
-            const entry = {
-              date, costP: num(document.getElementById('f-costP').value),
-              costD: num(document.getElementById('f-costD').value),
-              rateP: num(dd.rateP), rateD: num(dd.rateD),
-              at: APP.FV.serverTimestamp()
-            };
-            if (existing.empty) await db().collection('rate_history').add(entry);
-            else await db().collection('rate_history').doc(existing.docs[0].id).update(entry);
-          } catch (x) {}
-        } catch (e) {}
-      };
-      const pe = document.getElementById('f-costP'); if (pe) pe.onchange = save;
-      const de = document.getElementById('f-costD'); if (de) de.onchange = save;
-    }
   }
   function injectPhotoBtn() {
     if (document.querySelector('#reg-photo-btn')) return;
@@ -856,33 +770,85 @@
       '<div class="btns"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
   };
 
-  /* ============ MORE VIEW EXTENSION ============ */
+  /* ============ MORE VIEW — COMPREHENSIVE FINAL MENU ============ */
   const origMore = APP.views.more;
   APP.views.more = async function (arg) {
     if (origMore) await origMore.apply(this, arguments);
     if (isViewer()) return;
     const main = $('#main'); if (!main) return;
     if (document.querySelector('#extra-more-card')) return;
+
+    const has = tab => APP.views && typeof APP.views[tab] === 'function';
+    const btn = (id, label, tab) => has(tab) ? '<button class="btn w" id="' + id + '" data-nav="' + tab + '">' + label + '</button>' : '';
+
     const extra = document.createElement('div');
     extra.id = 'extra-more-card';
-    extra.innerHTML =
-      '<div class="card"><h3>🔧 और सुविधाएँ</h3><div class="btns">' +
-        '<button class="btn w" data-nav="dashboard">📊 डैशबोर्ड</button>' +
-        '<button class="btn w" data-nav="monthreport">📅 मासिक रिपोर्ट</button>' +
-        '<button class="btn w" data-nav="reminders">⏰ उधार रिमाइंडर</button>' +
-        '<button class="btn w" data-nav="customers">👥 ग्राहक कार्ड</button>' +
-        '<button class="btn w" data-nav="bank">🏦 बैंक जमा</button>' +
-        '<button class="btn w" data-nav="workers">👷 वर्कर हाज़िरी</button>' +
-        '<button class="btn w" data-nav="nozzle">⛽ नोज़ल ट्रेंड</button>' +
-        (APP.isOwner && APP.isOwner() ? '<button class="btn w" data-nav="audit">🔍 ऑडिट लॉग</button>' : '') +
-      '</div></div>' +
-      '<div class="card"><h3>💾 पूरा बैकअप</h3>' +
-        '<p class="mut" style="font-size:12px;margin:4px 0">सारा डेटा एक फ़ाइल में।</p>' +
-        '<div class="btns"><button class="btn g" id="bk-json">JSON</button><button class="btn w" id="bk-csv">CSV (Excel)</button></div></div>';
+
+    let html = '';
+
+    const analysisBtns =
+      btn('analytics-more-btn', '📊 आंकड़ों का विश्लेषण', 'analytics') +
+      btn('rate-more-btn', '📈 रेट इतिहास', 'rate_history') +
+      btn('dashboard-btn', '📊 डैशबोर्ड', 'dashboard') +
+      btn('monthreport-btn', '📅 मासिक रिपोर्ट', 'monthreport') +
+      btn('nozzle-btn', '⛽ नोज़ल ट्रेंड', 'nozzle');
+    if (analysisBtns.trim()) html += '<div class="card"><h3>📊 विश्लेषण</h3><div class="btns">' + analysisBtns + '</div></div>';
+
+    const finBtns =
+      btn('bank-btn', '🏦 बैंक जमा', 'bank') +
+      btn('invoices-more-btn', '📄 खरीद बिल / मार्जिन', 'invoices') +
+      btn('reminders-btn', '⏰ उधार रिमाइंडर', 'reminders') +
+      btn('recovery-btn', '🚨 वसूली (Recovery)', 'recovery');
+    if (finBtns.trim()) html += '<div class="card"><h3>💰 वित्त</h3><div class="btns">' + finBtns + '</div></div>';
+
+    const partyBtns =
+      btn('customers-btn', '👥 ग्राहक कार्ड', 'customers') +
+      btn('workers-btn', '👷 वर्कर हाज़िरी', 'workers') +
+      btn('vehicle-btn', '🚗 गाड़ी प्रोफाइल', 'vehicle_search') +
+      btn('cibil-more-btn', '⭐ पार्टी CIBIL', 'cibil');
+    if (partyBtns.trim()) html += '<div class="card"><h3>👥 पार्टी / वर्कर</h3><div class="btns">' + partyBtns + '</div></div>';
+
+    const opsBtns =
+      btn('runsheet-more-btn', '📋 रनशीट', 'runsheet') +
+      btn('tanker-more-btn', '🚛 टैंकर रिपोर्ट', 'tanker_report') +
+      btn('shop-more-btn', '🛍️ दुकान', 'shop') +
+      btn('orders-more-btn', '📦 शॉप ऑर्डर', 'shop_orders');
+    if (opsBtns.trim()) html += '<div class="card"><h3>🚛 संचालन</h3><div class="btns">' + opsBtns + '</div></div>';
+
+    const suppBtns =
+      btn('vendor-more-btn', '🏢 कंपनी सपोर्ट', 'vendors') +
+      btn('audit-btn', '🔍 ऑडिट लॉग', 'audit');
+    if (suppBtns.trim()) html += '<div class="card"><h3>🏢 सहायता</h3><div class="btns">' + suppBtns + '</div></div>';
+
+    const settingsBtns =
+      btn('applock-more-btn', '🔒 ऐप लॉक', 'applock_settings') +
+      '<button class="btn w" id="darkmode-more-btn">🌙 डार्क मोड</button>' +
+      btn('holidays-more-btn', '📅 डिपो छुट्टियाँ', 'holidays');
+    html += '<div class="card"><h3>⚙️ सेटिंग</h3><div class="btns">' + settingsBtns + '</div></div>';
+
+    html += '<div class="card"><h3>💾 पूरा बैकअप</h3>' +
+      '<p class="mut" style="font-size:12px;margin:4px 0">सारा डेटा एक फ़ाइल में।</p>' +
+      '<div class="btns"><button class="btn g" id="bk-json">JSON</button><button class="btn w" id="bk-csv">CSV (Excel)</button></div></div>';
+
+    extra.innerHTML = html;
     main.appendChild(extra);
+
     extra.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => APP.go(b.dataset.nav));
     const jb = $('#bk-json'); if (jb) jb.onclick = () => APP.downloadBackup('json');
     const cb = $('#bk-csv'); if (cb) cb.onclick = () => APP.downloadBackup('csv');
+
+    const dk = $('#darkmode-more-btn');
+    if (dk) {
+      const isDark = document.body.classList.contains('dark');
+      dk.textContent = isDark ? '☀️ लाइट मोड' : '🌙 डार्क मोड';
+      dk.onclick = () => {
+        document.body.classList.toggle('dark');
+        const nowDark = document.body.classList.contains('dark');
+        dk.textContent = nowDark ? '☀️ लाइट मोड' : '🌙 डार्क मोड';
+        try { localStorage.setItem('mazda_dark', nowDark ? '1' : '0'); } catch (e) {}
+        toast(nowDark ? '🌙 डार्क मोड चालू' : '☀️ लाइट मोड चालू');
+      };
+    }
   };
 
   /* ============ BOOT ============ */
@@ -893,8 +859,12 @@
       .observe(main, { childList: true, subtree: true });
     setTimeout(injectDayExtras, 300);
   }
+
   window.addEventListener('load', () => {
+    // Dark mode restore
+    try { if (localStorage.getItem('mazda_dark') === '1') document.body.classList.add('dark'); } catch (e) {}
     setTimeout(() => { restoreDraftsSmart(); startObs(); }, 800);
   });
-  console.log('[Mazda features.js] loaded ✓');
+
+  console.log('[Mazda features.js] loaded ✓ (final menu)');
 })();
