@@ -1,4 +1,4 @@
-const V = 'mazda-v33';
+const V = 'mazda-v37';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'app.js', 'views2.js', 'features.js', 'features2.js',
@@ -6,17 +6,21 @@ const SHELL = [
   'shifts.js', 'extras.js', 'dayreport.js',
   'tanker_report.js', 'analytics.js', 'margins.js',
   'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
-  'portal_gen.js', 'invoice_gen.js', 'preset_parties.js', 'manifest.json', 
+  'portal_gen.js', 'invoice_gen.js', 'device_features.js', 
+  'preset_parties.js', 'manifest.json', 
   'logo.png', 'icon-192.png', 'icon-512.png',
   'party.html', 'party_portal.js', 'party_manifest.json',
   'owner.html', 'owner_portal.js', 'owner_manifest.json'
 ];
+
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.allSettled(SHELL.map(f => c.add(f)))).then(() => self.skipWaiting()));
 });
+
 self.addEventListener('activate', e => { 
   e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())); 
 });
+
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
