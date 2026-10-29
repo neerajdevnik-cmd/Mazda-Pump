@@ -1,0 +1,26 @@
+{
+  "name": "माज़दा ऑयल - Owner Control",
+  "short_name": "Mazda Owner",
+  "start_url": "./owner.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#040b19",
+  "theme_color": "#040b19",
+  "lang": "hi",
+  "orientation": "portrait",
+  "description": "मालिक के लिए डैशबोर्ड",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
