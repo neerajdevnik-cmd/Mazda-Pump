@@ -13,6 +13,16 @@ window.CFG = {
   ownerEmail: "neeraj@mazda-pump.in",
   managerEmail: "manager@mazda-pump.in",
 
+  /* ===== Naye fields (baaki system inhe optional samjhega) ===== */
+  ownerPhone: "",                 // Owner ka WhatsApp number (jaise "919876543210"). Empty rakho to share sheet khulega.
+  autoWhatsApp: false,            // true = udhar/jama entry save hote hi party ko auto WhatsApp
+  applock: {                      // App PIN + fingerprint lock
+    enabled: false,               // true karne pe app kholte hi PIN puchega
+    pin: "",                      // 4-digit PIN (jaise "1234")
+    fingerprint: true             // fingerprint/face unlock ka option
+  },
+  depotHolidays: [],              // Custom holidays (Sunday default hai). Format: ["2026-11-12", "2026-11-13"]
+
   salesmen: [
     { id: "manoj", name: "Manoj", pin: "1234", phone: "9876543211", active: true },
     { id: "rohit", name: "Rohit", pin: "1104", phone: "8077083874", active: true },
@@ -42,9 +52,9 @@ window.CFG = {
 
   loginDomain: "mazda-pump.in",
   testing: 5,
-  activeNozzles: ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'],  // जो नोज़ल पंप पर असल में हैं सिर्फ वही रखें (बाकी हटा दें)
-  stockTolerance: 25,   // लीटर — डिप की सटीकता के अंदर इतना फर्क 'ठीक' माना जाएगा
-  meterMax: 10000000,   // मीटर में कितने अंक (7 अंक = 10000000). 0 पर घूमने पर अपने-आप गिन लेगा
+  activeNozzles: ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'],
+  stockTolerance: 25,
+  meterMax: 10000000,
   defaultRateP: 100.23,
   defaultRateD: 95.68
 };
