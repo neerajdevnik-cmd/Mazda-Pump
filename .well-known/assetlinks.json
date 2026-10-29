@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.neerajdevnik_cmd.twa",
+        "sha256_cert_fingerprints": ["7F:41:DC:C7:36:0D:67:41:B0:9F:0E:DF:11:E2:5B:68:CC:D6:63:FB:88:2F:42:6B:6C:B1:5B:D8:C2:17:BF:47"]
+      }
+    }]
