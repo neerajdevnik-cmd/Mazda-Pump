@@ -148,36 +148,18 @@
   APP.margins.getInvoices = getInvoices;
   APP.margins.getLatestPurchaseRate = getLatestPurchaseRate;
 
-  /* ============ Day card HTML builder (exposed) ============ */
-  function renderMarginCardHtml(m) {
-    return '<div class="card" style="border-left:4px solid #16a34a;background:linear-gradient(180deg,#f0fdf4,#fff)">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-      '<h3 style="margin:0;color:#166534;font-size:15px">💰 आज का अनुमानित मार्जिन</h3>' +
-      '<span class="mut" style="font-size:11px">' + (m.source === 'invoice' ? 'बिल से' : 'manual rate') + '</span></div>' +
-      (m.petrol.costRate > 0 ? '<div class="kv" style="padding:4px 0"><span>⛽ पेट्रोल <span class="mut" style="font-size:11px">(' + lit(m.petrol.litres) + ' × ₹' + r2(m.petrol.marginPerLitre) + '/L)</span></span><b class="pos">' + money(m.petrol.margin) + '</b></div>' : '') +
-      (m.diesel.costRate > 0 ? '<div class="kv" style="padding:4px 0"><span>🛢️ डीज़ल <span class="mut" style="font-size:11px">(' + lit(m.diesel.litres) + ' × ₹' + r2(m.diesel.marginPerLitre) + '/L)</span></span><b class="pos">' + money(m.diesel.margin) + '</b></div>' : '') +
-      '<div class="kv" style="border-top:1px solid #bbf7d0;padding-top:6px;margin-top:4px;border-bottom:0"><span><b>कुल मार्जिन</b> <span class="mut" style="font-size:11px">(' + r2(m.pct) + '%)</span></span><b class="pos" style="font-size:16px">' + money(m.total) + '</b></div></div>';
-  }
-
-  APP.margins.getDayCardHtml = async function(date) {
-    try {
-      const m = await getDailyMargin(date);
-      if (!m) return '';
-      if (m.petrol.costRate <= 0 && m.diesel.costRate <= 0) return '';
-      return renderMarginCardHtml(m);
-    } catch (e) { return ''; }
-  };
-
-  /* ============ Invoice list view ============ */
+  /* ============ Invoice list view (viewer: read-only) ============ */
   APP.views.invoices = async function () {
     const main = $('#main'); if (!main) return;
-    if (APP.isViewer() || S.role === 'salesman') return toast('अनुमति नहीं');
+    if (S.role === 'salesman') return toast('अनुमति नहीं');
+    const viewer = APP.isViewer();
     main.innerHTML = '<p class="mut">बिल लोड हो रहा है…</p>';
     const from = shiftDate(today(), -90);
     const list = await getInvoices(from);
-    let html = '<div class="card" style="background:#0b3d91;color:#fff"><div class="row" style="align-items:center"><div style="flex:1"><h3 style="color:#fff;margin:0">📄 खरीद बिल</h3><div style="font-size:12px;opacity:.85;margin-top:4px">मार्जिन की गणना के लिए</div></div><div><button class="btn sm o" id="inv-add">+ नया बिल</button></div></div></div>';
+    let html = '<div class="card" style="background:#0b3d91;color:#fff"><div class="row" style="align-items:center"><div style="flex:1"><h3 style="color:#fff;margin:0">📄 खरीद बिल</h3><div style="font-size:12px;opacity:.85;margin-top:4px">' + (viewer ? 'केवल देखें' : 'मार्जिन की गणना के लिए') + '</div></div>' +
+      (viewer ? '' : '<div><button class="btn sm o" id="inv-add">+ नया बिल</button></div>') + '</div></div>';
     if (!list.length) {
-      html += '<div class="card"><p class="mut" style="text-align:center;padding:20px">कोई बिल नहीं मिला<br><small>पहले बिल जोड़ें — मार्जिन अपने-आप निकलेगा</small></p></div>';
+      html += '<div class="card"><p class="mut" style="text-align:center;padding:20px">कोई बिल नहीं मिला' + (viewer ? '' : '<br><small>पहले बिल जोड़ें — मार्जिन अपने-आप निकलेगा</small>') + '</p></div>';
     } else {
       const byMonth = {};
       list.forEach(inv => { const ym = inv.date.slice(0, 7); if (!byMonth[ym]) byMonth[ym] = []; byMonth[ym].push(inv); });
@@ -192,7 +174,7 @@
         monthInvs.forEach(inv => {
           const fuelIcon = inv.fuelType === 'petrol' ? '⛽' : '🛢️';
           const fuelName = inv.fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल';
-          html += '<div class="item" style="padding:8px 0;cursor:pointer" data-inv-id="' + inv.id + '">' +
+          html += '<div class="item" style="padding:8px 0;' + (viewer ? '' : 'cursor:pointer;') + '" ' + (viewer ? '' : 'data-inv-id="' + inv.id + '"') + '>' +
             '<div class="a"><b>' + fuelIcon + ' ' + fuelName + ' · ' + lit(inv.litres) + ' @ ₹' + r2(inv.purchaseRate) + '</b>' +
             '<small>' + dmy(inv.date) + ' · ' + esc(inv.supplier || '') + (inv.invoiceNo ? ' · #' + esc(inv.invoiceNo) : '') + (inv.tankerNo ? ' · ' + esc(inv.tankerNo) : '') + '</small></div>' +
             '<div style="text-align:right"><b>' + money(inv.amount) + '</b></div></div>';
@@ -202,8 +184,10 @@
     }
     html += '<div class="btns" style="margin-top:12px"><button class="btn w" onclick="APP.go(\'more\')">← वापस</button></div>';
     main.innerHTML = html;
-    $('#inv-add').onclick = () => invoiceModal(null);
-    $$('[data-inv-id]').forEach(el => el.onclick = () => { const inv = list.find(x => x.id === el.dataset.invId); if (inv) invoiceModal(inv); });
+    if (!viewer) {
+      $('#inv-add').onclick = () => invoiceModal(null);
+      $$('[data-inv-id]').forEach(el => el.onclick = () => { const inv = list.find(x => x.id === el.dataset.invId); if (inv) invoiceModal(inv); });
+    }
   };
 
   async function invoiceModal(inv) {
@@ -328,5 +312,5 @@
     }
   };
 
-  console.log('[Mazda margins.js] loaded ✓ (helper exposed)');
+  console.log('[Mazda margins.js] loaded ✓');
 })();
