@@ -306,7 +306,7 @@
     $$('[data-nv]').forEach(b => b.onclick = () => APP.go(b.dataset.nv));
   };
 
-  /* ============ VIEWER: PARTIES ============ */
+  /* ============ VIEWER: PARTIES (with party click → full ledger) ============ */
   APP.views.v_parties = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
@@ -316,6 +316,7 @@
     const sorted = parties.slice().sort((a, b) => num(b.bal) - num(a.bal));
     main.innerHTML =
       '<div class="btns" style="margin-bottom:10px"><input id="vpq" placeholder="नाम/गाड़ी खोजें…" style="flex:1;min-width:0"></div>' +
+      '<p class="mut" style="font-size:12px;margin:-4px 0 10px;text-align:center">पूरी लेजर देखने के लिए पार्टी के नाम पर टैप करें</p>' +
       '<div id="vplist"></div>';
     const draw = t => {
       const list = sorted.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
@@ -323,15 +324,26 @@
         const b = num(p.bal);
         const ph = (p.phone || '').replace(/\D/g, '');
         const w = waNum(p.phone);
-        return '<div class="card"><div class="item"><div class="a"><b>' + esc(p.name) + '</b><small>' +
-          (p.vehicles || []).join(', ') + '</small></div>' +
-          '<span class="chip ' + (b > 0.005 ? 'r' : b < -0.005 ? 'g' : '') + '">' + (Math.abs(b) < 0.005 ? '₹0' : (b > 0 ? '-' : '+') + money(Math.abs(b))) + '</span></div>' +
+        const bTxt = Math.abs(b) < 0.005 ? '₹0' : (b > 0 ? '-' : '+') + money(Math.abs(b));
+        return '<div class="card">' +
+          '<div class="item" style="cursor:pointer;padding-bottom:8px;" data-vpid="' + p.id + '">' +
+            '<div class="a"><b>' + esc(p.name) + '</b><small>' + esc((p.vehicles || []).join(', ')) + '</small></div>' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+              '<span class="chip ' + (b > 0.005 ? 'r' : b < -0.005 ? 'g' : '') + '">' + bTxt + '</span>' +
+              '<span style="color:#9aa5bb;font-size:22px;font-weight:300;">›</span>' +
+            '</div>' +
+          '</div>' +
           '<div class="btns" style="margin-top:8px">' +
             (ph ? '<a href="tel:' + esc(p.phone) + '" class="btn sm w">📞 कॉल</a>' : '') +
             (w ? '<a href="https://wa.me/' + w + '" target="_blank" class="btn sm g">💬 WhatsApp</a>' : '') +
             '<button class="btn sm" data-stmt="' + p.id + '">📤 स्टेटमेंट</button>' +
-          '</div></div>';
+          '</div>' +
+        '</div>';
       }).join('') : '<p class="mut">कोई पार्टी नहीं</p>';
+      
+      // Party card click → open full ledger (read-only)
+      $$('[data-vpid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.vpid, false));
+      // Statement button click
       $$('[data-stmt]').forEach(b => b.onclick = () => APP.sharePartyStatement(b.dataset.stmt, false));
     };
     $('#vpq').oninput = e => draw(e.target.value.trim().toLowerCase());
@@ -443,5 +455,5 @@
       '</div>';
   };
 
-  console.log('[Mazda features2.js] loaded ✓');
+  console.log('[Mazda features2.js] loaded ✓ (v_parties clickable fix)');
 })();
