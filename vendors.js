@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Vendor/Company Support with Gemini + Templates */
+/* Mazda Oil Company - Vendor/Company Support with Gemini + Templates (Voice + Model discovery fixed) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -9,6 +9,10 @@
   const today = () => APP.todayISO();
 
   APP.views = APP.views || {};
+
+  const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
+  const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} };
 
   const PRESET = {
     'pinelabs': {
@@ -180,7 +184,10 @@
       html += '<label>' + esc(f.label) + (f.required ? ' *' : '') + '</label><input id="rp-f-' + f.id + '" data-rpf="' + f.id + '">';
     });
     html += '<label>विस्तार से बताएँ (voice/text)</label>' +
-      '<div style="display:flex;gap:6px"><textarea id="rp-detail" rows="4" style="flex:1"></textarea><button class="btn sm w" id="rp-voice" style="align-self:flex-end;padding:10px 12px">🎤</button></div>' +
+      '<div style="display:flex;gap:6px;align-items:flex-end">' +
+        '<textarea id="rp-detail" rows="4" style="flex:1;min-height:80px"></textarea>' +
+        '<button class="btn w" id="rp-voice" style="padding:14px 16px;font-size:20px;flex:none;width:auto" title="बोलकर लिखें">🎤</button>' +
+      '</div>' +
       '<label>फोटो (optional)</label>' +
       '<div class="btns"><label class="btn sm w" style="cursor:pointer">📷 फोटो<input type="file" accept="image/*" id="rp-photo" style="display:none"></label></div>' +
       '<div id="rp-photo-preview"></div>' +
@@ -194,22 +201,70 @@
     let photoData = '';
 
     $('#rp-cancel', m).onclick = () => m.close();
+
+    /* ========== VOICE FIX ========== */
     $('#rp-voice', m).onclick = () => {
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return toast('Voice support नहीं');
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return toast('❌ इस ब्राउज़र में voice support नहीं');
+      
       const rec = new SR();
       rec.lang = 'hi-IN';
       rec.continuous = false;
-      rec.onresult = e => {
-        const txt = e.results[0][0].transcript;
-        const ta = $('#rp-detail', m);
-        ta.value = (ta.value ? ta.value + ' ' : '') + txt;
-        toast('✅ voice add');
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      
+      const btn = $('#rp-voice', m);
+      const ta = $('#rp-detail', m);
+      const baseVal = ta.value.trim();
+      let finalText = '';
+      
+      btn.style.background = '#c62828';
+      btn.style.color = '#fff';
+      btn.textContent = '🔴';
+      btn.disabled = true;
+      
+      const resetBtn = () => {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.textContent = '🎤';
+        btn.disabled = false;
       };
-      rec.onerror = () => toast('Voice नहीं सुना');
-      rec.start();
-      toast('🎤 बोलें...');
+      
+      rec.onstart = () => toast('🎤 बोलिए...');
+      
+      rec.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finalText += t + ' ';
+          else interim += t;
+        }
+        ta.value = (baseVal ? baseVal + ' ' : '') + finalText + interim;
+      };
+      
+      rec.onerror = (e) => {
+        resetBtn();
+        const err = e.error || 'unknown';
+        if (err === 'not-allowed') toast('❌ माइक की अनुमति दें (Settings → Site permissions)');
+        else if (err === 'no-speech') toast('❌ कुछ सुनाई नहीं दिया — दोबारा बोलें');
+        else if (err === 'audio-capture') toast('❌ माइक नहीं मिला');
+        else if (err === 'network') toast('❌ नेटवर्क समस्या');
+        else if (err === 'aborted') toast('रुका');
+        else toast('❌ Voice: ' + err);
+      };
+      
+      rec.onend = () => {
+        resetBtn();
+        if (finalText.trim()) toast('✅ Voice जोड़ दिया');
+      };
+      
+      try { rec.start(); }
+      catch (e) {
+        resetBtn();
+        toast('❌ Voice शुरू नहीं हुआ: ' + e.message);
+      }
     };
+
     $('#rp-photo', m).onchange = e => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
       const r = new FileReader();
@@ -228,9 +283,6 @@
       r.readAsDataURL(f);
     };
 
-    $('#rp-gen-ai', m).onclick = () => generateReport('ai');
-    $('#rp-gen-tpl', m).onclick = () => generateReport('template');
-
     function collect() {
       const cat = $('#rp-cat', m).value;
       const detail = $('#rp-detail', m).value.trim();
@@ -239,24 +291,54 @@
       return { cat, detail, extras, photoData };
     }
 
-    async function generateReport(mode) {
+    /* ========== AI BUTTON (FIXED) ========== */
+    $('#rp-gen-ai', m).onclick = async () => {
       const d = collect();
       if (!d.cat) return toast('Category चुनें');
-      if (mode === 'ai') {
-        const key = localStorage.getItem('mazda_gemini_key');
-        if (!key) { toast('पहले Gemini key डालें (More → AI settings)'); return; }
-        toast('🤖 AI लिख रहा है…');
-        try {
-          const draft = await aiDraft(v, d, key);
-          showPreview(draft, d);
-        } catch (e) { toast('AI fail: ' + e.message); showPreview(templateDraft(v, d), d); }
-      } else {
-        showPreview(templateDraft(v, d), d);
+      
+      let key = lsGet(KEY_LS);
+      if (!key) {
+        key = prompt('Gemini API key डालें (aistudio.google.com/app/apikey से):');
+        if (!key || !key.trim()) return toast('❌ Key नहीं दी');
+        lsSet(KEY_LS, key.trim());
+        key = key.trim();
       }
-    }
+      
+      const btn = $('#rp-gen-ai', m);
+      btn.disabled = true;
+      btn.textContent = '🤖 AI लिख रहा है...';
+      
+      try {
+        const draft = await aiDraft(v, d, key);
+        m.close();
+        showPreview(draft, d);
+        toast('✅ AI ने ड्राफ्ट बनाया');
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI से बनाएँ';
+        const msg = e.message || 'AI failed';
+        let hint = '';
+        if (/401|403/.test(msg)) hint = 'Key गलत / expired है';
+        else if (/429/.test(msg)) hint = 'Free limit खत्म — थोड़ी देर बाद';
+        else if (/400/.test(msg)) hint = 'Key invalid या API बंद';
+        else if (/network|fetch/i.test(msg)) hint = 'नेटवर्क / VPN issue';
+        else hint = msg;
+        toast('❌ AI: ' + hint);
+        if (confirm('AI नहीं चला:\n' + hint + '\n\nक्या बिना AI (template) से बनाएँ?')) {
+          m.close();
+          showPreview(templateDraft(v, d), d);
+        }
+      }
+    };
+
+    $('#rp-gen-tpl', m).onclick = () => {
+      const d = collect();
+      if (!d.cat) return toast('Category चुनें');
+      m.close();
+      showPreview(templateDraft(v, d), d);
+    };
 
     function showPreview(draft, d) {
-      m.close();
       const preview = modal(
         '<h3>📄 तैयार संदेश</h3>' +
         '<div class="seg" style="margin-bottom:8px"><button data-lang="en" class="on">English</button><button data-lang="hi">हिन्दी</button></div>' +
@@ -315,28 +397,74 @@
     return { en, hi };
   }
 
+  /* ========== GEMINI FIX: Auto model discovery ========== */
   async function aiDraft(v, d, key) {
     const pump = C.pump;
     const extras = Object.keys(d.extras || {}).filter(k => d.extras[k]).map(k => k + ': ' + d.extras[k]).join('\n');
     const prompt = `You are helping a petrol pump owner write a professional complaint email.\n\nPump Details:\n- Name: ${pump.nameEn}\n- Dealer: ${pump.dealer}\n- RO Code: ${pump.roCode}\n- Address: ${pump.addressEn}\n- Phone: ${pump.phone}\n- GSTIN: ${pump.gstin}\n- FSSAI: ${pump.fssai}\n\nVendor: ${v.name} (${v.category})\nIssue Category: ${d.cat}\nIssue Details:\n${extras}\nDescription: ${d.detail}\nDate: ${dmy(today())}\n\nWrite TWO versions and return ONLY valid JSON (no markdown, no code fences):\n{"en": "English professional email body (with Subject line at top)", "hi": "Same email in Hindi (Devanagari)"}\n\nKeep tone: professional, respectful, concise. Include all pump details for verification. Mention this is an urgent issue. Sign off with pump name and phone.`;
 
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, responseMimeType: 'application/json' } })
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.4, responseMimeType: 'application/json' }
     });
-    if (!r.ok) throw new Error('Gemini HTTP ' + r.status);
-    const j = await r.json();
-    const txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
-    let out;
-    try {
-      let t = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const a = t.indexOf('{'), b = t.lastIndexOf('}');
-      if (a >= 0 && b > a) t = t.slice(a, b + 1);
-      out = JSON.parse(t);
-    } catch (e) { throw new Error('AI response invalid'); }
-    if (!out.en || !out.hi) throw new Error('AI incomplete');
-    return out;
+
+    const tryModel = async (model) => {
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      if (!r.ok) {
+        const e = new Error('HTTP ' + r.status);
+        e.status = r.status;
+        try { const j = await r.json(); e.detail = (j.error && j.error.message) || ''; } catch (x) {}
+        throw e;
+      }
+      const j = await r.json();
+      const txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
+      if (!txt.trim()) throw new Error('Empty response from AI');
+      return txt;
+    };
+
+    const listModels = async () => {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key));
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' (list models)');
+      const j = await r.json();
+      const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
+      const ver = n => { const m = /^gemini-(\d+(?:\.\d+)?)-flash/.exec(n); return m ? parseFloat(m[1]) : 0; };
+      const flash = all.filter(n => ver(n) > 0 && !/image|tts|live|audio|embed|thinking|robotics|computer|exp|8b/.test(n));
+      const rank = n => (/preview/.test(n) ? 0 : /lite/.test(n) ? 1 : 2);
+      flash.sort((a, b) => rank(b) - rank(a) || ver(b) - ver(a));
+      const out = flash.slice(0, 4);
+      if (all.includes('gemini-flash-latest') && !out.includes('gemini-flash-latest')) out.push('gemini-flash-latest');
+      return out;
+    };
+
+    let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [];
+    let lastErr;
+    for (let round = 0; round < 2; round++) {
+      for (const mdl of models) {
+        try {
+          const txt = await tryModel(mdl);
+          lsSet(MODEL_LS, mdl);
+          let t = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const a = t.indexOf('{'), b = t.lastIndexOf('}');
+          if (a < 0 || b <= a) throw new Error('AI ने JSON नहीं दिया');
+          t = t.slice(a, b + 1);
+          const out = JSON.parse(t);
+          if (!out.en || !out.hi) throw new Error('AI ne en/hi दोनों नहीं दिए');
+          return out;
+        } catch (e) {
+          lastErr = e;
+          const msg = e.message || '';
+          if (e.status && ![404, 429, 500, 503].includes(e.status)) throw e;
+          if (!e.status && !/JSON|en\/hi|Empty/.test(msg)) throw e;
+        }
+      }
+      if (round === 0) {
+        lsSet(MODEL_LS, '');
+        models = await listModels();
+        if (!models.length) throw new Error('कोई Gemini model इस key के लिए नहीं मिला');
+      }
+    }
+    throw lastErr || new Error('AI failed after retries');
   }
 
   const origMore = APP.views.more;
@@ -354,9 +482,9 @@
       btn.className = 'btn w';
       btn.innerHTML = '🏢 कंपनी सपोर्ट';
       btn.onclick = () => APP.go('vendors');
-      btns.insertBefore(btn, btns.firstChild);
+      btns.insertBefore(btn, btn.dataset ? btns.firstChild : btns.firstChild);
     }
   };
 
-  console.log('[Mazda vendors.js] loaded ✓');
+  console.log('[Mazda vendors.js] FIXED ✓ (voice + model discovery)');
 })();
