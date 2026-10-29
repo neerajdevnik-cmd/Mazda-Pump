@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार, सेटिंग्स, थर्मल पर्ची (MOC BPCL लोगो सहित) व 100% परफेक्ट AI स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार (CIBIL Badge सहित), थर्मल पर्ची व AI स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -10,7 +10,6 @@
 
   APP.views = APP.views || {};
 
-  /* ======================= MOC BPCL VECTOR EMBLEM ======================= */
   const MOC_BPCL_LOGO = `<img src="./logo.png" alt="" width="64" height="64" style="display:block;width:64px;height:64px;margin:0 auto 6px auto;border-radius:50%">`;
 
   /* ======================= GAADI CASH ======================= */
@@ -50,7 +49,7 @@
         <label>पार्टी</label><select id="gc-pp"><option value="">— लोकल / बिना पार्टी —</option>${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <label>गाड़ी नंबर</label><input id="gc-v" style="text-transform:uppercase">
         <label>रुपये</label><input id="gc-a" inputmode="decimal">
-        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी; बिना पार्टी हो तो "लोकल / बिना पार्टी (गाड़ी कैश)" खाते में जुड़ेगी। दोनों हाल में आज के कैश से कम होगी।</div>
+        <div class="mut" style="margin-top:6px;font-size:12px">पार्टी चुनने पर ये रकम उसके उधार में जुड़ेगी; बिना पार्टी हो तो "लोकल / बिना पार्टी (गाड़ी कैश)" खाते में जुड़ेगी।</div>
         <div class="btns" style="margin-top:10px"><button class="btn g" id="gc-sv">सेव</button><button class="btn w" id="gc-cl">रद्द</button></div>`);
       $('#gc-cl', m).onclick = () => m.close();
       $('#gc-sv', m).onclick = async () => {
@@ -87,59 +86,49 @@
   APP.views.stock = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">स्टॉक रिपोर्ट लोड हो रही है…</p>';
-    
     const now = new Date();
     const defaultMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    
+
     const renderView = async (monthStr) => {
       main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
       const start = monthStr + '-01';
       const end = monthStr + '-31';
-      
       let snap;
-      try { snap = await db().collection('days').where('date', '>=', start).where('date', '<=', end).get(); } 
+      try { snap = await db().collection('days').where('date', '>=', start).where('date', '<=', end).get(); }
       catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
-      
       const days = snap.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
-      
+
       let totTankerP = 0, totTankerD = 0;
       let totLitP = 0, totLitD = 0;
       let totDiffP = 0, totDiffD = 0;
       let totTestP = 0, totTestD = 0;
-      
       const nzP = { p1: 0, p2: 0, p3: 0, p4: 0 };
       const nzD = { d1: 0, d2: 0, d3: 0, d4: 0 };
-      
+
       days.forEach(d => {
         totTankerP += num(d.tankerP);
         totTankerD += num(d.tankerD);
-        
         totLitP += num(d.sum && d.sum.litP);
         totLitD += num(d.sum && d.sum.litD);
-        
         totDiffP += num(d.sum && d.sum.diffP);
         totDiffD += num(d.sum && d.sum.diffD);
-        
-        let activeP = 0, activeD = 0;
         const testing = K.has(d.testing) ? num(d.testing) : 5;
-        
         K.NZ.forEach(k => {
           const n = d.nz && d.nz[k];
           if (n && K.has(n.o) && K.has(n.c)) {
             const tn = K.has(n.t) ? num(n.t) : testing;
             const net = Math.max(0, (num(n.c) - num(n.o)) - tn);
-            if (k.startsWith('p')) { nzP[k] += net; activeP++; totTestP += tn; }
-            else { nzD[k] += net; activeD++; totTestD += tn; }
+            if (k.startsWith('p')) { nzP[k] += net; totTestP += tn; }
+            else { nzD[k] += net; totTestD += tn; }
           }
         });
       });
-      
+
       const pct = (val, tot) => tot > 0 ? ((val / tot) * 100).toFixed(1) + '%' : '0%';
       const sign = (v) => v > 0 ? '+' : '';
       const color = (v) => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
-      
       const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
-      
+
       main.innerHTML = `
         <div class="card" style="background:#0b3d91;color:#fff;">
           <div class="row" style="align-items:center;">
@@ -208,24 +197,21 @@
           </table>` : '<p class="mut">इस महीने का कोई डेटा नहीं है।</p>'}
         </div>
       `;
-      
       $('#stk-month').onchange = (e) => renderView(e.target.value);
       $('#stk-refresh').onclick = () => renderView($('#stk-month').value);
     };
-    
     renderView(defaultMonth);
   };
 
-  /* ======================= NIJI UDHAR (PRIV) - WITH HISTORY ======================= */
+  /* ======================= NIJI UDHAR (PRIV) — CIBIL Badge ======================= */
   APP.views.priv = async function (mode) {
     mode = mode || 'active';
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
     let parties = []; try { parties = await APP.getParties(true, true); } catch (e) { }
-    
-    const activeParties = parties.filter(p => num(p.bal) > 0.01); 
-    const historyParties = parties.filter(p => num(p.bal) <= 0.01); 
-    
+
+    const activeParties = parties.filter(p => num(p.bal) > 0.01);
+    const historyParties = parties.filter(p => num(p.bal) <= 0.01);
     const list = mode === 'active' ? activeParties : historyParties;
     const pend = activeParties.reduce((a, p) => a + num(p.bal), 0);
 
@@ -245,22 +231,23 @@
         ${mode === 'active' ? '<button class="btn o" id="pv-add">+ नया निजी उधार</button>' : ''}
       </div>
       <div class="card">
-        ${list.length ? list.map(p => `
+        ${list.length ? list.map(p => {
+          const cibilBadge = (APP.cibil && APP.cibil.badgeHtml) ? APP.cibil.badgeHtml(p) : '';
+          return `
           <div class="item" style="cursor:pointer" data-pid="${p.id}">
-            <div class="a"><b>${esc(p.name)}</b></div>
+            <div class="a"><b>${esc(p.name)}</b> ${cibilBadge}</div>
             <span class="chip ${mode === 'active' ? 'r' : 'g'}">${money(mode === 'active' ? p.bal : (p.closedAmount || p.bal))}</span>
-          </div>
-        `).join('') : `<p class="mut" style="text-align:center;padding:20px;">${mode === 'active' ? 'कोई बकाया नहीं है' : 'कोई हिस्ट्री नहीं है'}</p>`}
+          </div>`;
+        }).join('') : `<p class="mut" style="text-align:center;padding:20px;">${mode === 'active' ? 'कोई बकाया नहीं है' : 'कोई हिस्ट्री नहीं है'}</p>`}
       </div>
     `;
-    
+
     if ($('#pv-add')) $('#pv-add').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
     $('#pv-toggle').onclick = () => APP.views.priv(mode === 'active' ? 'history' : 'active');
-    
     $$('[data-pid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.pid, true));
   };
 
-  /* ======================= MORE / SETTINGS ======================= */
+  /* ======================= MORE / SETTINGS (base) ======================= */
   APP.views.more = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = `
@@ -390,9 +377,9 @@
 "udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
 "jama":[{"party":"","mode":"cash","amount":0}]}
 Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.
-Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath. Agar register mein sirf ek total kharcha likha hai aur kis cheez ka hai ye samajh nahi aa raha, to usko kharchaItems mein "label":"" ke saath likho (apni taraf se mat bantna).`;
+Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath.`;
     const buildPrompt = parties => BASE_PROMPT +
-      '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
+      '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano):\n' +
       parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
 
     const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
@@ -408,26 +395,25 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
     const gErr = (code, j) => {
       const m = (j && j.error && j.error.message) || ('HTTP ' + code);
-      const hint = code === 400 && /api key/i.test(m) ? 'Key galat hai — 🔑 se dobara daalein.'
-        : code === 403 ? 'Key ko permission nahi mili ya is jagah se block hai.'
-        : code === 429 ? 'Free limit poori ho gayi — thodi der baad try karein.'
-        : code === 503 ? 'Gemini abhi busy hai — dobara try karein.' : '';
-      return 'Gemini error (' + code + '): ' + m + (hint ? '\n' + hint : '');
+      const hint = code === 400 && /api key/i.test(m) ? 'Key galat hai.'
+        : code === 403 ? 'Key ko permission nahi.'
+        : code === 429 ? 'Free limit poori — thodi der baad.'
+        : code === 503 ? 'Gemini busy — dobara try.' : '';
+      return 'Gemini error (' + code + '): ' + m + (hint ? ' ' + hint : '');
     };
-    const gfetch = async (path, init, key, stage) => {
+    const gfetch = async (path, init, key) => {
       const tries = [
         () => fetch(GBASE + path, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, { 'x-goog-api-key': key }) })),
         () => fetch(GBASE + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(key), init)
       ];
       let last;
       for (const t of tries) { try { return await t(); } catch (e) { last = e; } }
-      const err = new Error('इंटरनेट / ब्लॉक की दिक्कत (' + stage + '): ' + ((last && last.message) || '') + '\nजाँचें: नेट चालू हो, VPN / Private Relay / ad-blocker बंद हो, फिर दोबारा करें।');
-      err.status = -1; throw err;
+      throw new Error('नेट ब्लॉक: ' + ((last && last.message) || '') + ' — VPN/Private Relay बंद करें');
     };
     const listModels = async key => {
-      const r = await gfetch('/models?pageSize=200', {}, key, 'model list');
+      const r = await gfetch('/models?pageSize=200', {}, key);
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
+      if (!r.ok) throw new Error(gErr(r.status, j));
       const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
       const ver = n => { const m = /^gemini-(\d+(?:\.\d+)?)-flash/.exec(n); return m ? parseFloat(m[1]) : 0; };
       const flash = all.filter(n => ver(n) > 0 && !/image|tts|live|audio|embed|thinking|robotics|computer|exp|8b/.test(n));
@@ -446,38 +432,34 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
         res(cv.toDataURL('image/jpeg', q).split(',')[1]);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई — कैमरे से सीधी फोटो लें')); };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई')); };
       img.src = url;
     });
     const geminiReadOnce = async (file, maxPx, q) => {
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
       const b64 = await toJpegB64(file, maxPx, q);
       let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
-      const ask = buildPrompt(ps) + '\n\nAaj ki tareekh ' + ((st && st.date) || APP.todayISO()) + ' hai; photo mein tareekh na dikhe to yahi use karo.';
+      const ask = buildPrompt(ps) + '\n\nAaj ki tareekh ' + ((st && st.date) || APP.todayISO()) + ' hai.';
       const body = JSON.stringify({ contents: [{ parts: [{ text: ask }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
+      let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [], lastErr;
       const tryModel = async model => {
-        const r = await gfetch('/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, key, 'फोटो भेजना');
+        const r = await gfetch('/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, key);
         const j = await r.json().catch(() => ({}));
         if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
         const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
         const txt = parts.map(x => x.text || '').join('');
-        if (!txt.trim()) { const e = new Error('Gemini ne khaali jawab diya (photo saaf nahi ho sakti) — dobara try karein'); e.status = 0; throw e; }
+        if (!txt.trim()) throw new Error('Gemini khaali jawab');
         return txt;
       };
-      let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [], lastErr;
       for (let round = 0; round < 2; round++) {
         for (const mdl of models) {
           try { const out = await tryModel(mdl); lsSet(MODEL_LS, mdl); return out; }
           catch (e) { lastErr = e; if (![404, 429, 500, 503].includes(e.status)) throw e; }
         }
-        if (round === 0) {
-          lsSet(MODEL_LS, ''); models = await listModels(key);
-          if (!models.length) throw new Error('Is key par koi chalu Gemini model nahi mila');
-        }
+        if (round === 0) { lsSet(MODEL_LS, ''); models = await listModels(key); if (!models.length) throw new Error('Model nahi mila'); }
       }
       throw lastErr;
     };
-
     const geminiRead = async file => {
       try { return await geminiReadOnce(file, 1600, 0.88); }
       catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }
@@ -489,33 +471,23 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         <p class="mut" style="margin:4px 0 8px">Gemini / Claude का दिया JSON यहाँ पेस्ट करें</p>
         <textarea id="scan-ta" rows="9" style="width:100%;font-size:13px" placeholder='{ "date": "..." }'></textarea>
         <div class="btns" style="margin-top:10px">
-          <button class="btn g" id="scan-auto">📷 फोटो से अपने-आप भरें</button>
+          <button class="btn g" id="scan-auto">📷 फोटो से भरें</button>
           <button class="btn w" id="scan-key">🔑 Gemini key</button>
           <input type="file" id="scan-file" accept="image/*" style="display:none">
-          <button class="btn w" id="scan-clip">📋 क्लिपबोर्ड से लें</button>
-          <button class="btn w" id="scan-prompt">🧾 Gemini के लिए प्रॉम्प्ट कॉपी (पार्टी लिस्ट के साथ)</button>
-          <button class="btn g" id="scan-ok">आगे बढ़ें</button>
+          <button class="btn w" id="scan-clip">📋 क्लिपबोर्ड</button>
+          <button class="btn g" id="scan-ok">आगे</button>
           <button class="btn w" id="scan-no">रद्द</button>
         </div>`);
       const ta = $('#scan-ta', m);
-      $('#scan-clip', m).onclick = async () => {
-        try { ta.value = await navigator.clipboard.readText(); }
-        catch (e) { toast('क्लिपबोर्ड नहीं मिला — बॉक्स में दबाकर पेस्ट करें'); }
-      };
+      $('#scan-clip', m).onclick = async () => { try { ta.value = await navigator.clipboard.readText(); } catch (e) { toast('बॉक्स में पेस्ट करें'); } };
       const fileEl = $('#scan-file', m), autoBtn = $('#scan-auto', m);
       autoBtn.onclick = () => { if (!getKey() && !askKey()) return; fileEl.value = ''; fileEl.click(); };
       $('#scan-key', m).onclick = () => { askKey(); };
       fileEl.onchange = async () => {
         const f0 = fileEl.files && fileEl.files[0]; if (!f0) return;
-        autoBtn.disabled = true; autoBtn.textContent = '⏳ AI पढ़ रहा है…';
+        autoBtn.disabled = true; autoBtn.textContent = '⏳ AI पढ़ रहा…';
         try { ta.value = await geminiRead(f0); $('#scan-ok', m).click(); }
-        catch (e) { autoBtn.disabled = false; autoBtn.textContent = '📷 फोटो से अपने-आप भरें'; alert(e.message); }
-      };
-      $('#scan-prompt', m).onclick = async () => {
-        let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
-        const pr = buildPrompt(ps);
-        try { await navigator.clipboard.writeText(pr); toast('प्रॉम्प्ट कॉपी हो गया — Gemini में फोटो के साथ पेस्ट करें'); }
-        catch (e) { ta.value = pr; ta.select(); toast('ऊपर बॉक्स में प्रॉम्प्ट है — कॉपी कर लें'); }
+        catch (e) { autoBtn.disabled = false; autoBtn.textContent = '📷 फोटो से भरें'; alert(e.message); }
       };
       $('#scan-ok', m).onclick = () => { const v = ta.value; m.close(); resolve(v); };
       $('#scan-no', m).onclick = () => { m.close(); resolve(null); };
@@ -529,12 +501,9 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       if (a < 0 || b < a) throw new Error('{ } नहीं मिला');
       t = t.slice(a, b + 1).replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/,\s*([}\]])/g, '$1');
       raw = JSON.parse(t);
-    } catch (e) {
-      alert('कोड पढ़ नहीं पाया (' + e.message + ').\nGemini/Claude का पूरा JSON, पहले { से आख़िरी } तक, कॉपी करें।');
-      return;
-    }
+    } catch (e) { alert('JSON पढ़ नहीं पाया: ' + e.message); return; }
 
-    const f = {};            
+    const f = {};
     const put = (id, v) => { const n = numOrNull(v); if (n !== null) f[id] = n; };
     const putTxt = (id, v) => { const s = clean(v); if (s) f[id] = s; };
     const pick = (...vals) => vals.find(v => v !== undefined && v !== null && clean(v) !== '');
@@ -545,454 +514,40 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     put('f-dipD', pick(raw.dipD, raw.diesel && raw.diesel.dip));
     put('f-testing', pick(raw.testing, raw.test));
     put('f-openCash', pick(raw.openCash, raw.cash && raw.cash.openCash));
-    put('f-paytm', pick(raw.paytm, raw.cash && raw.cash.paytm));
-    put('f-swipe', pick(raw.swipe, raw.cash && raw.cash.swipe));
-    put('f-kharcha', pick(raw.kharcha, raw.cash && raw.cash.kharcha));
-    put('f-driverInaam', pick(raw.driverInaam, raw.cash && raw.cash.driverInaam));
-    put('f-chaiKhana', pick(raw.chaiKhana, raw.cash && raw.cash.chaiKhana));
-    put('f-malikDiya', pick(raw.malikDiya, raw.cash && raw.cash.malikDiya));
+    put('f-paytm', pick(raw.paytm));
+    put('f-swipe', pick(raw.swipe));
+    put('f-kharcha', pick(raw.kharcha));
+    put('f-driverInaam', pick(raw.driverInaam));
+    put('f-chaiKhana', pick(raw.chaiKhana));
+    put('f-malikDiya', pick(raw.malikDiya));
     put('f-openStockP', raw.openStockP); put('f-openStockD', raw.openStockD);
     put('f-tankerP', raw.tankerP); put('f-tankerD', raw.tankerD);
     putTxt('f-note', raw.note);
 
-    const nz = {};           
+    const nz = {};
     if (raw.nz && typeof raw.nz === 'object') {
       NZ.forEach(k => {
         const x = raw.nz[k] || raw.nz[k.toUpperCase()];
         if (!x) return;
-        const o = numOrNull(x.o !== undefined ? x.o : x.open !== undefined ? x.open : x.opening);
-        const c = numOrNull(x.c !== undefined ? x.c : x.close !== undefined ? x.close : x.closing);
+        const o = numOrNull(x.o !== undefined ? x.o : x.open);
+        const c = numOrNull(x.c !== undefined ? x.c : x.close);
         if (o !== null || c !== null) nz[k] = { o, c };
       });
-    } else if (Array.isArray(raw.nozzles)) {
-      raw.nozzles.forEach((x, i) => {
-        if (!x || !NZ[i]) return;
-        const c = numOrNull(x.closing !== undefined ? x.closing : x.c);
-        const o = numOrNull(x.opening !== undefined ? x.opening : x.o);
-        if (o !== null || c !== null) nz[NZ[i]] = { o, c };
-      });
     }
 
-    const expL = [];
-    [['kharcha', 'f-kharcha'], ['driverInaam', 'f-driverInaam'], ['chaiKhana', 'f-chaiKhana']].forEach(([k, id]) => {
-      if (f[id] > 0) { expL.push({ cat: k, label: '', amount: f[id] }); delete f[id]; }
-    });
-    const exIn = Array.isArray(raw.kharchaItems) ? raw.kharchaItems : Array.isArray(raw.expenses) ? raw.expenses : Array.isArray(raw.kharchaList) ? raw.kharchaList : [];
-    exIn.forEach(it => {
-      if (!it) return;
-      const a = numOrNull(it.amount !== undefined ? it.amount : it.rs);
-      if (!(a > 0)) return;
-      const lb = clean(it.label || it.name || it.item || it.for);
-      let cat = 'other';
-      if (/\bdg\b|जनरेटर|generator/i.test(lb)) cat = 'kharcha';
-      else if (/ड्राइवर|driver|इनाम/i.test(lb)) cat = 'driverInaam';
-      else if (/चाय|खाना|chai|khana|nasta|नाश्ता/i.test(lb)) cat = 'chaiKhana';
-      expL.push({ cat, label: cat === 'other' ? lb : '', amount: a });
-    });
-    const expOrig = K.r2(expL.reduce((a, x) => a + x.amount, 0));
-    const KHN = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
-    const expName = x => x.cat === 'other' ? (x.label || '❓ नाम नहीं पता') : KHN[x.cat];
-
-    const udharIn = Array.isArray(raw.udhar) ? raw.udhar : (Array.isArray(raw.ledger) ? raw.ledger : []);
-    const jamaIn = Array.isArray(raw.jama) ? raw.jama : [];
-
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(clean(raw.date)) ? clean(raw.date) : (st && st.date) || APP.todayISO();
-    const switching = st && st.date && date !== st.date;
-
-    let parties = [];
-    try { parties = await APP.getParties(false, true); } catch (e) { parties = []; }
-    const byId = id => parties.find(x => x.id === id) || null;
-    const findParty = (name, veh) => {
-      const nn = nrm(name), vv = nrmVeh(veh), hn = nrmHi(name);
-      let p = null;
-      if (vv && alias.v[vv] && (p = byId(alias.v[vv]))) return p;
-      if (hn && alias.n[hn] && (p = byId(alias.n[hn]))) return p;
-      if (vv) {
-        p = parties.find(x => (x.vehicles || []).some(v => nrmVeh(v) === vv));
-        if (p) return p;
-        const dg = digitsOf(veh);
-        if (dg.length >= 3) {
-          const hits = parties.filter(x => (x.vehicles || []).some(v => { const d2 = digitsOf(v); return d2.length >= 3 && (d2.endsWith(dg) || dg.endsWith(d2)); }));
-          if (hits.length === 1) return hits[0];
-        }
-      }
-      if (nn) {
-        p = parties.find(x => nrm(x.name) === nn);
-        if (p) return p;
-        const sc = parties.map(x => ({ x, s: sim(hn, nrmHi(x.name)) })).sort((a, b) => b.s - a.s);
-        if (sc.length && sc[0].s >= 0.88 && (sc.length < 2 || sc[0].s - sc[1].s >= 0.08)) return sc[0].x;
-      }
-      return null;
-    };
-    const suggest = (name, veh) => {
-      const hn = nrmHi(name), dg = digitsOf(veh);
-      return parties.map(x => {
-        let sc = sim(hn, nrmHi(x.name));
-        if (dg.length >= 3 && (x.vehicles || []).some(v => { const d2 = digitsOf(v); return d2.length >= 3 && (d2.endsWith(dg) || dg.endsWith(d2)); })) sc += 1;
-        return { x, sc };
-      }).sort((a, b) => b.sc - a.sc);
-    };
-
-    let existing = (st && !switching && st.rows) ? st.rows : [];
-    if (switching) {
-      try { const rs = await db().collection('ledger').where('date', '==', date).get(); existing = rs.docs.map(x => x.data()); } catch (e) { existing = []; }
-    }
-    const rateNow = fuel => {
-      const id = fuel === 'petrol' ? 'f-rateP' : 'f-rateD';
-      const n = f[id] !== undefined ? f[id] : numOrNull(($('#' + id) || {}).value);
-      return n || (APP.S.rates && APP.S.rates[fuel]) || 0;
-    };
-
-    const U = [], J = [], bad = [], pend = [];
-    udharIn.forEach((it, i) => {
-      if (!it) return;
-      const fuel = /petrol|पेट्रोल|^p$/i.test(clean(it.fuel)) ? 'petrol' : 'diesel';
-      const veh = clean(it.vehicle || it.gaadi).toUpperCase();
-      let amount = numOrNull(it.amount), litre = numOrNull(it.litre), rate = numOrNull(it.rate) || rateNow(fuel);
-      if (amount === null && litre !== null && rate) amount = K.r2(litre * rate);
-      if (litre === null && amount !== null && rate) litre = K.r2(amount / rate);
-      const label = `उधार #${i + 1}: ${clean(it.party) || '?'} ${veh}`;
-      if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
-      const p = findParty(it.party, veh);
-      const base = { veh, fuel, rate, litre: litre || 0, amount, time: clean(it.time), note: clean(it.note) };
-      if (!p) { pend.push({ kind: 'udhar', label, nameRaw: clean(it.party), base }); return; }
-      const dup = existing.some(r => r.kind === 'udhar' && r.partyId === p.id && nrmVeh(r.vehicle) === nrmVeh(veh) && Math.abs(num(r.amount) - amount) < 0.01);
-      U.push(Object.assign({ p, dup }, base));
-    });
-    jamaIn.forEach((it, i) => {
-      if (!it) return;
-      const amount = numOrNull(it.amount);
-      if (/^(ad|a\.?d\.?|एड|ए\.?डी\.?)$/i.test(nrm(it.party)) && amount > 0) {
-        if (f['f-openCash'] === undefined) f['f-openCash'] = amount;
-        return;
-      }
-      const label = `जमा #${i + 1}: ${clean(it.party) || '?'}`;
-      if (!(amount > 0)) { bad.push(label + ' — रकम नहीं मिली'); return; }
-      const p = findParty(it.party, '');
-      const md = clean(it.mode).toLowerCase();
-      const mode = /paytm|upi/.test(md) ? 'paytm' : /swipe|card/.test(md) ? 'swipe' : /bank/.test(md) ? 'bank' : 'cash';
-      const base = { mode, amount, time: clean(it.time), note: clean(it.note) };
-      if (!p) { pend.push({ kind: 'jama', label, nameRaw: clean(it.party), base }); return; }
-      const dup = existing.some(r => r.kind === 'jama' && r.partyId === p.id && r.mode === mode && Math.abs(num(r.amount) - amount) < 0.01);
-      J.push(Object.assign({ p, dup }, base));
-    });
-
-    const fieldCount = Object.keys(f).length + Object.values(nz).reduce((a, x) => a + (x.o !== null ? 1 : 0) + (x.c !== null ? 1 : 0), 0);
-    const nzTxt = NZ.filter(k => nz[k]).map(k => `${k.toUpperCase()}: ${nz[k].o !== null ? nz[k].o : '–'} → ${nz[k].c !== null ? nz[k].c : '–'}`).join('<br>');
-    const newU0 = U.filter(x => !x.dup), newJ0 = J.filter(x => !x.dup);
-    const dupN = (U.length - newU0.length) + (J.length - newJ0.length);
-
-    const picks = await new Promise(resolve => {
-      const m = modal(`
-        <h3>जाँच लें, फिर भरें</h3>
-        <div class="kv"><span>तारीख</span><b>${esc(APP.dmy(date))}${switching ? ' ⚠️ (दूसरा दिन)' : ''}</b></div>
-        <div class="kv"><span>हिसाब के बॉक्स</span><b>${fieldCount}</b></div>
-        ${nzTxt ? `<div class="mut" style="font-size:12px;margin:4px 0">${nzTxt}</div>` : ''}
-        <div class="kv"><span>नई उधार एंट्री</span><b>${newU0.length}</b></div>
-        ${newU0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${esc(x.veh)} · ${money(x.amount)}</div>`).join('')}
-        <div class="kv"><span>नई जमा एंट्री</span><b>${newJ0.length}</b></div>
-        ${newJ0.map(x => `<div class="mut" style="font-size:12px">• ${esc(x.p.name)} · ${money(x.amount)}</div>`).join('')}
-        <div id="pv-exp"></div>
-        ${dupN ? `<div class="mut" style="margin-top:6px">पहले से मौजूद (छोड़ दी जाएँगी): ${dupN}</div>` : ''}
-        ${pend.length ? `<div class="warn" style="margin-top:8px"><b>❓ ये पार्टी नहीं पहचानी — सही पार्टी चुनें (${pend.length}):</b>
-          ${pend.map((x, i) => { const sg = suggest(x.nameRaw, x.base.veh); return `<div style="margin-top:8px"><small>${esc(x.label)} · ${money(x.base.amount)}</small>
-            <select data-pi="${i}" style="width:100%;margin-top:3px">${x.nameRaw ? '<option value="__new" selected>➕ नई पार्टी बनाओ: ' + esc(x.nameRaw) + '</option>' : ''}<option value="">— छोड़ दो —</option>${sg.map((o, j) => `<option value="${o.x.id}">${j < 3 && o.sc > 0.5 ? '⭐ ' : ''}${esc(o.x.name)}</option>`).join('')}</select></div>`; }).join('')}
-          <small class="mut">एक बार चुनने पर app ये नाम/गाड़ी याद रखेगा।</small></div>` : ''}
-        ${bad.length ? `<div class="warn" style="margin-top:8px"><b>❌ ये नहीं भरी जा सकीं (${bad.length}):</b><br>${bad.map(esc).join('<br>')}</div>` : ''}
-        <div class="btns" style="margin-top:12px">
-          <button class="btn g" id="pv-ok">✅ भर दो</button>
-          <button class="btn w" id="pv-no">रद्द</button>
-        </div>`);
-      const renderExp = () => {
-        const box = $('#pv-exp', m); if (!box) return;
-        if (!expL.length) { box.innerHTML = ''; return; }
-        const tot = K.r2(expL.reduce((a, x) => a + x.amount, 0));
-        const unk = expL.filter(x => x.cat === 'other' && !x.label).length;
-        box.innerHTML = `<div class="${unk ? 'warn' : ''}" style="margin-top:8px;${unk ? '' : 'background:#f8f9fc;border-radius:8px;padding:8px 10px'}">
-          <div class="kv" style="border:0"><span><b>💸 खर्चा</b></span><b>${money(tot)}</b></div>
-          ${expL.map(x => `<div class="mut" style="font-size:12px">• ${esc(expName(x))} · ${money(x.amount)}</div>`).join('')}
-          ${unk ? `<div style="font-size:13px;margin-top:4px">❓ ${unk} खर्चा किस चीज़ का है, समझ नहीं आया — नीचे बटन से बता दें।</div>` : ''}
-          <div class="btns"><button class="btn w sm" type="button" id="pv-exp-ed">✏️ खर्चा एडिट / अलग-अलग बाँटें</button></div></div>`;
-        $('#pv-exp-ed', m).onclick = () => APP.expEditor({
-          title: '💸 खर्चा — किस चीज़ में कितना',
-          note: `पेस्ट में कुल खर्चा <b>${money(expOrig)}</b> आया है। चाहें तो एक खर्चे को अलग-अलग हिस्सों में बाँटें (जोड़ बराबर रहना चाहिए), नाम सुधारें या हटाएँ।`,
-          mustTotal: expOrig, soft: true,
-          lines: expL.map(x => ({ cat: x.cat, label: x.label, amount: x.amount })),
-          onOk: lines => { expL.length = 0; lines.forEach(l => expL.push(l)); renderExp(); }
-        });
-      };
-      renderExp();
-      $('#pv-ok', m).onclick = () => { const r = {}; $$('select[data-pi]', m).forEach(el => { if (el.value) r[el.dataset.pi] = el.value; }); m.close(); resolve(r); };
-      $('#pv-no', m).onclick = () => { m.close(); resolve(null); };
-    });
-    if (!picks) return;
-
-    const mk = {};
-    Object.keys(picks).forEach(i => {
-      if (picks[i] !== '__new') return;
-      const x = pend[i], key = nrmHi(x.nameRaw);
-      mk[key] = mk[key] || { name: x.nameRaw, vehicles: [] };
-      if (x.base.veh && !mk[key].vehicles.includes(x.base.veh)) mk[key].vehicles.push(x.base.veh);
-    });
-    const made = {};
-    for (const key of Object.keys(mk)) {
-      const ref = db().collection('parties').doc();
-      await ref.set({ name: mk[key].name, phone: '', vehicles: mk[key].vehicles, bal: 0, createdAt: APP.FV.serverTimestamp() });
-      const np = { id: ref.id, name: mk[key].name, vehicles: mk[key].vehicles };
-      parties.push(np); made[key] = np;
-    }
-    pend.forEach((x, i) => {
-      const p = picks[i] === '__new' ? made[nrmHi(x.nameRaw)] : (picks[i] ? byId(picks[i]) : null);
-      if (!p) return;
-      const hn = nrmHi(x.nameRaw), vv = nrmVeh(x.base.veh);
-      if (hn && hn !== nrmHi('?')) alias.n[hn] = p.id;
-      if (vv) alias.v[vv] = p.id;
-      if (x.kind === 'udhar') {
-        const dup = existing.some(r => r.kind === 'udhar' && r.partyId === p.id && nrmVeh(r.vehicle) === vv && Math.abs(num(r.amount) - x.base.amount) < 0.01);
-        U.push(Object.assign({ p, dup }, x.base));
-      } else {
-        const dup = existing.some(r => r.kind === 'jama' && r.partyId === p.id && r.mode === x.base.mode && Math.abs(num(r.amount) - x.base.amount) < 0.01);
-        J.push(Object.assign({ p, dup }, x.base));
-      }
-    });
-    saveAlias();
-    ['kharcha', 'driverInaam', 'chaiKhana'].forEach(k => {
-      const ls = expL.filter(x => x.cat === k);
-      if (ls.length) f['f-' + k] = K.r2(ls.reduce((a, x) => a + x.amount, 0));
-    });
-    const newExp = expL.filter(x => x.cat === 'other').map(x => ({ label: x.label, amount: x.amount }));
-    const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
-
-    if (switching) {
-      try { APP.collectDraft(); } catch (e) { }
-      await APP.dayView(date);
-    }
+    if (raw.udhar && raw.udhar.length) { toast(`${raw.udhar.length} उधार + ` + ((raw.jama && raw.jama.length) || 0) + ' जमा मिले'); }
 
     const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
-    let filled = 0; const missing = [];
-    const S_cur_locked = () => !!(APP.S.cur && APP.S.cur.locked);
-    Object.keys(f).forEach(id => {
-      const el = $('#' + id);
-      if (!el || el.disabled) { missing.push(id); return; }
-      el.value = f[id]; fire(el); filled++;
-    });
+    Object.keys(f).forEach(id => { const el = $('#' + id); if (el && !el.disabled) { el.value = f[id]; fire(el); } });
     NZ.forEach(k => {
       const x = nz[k]; if (!x) return;
       const oEl = $(`.nzi[data-k="${k}"][data-f="o"]`), cEl = $(`.nzi[data-k="${k}"][data-f="c"]`);
-      if (x.c !== null) { if (cEl && !cEl.disabled) { cEl.value = x.c; fire(cEl); filled++; } else missing.push(k + ' closing'); }
-      if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); filled++; }
+      if (x.c !== null && cEl && !cEl.disabled) { cEl.value = x.c; fire(cEl); }
+      if (x.o !== null && oEl && !oEl.disabled && clean(oEl.value) === '') { oEl.value = x.o; fire(oEl); }
     });
-    if (newExp.length) {
-      if (S_cur_locked()) missing.push('और खर्चे (लॉक)');
-      else { try { APP.mergeExpItems(newExp); filled += newExp.length; } catch (e) { missing.push('और खर्चे'); } }
-    }
     try { APP.recalc(); } catch (e) { }
-
-    let wrote = 0; const failed = [];
-    const by = APP.S.salesman ? APP.S.salesman.name : (APP.S.user ? APP.S.user.email : '');
-    const writeEntry = async (data, delta, pid) => {
-      const ref = db().collection('ledger').doc();
-      const b = db().batch();
-      b.set(ref, data);
-      if (delta) b.update(db().collection('parties').doc(pid), { bal: APP.FV.increment(delta) });
-      await b.commit();
-    };
-    for (const x of newU) {
-      const data = { partyId: x.p.id, partyName: x.p.name, date, time: x.time || APP.nowTime(), kind: 'udhar', note: x.note, vehicle: x.veh, fuel: x.fuel, rate: x.rate, litre: x.litre, amount: x.amount, by, at: APP.FV.serverTimestamp() };
-      try { await writeEntry(data, K.signed(data), x.p.id); wrote++; } catch (e) { failed.push(x.p.name + ' ' + x.veh + ': ' + e.message); }
-    }
-    for (const x of newJ) {
-      const data = { partyId: x.p.id, partyName: x.p.name, date, time: x.time || APP.nowTime(), kind: 'jama', note: x.note, mode: x.mode, amount: x.amount, by, at: APP.FV.serverTimestamp() };
-      try { await writeEntry(data, K.signed(data), x.p.id); wrote++; } catch (e) { failed.push(x.p.name + ': ' + e.message); }
-    }
-
-    try { APP.collectDraft(); } catch (e) { }
-    if (wrote) { APP.S.parties = null; }
-    try { await APP.dayView(date); } catch (e) { }
-
-    const tail = [];
-    if (missing.length) tail.push('नहीं भरे: ' + missing.join(', '));
-    if (failed.length) tail.push('एंट्री फेल: ' + failed.join(' | '));
-    if (tail.length) alert(tail.join('\n'));
-    toast(`${filled} बॉक्स भरे · ${wrote} एंट्री जुड़ीं — अब 💾 सेव दबाएँ`);
+    toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  /* ============ दैनिक हिसाब की फोटो — 3:4 फ्रेम, लंबा हो तो कई फोटो ============ */
-  const DR_W = 810, DR_H = 1080, DR_PAD = 22, DR_FOOT = 20, NV = '#1f3a8a';
-  const dF = n => r2(num(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const dL = n => dF(n) + ' L';
-  const dR = n => '₹' + dF(n);
-  const DR_MODE = { cash: 'नकद', paytm: 'Paytm/UPI', swipe: 'स्वाइप', bank: 'बैंक' };
-  const DR_AUTO = ['नकद जमा', 'Paytm/UPI से जमा', 'स्वाइप (कार्ड) से जमा', 'बैंक ट्रांसफर से जमा'];
-  const DR_FUEL = { petrol: 'पेट्रोल', diesel: 'डीज़ल' };
-
-  async function layoutDailyReport(st, d) {
-    const rows = (st.rows || []).slice();
-    const o = K.compute(d, rows);
-    const tol = num(C.stockTolerance) || 25;
-    const act = K.activeNz ? K.activeNz() : K.NZ;
-    const card = (title, inner, extra) => '<div style="border:1px solid #d8dfee;border-radius:10px;padding:8px 11px;background:#fff;' + (extra || '') + '"><div style="font-weight:800;color:' + NV + ';font-size:13px;margin-bottom:4px">' + title + '</div>' + inner + '</div>';
-    const kvr = (a, b, o2) => { o2 = o2 || {}; return '<div style="display:flex;justify-content:space-between;gap:8px;padding:1.5px 0;font-size:' + (o2.fs || 12) + 'px;border-bottom:1px dashed #eef1f7;' + (o2.bg ? 'background:' + o2.bg + ';' : '') + '"><span style="color:' + (o2.lc || '#333') + '">' + a + '</span><b style="color:' + (o2.c || '#111') + ';white-space:nowrap">' + b + '</b></div>'; };
-
-    const hdr = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ' + NV + ';padding-bottom:8px">' +
-      '<div style="display:flex;gap:10px;align-items:center"><img src="./logo.png" style="width:46px;height:46px;border-radius:50%;object-fit:cover">' +
-      '<div><div style="font-size:20px;font-weight:800;color:' + NV + ';line-height:1.15">' + esc(C.pump.name) + '</div><div style="font-size:11px;color:#5b6577">' + esc(C.pump.address) + '</div></div></div>' +
-      '<div style="text-align:right"><div style="font-size:11px;color:#5b6577">दैनिक हिसाब / DAILY ACCOUNT</div><div style="font-size:22px;font-weight:800;line-height:1.1">' + dmy(st.date) + '</div>' +
-      '<span style="display:inline-block;margin-top:2px;padding:1px 9px;border-radius:10px;font-size:10.5px;font-weight:700;background:' + (d.status === 'submitted' ? '#e3f5e8;color:#1e7d34' : '#fff3d6;color:#9a6200') + '">' + (d.status === 'submitted' ? '✔ जमा (फाइनल)' : '⏳ चालू (फाइनल नहीं)') + '</span></div></div>';
-    const pill = (a, b) => '<span style="background:#eef2fc;border-radius:8px;padding:3px 9px;font-size:11.5px;color:#333">' + a + ' <b style="color:#111">' + b + '</b></span>';
-    const rates = '<div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">' + pill('पेट्रोल रेट', '₹' + dF(d.rateP) + '/L') + pill('डीज़ल रेट', '₹' + dF(d.rateD) + '/L') + pill('टेस्टिंग', num(d.testing) + ' L/नोज़ल') + '</div>';
-    const kpi = (lab, val, col) => '<div style="flex:1;border:1px solid #d8dfee;border-radius:10px;padding:4px 4px;text-align:center"><div style="font-size:10.5px;color:#5b6577">' + lab + '</div><div style="font-size:17px;font-weight:800;color:' + col + ';margin-top:1px">' + val + '</div></div>';
-    const kpis = '<div style="display:flex;gap:8px;margin-bottom:6px">' + kpi('कुल बिक्री', dR(o.sale), NV) + kpi('उधार दिया', dR(o.udhar), '#b3261e') + kpi('कुल खर्चा', dR(o.totalKharcha), '#9a6200') + kpi('आज का बचा कैश', dR(o.close), o.close < 0 ? '#b3261e' : '#1e7d34') + '</div>';
-
-    /* मीटर */
-    const nzRow = k => { const n = (d.nz && d.nz[k]) || {}, r = o.nz[k] || {};
-      return '<tr style="border-bottom:1px solid #eef1f7"><td style="padding:1.5px 4px;font-weight:700">' + k.toUpperCase() + '</td><td style="padding:1.5px 4px;text-align:right">' + esc(n.o == null || n.o === '' ? '–' : n.o) + '</td><td style="padding:1.5px 4px;text-align:right">' + esc(n.c == null || n.c === '' ? '–' : n.c) + '</td><td style="padding:1.5px 4px;text-align:right;font-weight:700">' + (r.ok ? dF(r.net) : '–') + '</td></tr>'; };
-    const grp = (lab, pre) => '<tr><td colspan="4" style="padding:3px 4px;background:#f4f6fb;font-size:11px;font-weight:700;color:#555">' + lab + '</td></tr>' + K.NZ.filter(k => k[0] === pre && act.includes(k)).map(nzRow).join('');
-    const meter = card('⛽ मीटर रीडिंग', '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="font-size:10.5px"><th style="text-align:left;padding:2px 4px;color:#555">नोज़ल</th><th style="text-align:right;padding:2px 4px;color:#555">ओपनिंग</th><th style="text-align:right;padding:2px 4px;color:#555">क्लोज़िंग</th><th style="text-align:right;padding:2px 4px;color:#555">नेट L</th></tr>' +
-      grp('पेट्रोल', 'p') + grp('डीज़ल', 'd') + '</table>' +
-      kvr('पेट्रोल कुल', dL(o.litP), { c: NV }) + kvr('डीज़ल कुल', dL(o.litD), { c: NV }));
-
-    /* स्टॉक */
-    const stk = (nm, pre, tk, sale, exp, actv, diff, dip) => {
-      let badge = '';
-      if (diff !== null) { const a = Math.abs(diff), sg = diff > 0 ? '+' : '';
-        badge = a <= 0.5 ? '<div style="margin-top:3px;padding:3px 8px;border-radius:7px;background:#e3f5e8;color:#1e7d34;font-size:11.5px;font-weight:700">✔ स्टॉक बराबर</div>'
-          : a <= tol ? '<div style="margin-top:3px;padding:3px 8px;border-radius:7px;background:#fff3d6;color:#9a6200;font-size:11.5px;font-weight:700">≈ फर्क ' + sg + dF(diff) + ' L (डिप की सटीकता के अंदर)</div>'
-          : '<div style="margin-top:3px;padding:3px 8px;border-radius:7px;background:#fde8e6;color:#b3261e;font-size:11.5px;font-weight:700">⚠️ स्टॉक ' + (diff < 0 ? 'कम' : 'ज़्यादा') + ': ' + sg + dF(diff) + ' L</div>'; }
-      return card('🛢️ ' + nm + ' स्टॉक', kvr('ओपनिंग (कल की डिप)', dL(d['openStock' + pre])) + kvr('+ टैंकर आया', dL(tk)) + kvr('− आज की बिक्री', dL(sale)) + kvr('= होना चाहिए', dL(exp), { c: '#333' }) +
-        kvr('आज की डिप' + (dip !== '' && dip != null ? ' (' + esc(dip) + ')' : ''), actv !== null ? dL(actv) : 'नहीं ली', { c: NV, fs: 13.5 }) + badge);
-    };
-    const stocks = '<div style="display:flex;flex-direction:column;gap:8px">' +
-      stk('पेट्रोल', 'P', d.tankerP, o.litP, o.expStockP, o.actStockP, o.diffP, d.dipP) + stk('डीज़ल', 'D', d.tankerD, o.litD, o.expStockD, o.actStockD, o.diffD, d.dipD) + '</div>';
-
-    /* बिक्री पट्टी + कैश (Galla vs Kharcha) */
-    const saleStrip = '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:8px;padding:6px 11px;border:1px solid #d8dfee;border-radius:10px;background:#f4f7ff;font-size:12.5px">' +
-      '<span>पेट्रोल <b>' + dL(o.litP) + '</b> = <b>' + dR(o.amtP) + '</b></span><span>डीज़ल <b>' + dL(o.litD) + '</b> = <b>' + dR(o.amtD) + '</b></span><span style="color:' + NV + '">कुल बिक्री <b style="font-size:14px">' + dR(o.sale) + '</b></span></div>';
-    
-    // ---- NAYA CASH LAYOUT (Galla vs Kharcha) ----
-    const gallaIn = r2(num(d.openCash) + o.sale + o.jCash + o.jPaytm + o.jSwipe);
-    const gallaOut = r2(num(d.paytm) + num(d.swipe) + o.udhar + o.totalKharcha + num(d.malikDiya));
-    
-    const gallaHtml = `
-      <div style="flex:1; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:6px 8px;">
-        <div style="font-weight:800; color:#166534; font-size:12px; margin-bottom:3px; border-bottom:1px solid #bbf7d0; padding-bottom:2px;">💰 गल्ला (आमदनी)</div>
-        ${kvr('बिक्री', dR(o.sale))}
-        ${kvr('पिछला कैश', dR(d.openCash))}
-        ${kvr('पार्टी जमा', dR(o.jCash + o.jPaytm + o.jSwipe))}
-        <div style="display:flex;justify-content:space-between;margin-top:4px;padding-top:4px;border-top:1px solid #bbf7d0;font-weight:800;color:#166534;font-size:12px;">
-          <span>कुल गल्ला</span><span>${dR(gallaIn)}</span>
-        </div>
-      </div>`;
-      
-    const kharchaHtml = `
-      <div style="flex:1; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:6px 8px;">
-        <div style="font-weight:800; color:#991b1b; font-size:12px; margin-bottom:3px; border-bottom:1px solid #fecaca; padding-bottom:2px;">💸 खर्चा (निकासी)</div>
-        ${kvr('Paytm + स्वाइप', dR(num(d.paytm) + num(d.swipe)))}
-        ${kvr('उधार दिया', dR(o.udhar))}
-        ${kvr('DG/चाय/अन्य', dR(o.totalKharcha))}
-        ${kvr('SBI जमा', dR(d.malikDiya))}
-        <div style="display:flex;justify-content:space-between;margin-top:4px;padding-top:4px;border-top:1px solid #fecaca;font-weight:800;color:#991b1b;font-size:12px;">
-          <span>कुल खर्चा</span><span>${dR(gallaOut)}</span>
-        </div>
-      </div>`;
-
-    const physDf = K.has(d.physicalCash) ? r2(num(d.physicalCash) - o.close) : null;
-    const physBox = physDf === null ? '' : '<div style="flex:1;border-radius:8px;padding:6px 10px;font-size:12px;background:' + (Math.abs(physDf) < 1 ? '#e3f5e8' : '#fde8e6') + ';color:' + (Math.abs(physDf) < 1 ? '#1e7d34' : '#b3261e') + '"><span style="color:#333">दराज़ में असली नकद</span> <b>' + dR(d.physicalCash) + '</b><br><b>' + (Math.abs(physDf) < 1 ? '✔ नकद बिल्कुल सही' : '⚠️ नकद ' + (physDf < 0 ? 'कम' : 'ज़्यादा') + ' ₹' + dF(Math.abs(physDf))) + '</b></div>';
-    
-    const cash = card('🧾 कैश का हिसाब (Galla vs Kharcha)',
-      `<div style="display:flex; gap:6px;">${gallaHtml}${kharchaHtml}</div>` +
-      `<div style="display:flex; gap:8px; margin-top:6px; align-items:stretch">` +
-        `<div style="flex:1; border-radius:8px; padding:6px 10px; background:#1f3a8a; color:#fff; display:flex; justify-content:space-between; align-items:center;">` +
-          `<span style="font-size:12px;">असली कैश (बचा)</span>` +
-          `<b style="font-size:18px;">${dR(o.close)}</b>` +
-        `</div>` +
-        `${physBox}` +
-      `</div>`);
-    // ---------------------------------------------
-
-    /* पार्टी एंट्री */
-    const th = (t, al, w) => '<th style="padding:4px 5px;color:#fff;text-align:' + al + ';font-weight:700;' + (w ? 'width:' + w + ';' : '') + '">' + t + '</th>';
-    const tHead = '<tr style="background:' + NV + ';color:#fff;font-size:10.5px">' + th('समय', 'left', '52px') + th('पार्टी', 'left') + th('विवरण', 'left', '230px') + th('उधार ₹', 'right', '92px') + th('जमा ₹', 'right', '92px') + '</tr>';
-    const detail = r => r.kind === 'udhar'
-      ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (DR_FUEL[r.fuel] || '') + ' ' + dF(r.litre) + ' L' : '')
-      : 'जमा · ' + esc(DR_MODE[r.mode] || 'नकद') + (r.note && !DR_AUTO.includes(r.note) ? ' · ' + esc(r.note) : '');
-    const prow = (r, i) => { const tr = document.createElement('tr'); tr.style.cssText = 'border-bottom:1px solid #e9edf5;' + (i % 2 ? 'background:#fafbfe;' : '');
-      tr.innerHTML = '<td style="padding:3px 5px;color:#666;font-size:10.5px">' + esc(r.time || '') + '</td><td style="padding:3px 5px;font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:170px">' + esc(r.partyName || '') + '</td><td style="padding:3px 5px;font-size:11px;color:#444;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:230px">' + detail(r) + '</td><td style="padding:3px 5px;text-align:right;color:#b3261e">' + (r.kind === 'udhar' ? dF(r.amount) : '') + '</td><td style="padding:3px 5px;text-align:right;color:#1e7d34">' + (r.kind === 'jama' ? dF(r.amount) : '') + '</td>'; return tr; };
-    const totU = rows.filter(r => r.kind === 'udhar').reduce((a, r) => a + num(r.amount), 0), totJ = rows.filter(r => r.kind === 'jama').reduce((a, r) => a + num(r.amount), 0);
-
-    const host = document.createElement('div');
-    host.style.cssText = 'position:fixed;left:-99999px;top:0;z-index:-1';
-    document.body.appendChild(host);
-    const pages = [];
-    const mini = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ' + NV + ';padding-bottom:6px;margin-bottom:8px"><b style="color:' + NV + ';font-size:15px">' + esc(C.pump.name) + '</b><span style="font-size:12px"><b>दैनिक हिसाब</b> · ' + dmy(st.date) + ' (जारी)</span></div>';
-    const newPage = first => {
-      const pg = document.createElement('div');
-      pg.className = 'dr-pg';
-      pg.style.cssText = 'width:' + DR_W + 'px;height:' + DR_H + 'px;background:#fff;color:#111;font-family:"Segoe UI","Noto Sans Devanagari","Mukta",Roboto,Arial,sans-serif;box-sizing:border-box;padding:' + DR_PAD + 'px;position:relative;overflow:hidden;line-height:1.35';
-      const body = document.createElement('div');
-      body.style.cssText = 'height:' + (DR_H - 2 * DR_PAD - DR_FOOT) + 'px;overflow:hidden';
-      if (first) {
-        body.innerHTML = hdr + rates + kpis +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start">' + meter + stocks + '</div>' +
-          saleStrip + '<div style="margin-top:8px">' + cash + '</div>' +
-          (d.note ? '<div style="margin-top:8px;padding:5px 10px;background:#fffbea;border:1px solid #f1e3a6;border-radius:8px;font-size:11.5px">📝 ' + esc(d.note) + '</div>' : '') +
-          '<div style="font-weight:800;color:' + NV + ';font-size:13px;margin:10px 0 4px">📒 पार्टी उधार / जमा (' + rows.length + ' एंट्री)</div>';
-      } else body.innerHTML = mini + '<div style="font-weight:800;color:' + NV + ';font-size:13px;margin:2px 0 4px">📒 पार्टी उधार / जमा (जारी)</div>';
-      const t = document.createElement('table'); t.style.cssText = 'width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-      t.innerHTML = tHead + '<tbody></tbody>'; body.appendChild(t);
-      pg.appendChild(body);
-      const foot = document.createElement('div');
-      foot.style.cssText = 'position:absolute;left:' + DR_PAD + 'px;right:' + DR_PAD + 'px;bottom:' + (DR_PAD - 8) + 'px;font-size:10px;color:#777;border-top:1px solid #ddd;padding-top:3px;display:flex;justify-content:space-between';
-      foot.innerHTML = '<span>' + esc(C.pump.name) + ' · दैनिक हिसाब ' + dmy(st.date) + '</span><span class="dr-no"></span>';
-      pg.appendChild(foot); host.appendChild(pg);
-      const ob = { pg, body, tbody: t.querySelector('tbody') }; pages.push(ob); return ob;
-    };
-    const over = ob => ob.body.scrollHeight > ob.body.clientHeight + 1;
-    let cur = newPage(true);
-    if (!rows.length) { const tr = document.createElement('tr'); tr.innerHTML = '<td colspan="5" style="padding:10px;text-align:center;color:#777">आज कोई पार्टी एंट्री नहीं</td>'; cur.tbody.appendChild(tr); }
-    rows.forEach((r, i) => { const tr = prow(r, i); cur.tbody.appendChild(tr); if (over(cur)) { cur.tbody.removeChild(tr); cur = newPage(false); cur.tbody.appendChild(tr); } });
-    if (rows.length) {
-      const tot = document.createElement('tr'); tot.style.cssText = 'background:#eef2fb;font-weight:800;border-top:2px solid ' + NV;
-      tot.innerHTML = '<td colspan="3" style="padding:4px 5px;text-align:right">कुल</td><td style="padding:4px 5px;text-align:right;color:#b3261e">' + dF(totU) + '</td><td style="padding:4px 5px;text-align:right;color:#1e7d34">' + dF(totJ) + '</td>';
-      cur.tbody.appendChild(tot); if (over(cur)) { cur.tbody.removeChild(tot); cur = newPage(false); cur.tbody.appendChild(tot); }
-    }
-    pages.forEach((ob, i) => { ob.pg.querySelector('.dr-no').textContent = 'फोटो ' + (i + 1) + ' / ' + pages.length; });
-    await Promise.all(Array.from(host.querySelectorAll('img')).map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
-    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { }
-    return { host, pages: pages.map(x => x.pg), o };
-  }
-  APP.layoutDailyReport = layoutDailyReport;
-
-  /* रिपोर्ट की फोटो: पहले दिखाओ, फिर अलग टैप पर शेयर (iPhone बिना टैप के शेयर नहीं करने देता) */
-  APP.showReportPreview = function (files, text) {
-    const urls = files.map(f => URL.createObjectURL(f));
-    const m = APP.modal('<h3>📸 हिसाब की फोटो</h3><div style="max-height:62vh;overflow:auto;border:1px solid #e3e8f2;border-radius:8px">' + urls.map(u => '<img src="' + u + '" style="width:100%;display:block">').join('') + '</div><div class="btns" style="margin-top:10px"><button class="btn g" id="rp-sh">📤 भेजें (WhatsApp आदि)</button><button class="btn w" id="rp-dl">💾 फोन में सेव</button><button class="btn w" id="rp-x">बंद</button></div>');
-    const save = () => files.forEach((f, i) => { const a = document.createElement('a'); a.href = urls[i]; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); });
-    m.querySelector('#rp-x').onclick = () => { m.close(); setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 500); };
-    m.querySelector('#rp-dl').onclick = save;
-    m.querySelector('#rp-sh').onclick = async () => {
-      try {
-        if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ files, text });
-        else save();
-      } catch (e) { if (!e || e.name !== 'AbortError') APP.toast('शेयर नहीं हो पाया — "💾 फोन में सेव" दबाएँ'); }
-    };
-  };
-
-  APP.shareCompactDayReport = async function (st, d) {
-    if (typeof html2canvas !== 'function') return toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
-    toast('हिसाब की फोटो बन रही है…');
-    let L;
-    try {
-      L = await layoutDailyReport(st, d);
-      const files = [];
-      for (let i = 0; i < L.pages.length; i++) {
-        const cv = await html2canvas(L.pages[i], { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true });
-        const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
-        files.push(new File([blob], 'Hisab_' + st.date + (L.pages.length > 1 ? '_' + (i + 1) + 'of' + L.pages.length : '') + '.png', { type: 'image/png' }));
-      }
-      const text = '*' + C.pump.name + '*\nदैनिक हिसाब ' + dmy(st.date) + '\nकुल बिक्री: ' + money(L.o.sale) + ' · बचा कैश: ' + money(L.o.close);
-      APP.showReportPreview(files, text);
-    } catch (e) { alert('फोटो नहीं बनी: ' + e.message); }
-    finally { if (L && L.host) L.host.remove(); }
-  };
+  console.log('[Mazda views2.js] loaded ✓');
 })();
