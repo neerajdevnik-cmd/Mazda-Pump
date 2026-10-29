@@ -1569,4 +1569,39 @@
       collectDraft();
       try {
         await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
-        toast
+        toast('मिलान ✔'); dayView(S.date);
+      } catch (e) { toast('नहीं हुआ: ' + e.message); }
+    },
+    async delE(data) {
+      collectDraft();
+      const row = S.cur.rows.find(r => r.id === data.id);
+      if (!row) return;
+      if (await dayIsLocked(row.date)) return toast(LOCKMSG);
+      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
+      try {
+        const b = db.batch();
+        b.delete(db.collection('ledger').doc(row.id));
+        const delta = -K.signed(row); 
+        if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
+        await commit(b.commit());
+        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '' });
+        refreshDaySum(row.date);
+        toast('एंट्री हटा दी गई ✔');
+        S.parties.pub = null;
+        dayView(S.date);
+      } catch (e) { toast('नहीं हटा: ' + e.message); }
+    }
+  };
+  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
+
+  (function () {
+    const st = document.createElement('style'); st.id = 'sum-fix';
+    st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
+#sum .kv span{font-size:12.5px;color:#555;line-height:1.25;overflow-wrap:anywhere}
+#sum .kv b{font-size:clamp(14px,4.3vw,17px);line-height:1.2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+#sum > div:first-child{flex-wrap:wrap;gap:4px 12px}`;
+    document.head.appendChild(st);
+  })();
+
+  window.addEventListener('load', boot);
+})();
