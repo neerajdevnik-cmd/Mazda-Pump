@@ -20,22 +20,17 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
 </head>
 <body>
-  <div id="app">
-    <div style="padding:50px 20px; text-align:center;">
-      <h2 style="color:#0b3d91; margin-bottom:10px;">माज़दा ऑयल कंपनी</h2>
-      <p id="loading-text" style="color:#666;">लोड हो रहा है…</p>
-      <div id="error-box" style="display:none; color:red; margin-top:10px;"></div>
-    </div>
-  </div>
-
+  <div id="app"></div>
   <div id="toast"></div>
 
-  <!-- ===== Core (order matters) ===== -->
+  <!-- ===== Core ===== -->
   <script src="./config.js"></script>
   <script src="./dip_chart.js"></script>
   <script src="./calc.js"></script>
+  <script src="./device_features.js"></script> <!-- Naya: Camera, GPS -->
   <script src="./app.js"></script>
   <script src="./views2.js"></script>
   <script src="./features.js"></script>
@@ -47,28 +42,18 @@
   <script src="./shifts.js"></script>
   <script src="./extras.js"></script>
 
-  <!-- ===== Report (overrides K.compute) ===== -->
+  <!-- ===== Naye Modules ===== -->
   <script src="./dayreport.js"></script>
-
-  <!-- ===== Phase A: Tanker Report ===== -->
   <script src="./tanker_report.js"></script>
-
-  <!-- ===== Phase B: Analytics + Margins ===== -->
   <script src="./analytics.js"></script>
   <script src="./margins.js"></script>
-
-  <!-- ===== Phase C: CIBIL + App Lock + Vehicle ===== -->
   <script src="./cibil.js"></script>
   <script src="./applock.js"></script>
   <script src="./vehicle_profile.js"></script>
-
-  <!-- ===== Phase D: Shop Orders ===== -->
   <script src="./shop_orders.js"></script>
-
-  <!-- ===== Phase E: Vendors + Portal Code + Invoice ===== -->
   <script src="./vendors.js"></script>
   <script src="./portal_gen.js"></script>
-  <script src="./invoice_gen.js"></script> <!-- ✅ Ye nayi line add hui hai -->
+  <script src="./invoice_gen.js"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
