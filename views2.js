@@ -1,4 +1,4 @@
-/* स्टॉक, गाड़ी कैश, निजी उधार (CIBIL Badge सहित), थर्मल पर्ची व AI स्कैनर */
+/* स्टॉक, गाड़ी कैश, निजी उधार (Nayi Party Option सहित), थर्मल पर्ची व AI स्कैनर */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -203,7 +203,7 @@
     renderView(defaultMonth);
   };
 
-  /* ======================= NIJI UDHAR (PRIV) — CIBIL Badge ======================= */
+  /* ======================= NIJI UDHAR (PRIV) — with Nayi Party Option ======================= */
   APP.views.priv = async function (mode) {
     mode = mode || 'active';
     const main = $('#main'); if (!main) return;
@@ -229,6 +229,7 @@
       </div>
       <div class="btns" style="margin-bottom:12px">
         ${mode === 'active' ? '<button class="btn o" id="pv-add">+ नया निजी उधार</button>' : ''}
+        ${mode === 'active' ? '<button class="btn g" id="pv-new-party">+ नई निजी पार्टी</button>' : ''}
       </div>
       <div class="card">
         ${list.length ? list.map(p => {
@@ -243,6 +244,7 @@
     `;
 
     if ($('#pv-add')) $('#pv-add').onclick = () => APP.entryModal({ priv: true, date: APP.todayISO() });
+    if ($('#pv-new-party')) $('#pv-new-party').onclick = () => APP.partyModal(null, true);
     $('#pv-toggle').onclick = () => APP.views.priv(mode === 'active' ? 'history' : 'active');
     $$('[data-pid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.pid, true));
   };
