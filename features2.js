@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Features pack 2: Workers + Owner Viewer views */
+/* Mazda Oil Company - Features pack 2: Workers + Owner Viewer views (Enhanced) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -242,7 +242,7 @@
     }
   };
 
-  /* ============ VIEWER: HOME ============ */
+  /* ============ VIEWER: HOME (extended with analytical menu) ============ */
   APP.views.v_home = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
@@ -298,15 +298,30 @@
         kv('वर्कर हाज़िर', present + ' / ' + workers.length) +
         (salPending ? kv('सैलरी बकाया', salPending + ' वर्कर', 'neg') : kv('सैलरी', 'सब को दी ✔', 'pos')) +
       '</div>' +
-      '<div class="btns">' +
+      '<div class="card"><h3>📊 विश्लेषण और रिपोर्ट</h3><div class="btns">' +
+        (APP.views.analytics ? '<button class="btn w" data-nv="analytics">📊 आंकड़ों का विश्लेषण</button>' : '') +
+        (APP.views.rate_history ? '<button class="btn w" data-nv="rate_history">📈 रेट इतिहास</button>' : '') +
+        (APP.views.dashboard ? '<button class="btn w" data-nv="dashboard">📊 डैशबोर्ड</button>' : '') +
+        (APP.views.monthreport ? '<button class="btn w" data-nv="monthreport">📅 मासिक रिपोर्ट</button>' : '') +
+        (APP.views.nozzle ? '<button class="btn w" data-nv="nozzle">⛽ नोज़ल ट्रेंड</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>💰 पैसा और वित्त</h3><div class="btns">' +
+        (APP.views.bank ? '<button class="btn w" data-nv="bank">🏦 बैंक जमा</button>' : '') +
+        (APP.views.invoices ? '<button class="btn w" data-nv="invoices">📄 खरीद बिल / मार्जिन</button>' : '') +
+        (APP.views.reminders ? '<button class="btn w" data-nv="reminders">⏰ उधार रिमाइंडर</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>👥 पार्टी और वर्कर</h3><div class="btns">' +
         '<button class="btn w" data-nv="v_parties">📒 पार्टी लेजर</button>' +
         '<button class="btn w" data-nv="v_money">💰 पूरा पैसा</button>' +
-        '<button class="btn w" data-nv="v_workers">👥 वर्कर</button>' +
-      '</div>';
+        '<button class="btn w" data-nv="v_workers">👷 वर्कर हाज़िरी</button>' +
+        (APP.views.customers ? '<button class="btn w" data-nv="customers">👥 ग्राहक कार्ड</button>' : '') +
+        (APP.cibil ? '<button class="btn w" data-nv="cibil">⭐ पार्टी CIBIL</button>' : '') +
+        (APP.views.audit ? '<button class="btn w" data-nv="audit">🔍 ऑडिट लॉग</button>' : '') +
+      '</div></div>';
     $$('[data-nv]').forEach(b => b.onclick = () => APP.go(b.dataset.nv));
   };
 
-  /* ============ VIEWER: PARTIES (with party click → full ledger) ============ */
+  /* ============ VIEWER: PARTIES ============ */
   APP.views.v_parties = async function () {
     const main = $('#main'); if (!main) return;
     main.innerHTML = '<p class="mut">लोड हो रहा है…</p>';
@@ -325,9 +340,10 @@
         const ph = (p.phone || '').replace(/\D/g, '');
         const w = waNum(p.phone);
         const bTxt = Math.abs(b) < 0.005 ? '₹0' : (b > 0 ? '-' : '+') + money(Math.abs(b));
+        const cibilBadge = (APP.cibil && APP.cibil.badgeHtml) ? APP.cibil.badgeHtml(p) : '';
         return '<div class="card">' +
           '<div class="item" style="cursor:pointer;padding-bottom:8px;" data-vpid="' + p.id + '">' +
-            '<div class="a"><b>' + esc(p.name) + '</b><small>' + esc((p.vehicles || []).join(', ')) + '</small></div>' +
+            '<div class="a"><b>' + esc(p.name) + '</b> ' + cibilBadge + '<small>' + esc((p.vehicles || []).join(', ')) + '</small></div>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
               '<span class="chip ' + (b > 0.005 ? 'r' : b < -0.005 ? 'g' : '') + '">' + bTxt + '</span>' +
               '<span style="color:#9aa5bb;font-size:22px;font-weight:300;">›</span>' +
@@ -340,10 +356,7 @@
           '</div>' +
         '</div>';
       }).join('') : '<p class="mut">कोई पार्टी नहीं</p>';
-      
-      // Party card click → open full ledger (read-only)
       $$('[data-vpid]').forEach(el => el.onclick = () => APP.partyView(el.dataset.vpid, false));
-      // Statement button click
       $$('[data-stmt]').forEach(b => b.onclick = () => APP.sharePartyStatement(b.dataset.stmt, false));
     };
     $('#vpq').oninput = e => draw(e.target.value.trim().toLowerCase());
@@ -455,5 +468,48 @@
       '</div>';
   };
 
-  console.log('[Mazda features2.js] loaded ✓ (v_parties clickable fix)');
+  /* ============ More view — VIEWER-SPECIFIC extension ============ */
+  const origMoreViewer = APP.views.more;
+  APP.views.more = async function (arg) {
+    if (origMoreViewer) await origMoreViewer.apply(this, arguments);
+    if (!isViewer()) return;
+    const main = $('#main'); if (!main) return;
+    if (document.querySelector('#extra-more-card')) return;
+    
+    const extra = document.createElement('div');
+    extra.id = 'extra-more-card';
+    extra.innerHTML =
+      '<div class="card"><h3>📊 विश्लेषण</h3><div class="btns">' +
+        (APP.views.analytics ? '<button class="btn w" data-nav="analytics">📊 आंकड़ों का विश्लेषण</button>' : '') +
+        (APP.views.rate_history ? '<button class="btn w" data-nav="rate_history">📈 रेट इतिहास</button>' : '') +
+        (APP.views.dashboard ? '<button class="btn w" data-nav="dashboard">📊 डैशबोर्ड</button>' : '') +
+        (APP.views.monthreport ? '<button class="btn w" data-nav="monthreport">📅 मासिक रिपोर्ट</button>' : '') +
+        (APP.views.nozzle ? '<button class="btn w" data-nav="nozzle">⛽ नोज़ल ट्रेंड</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>💰 वित्त</h3><div class="btns">' +
+        (APP.views.bank ? '<button class="btn w" data-nav="bank">🏦 बैंक जमा</button>' : '') +
+        (APP.views.invoices ? '<button class="btn w" data-nav="invoices">📄 खरीद बिल / मार्जिन</button>' : '') +
+        (APP.views.reminders ? '<button class="btn w" data-nav="reminders">⏰ उधार रिमाइंडर</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>👥 पार्टी</h3><div class="btns">' +
+        (APP.views.customers ? '<button class="btn w" data-nav="customers">👥 ग्राहक कार्ड</button>' : '') +
+        (APP.cibil ? '<button class="btn w" data-nav="cibil">⭐ पार्टी CIBIL</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>👷 वर्कर</h3><div class="btns">' +
+        '<button class="btn w" data-nav="v_workers">👷 वर्कर हाज़िरी</button>' +
+      '</div></div>' +
+      '<div class="card"><h3>🔍 लॉग</h3><div class="btns">' +
+        (APP.views.audit ? '<button class="btn w" data-nav="audit">🔍 ऑडिट लॉग</button>' : '') +
+      '</div></div>' +
+      '<div class="card"><h3>💾 बैकअप</h3>' +
+        '<p class="mut" style="font-size:12px;margin:4px 0">सारा डेटा एक फ़ाइल में।</p>' +
+        '<div class="btns"><button class="btn g" id="bk-json">JSON</button><button class="btn w" id="bk-csv">CSV (Excel)</button></div></div>';
+    
+    main.appendChild(extra);
+    extra.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => APP.go(b.dataset.nav));
+    const jb = $('#bk-json'); if (jb) jb.onclick = () => APP.downloadBackup('json');
+    const cb = $('#bk-csv'); if (cb) cb.onclick = () => APP.downloadBackup('csv');
+  };
+
+  console.log('[Mazda features2.js] loaded ✓ (owner view enhanced)');
 })();
