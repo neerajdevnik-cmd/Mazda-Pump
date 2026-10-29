@@ -6,3 +6,19 @@
         "sha256_cert_fingerprints": ["7F:41:DC:C7:36:0D:67:41:B0:9F:0E:DF:11:E2:5B:68:CC:D6:63:FB:88:2F:42:6B:6C:B1:5B:D8:C2:17:BF:47"]
       }
     }]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.neerajdevnik_cmd.twa",
+        "sha256_cert_fingerprints": ["D4:58:E6:FF:E8:55:C2:89:82:17:E6:FA:46:96:5A:76:5C:3E:A2:20:2F:1E:0A:82:69:29:98:B1:E0:F3:F0:9A"]
+      }
+    }]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.neerajdevnik_cmd.twa",
+        "sha256_cert_fingerprints": ["36:01:11:A5:96:B4:37:91:29:8D:50:B8:F7:B2:5F:D6:0B:62:9E:FC:85:E2:C8:EA:41:11:B7:80:81:AA:B2:76"]
+      }
+    }]
