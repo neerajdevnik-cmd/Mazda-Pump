@@ -45,7 +45,7 @@
             <div class="row" style="align-items:center;">
               <div style="flex:1">
                 <b>${dmy(r.date)} <span style="font-size:12px;color:#666;font-weight:normal;">(${r.startTime || '?'} - ${r.endTime || '?'})</span></b>
-                <div class="mut" style="font-size:12px;">${r.tankerNo ? 'टैंकर: ' + esc(r.tankerNo) : 'टैंकर नंबर नहीं'}</div>
+                <div class="mut" style="font-size:12px;">टैंकर: ${esc(r.tankerNo || '?')} | ड्राइवर: ${esc(r.driverName || '?')}</div>
                 <div class="row" style="margin-top:6px; gap:6px;">
                   <span style="font-size:12px;color:#555;">पेट्रोल: <b>${badge(pDiff)}</b></span>
                   <span style="font-size:12px;color:#555;">डीज़ल: <b>${badge(dDiff)}</b></span>
@@ -86,7 +86,6 @@
     const r = await getReport(id);
     if (!r) return toast('रिपोर्ट नहीं मिली');
     
-    // Build detail view string
     const buildFuel = (name, pre, res) => {
       if (!res) return '';
       let rows = ['p1','p2','p3','p4'].map(k => `<tr><td>${k.toUpperCase()}</td><td>${r.before.nz[k]}</td><td>${r.after.nz[k]}</td></tr>`).join('');
@@ -113,7 +112,7 @@
 
     const m = modal(`
       <h3>🚛 टैंकर रिपोर्ट</h3>
-      <div class="mut" style="margin-bottom:12px;">${dmy(r.date)} | ${r.startTime} - ${r.endTime} | ${esc(r.tankerNo||'')}</div>
+      <div class="mut" style="margin-bottom:12px;">${dmy(r.date)} | ${r.startTime} - ${r.endTime} | ${esc(r.tankerNo||'')} | ${esc(r.driverName||'')}</div>
       ${buildFuel('पेट्रोल', 'P', r.result.petrol)}
       ${buildFuel('डीज़ल', 'D', r.result.diesel)}
       
@@ -127,7 +126,7 @@
     $('#tr-share', m).onclick = () => {
       const pDiff = r.result.petrol ? r.result.petrol.diff : 0;
       const dDiff = r.result.diesel ? r.result.diesel.diff : 0;
-      const text = `*माज़दा ऑयल कंपनी*\n*टैंकर रिपोर्ट*\n\n📅 तारीख: ${dmy(r.date)}\n🕒 समय: ${r.startTime} - ${r.endTime}\n🚛 टैंकर: ${r.tankerNo||'-'}\n\n⛽ *पेट्रोल*\nटैंकर आया: ${lit(r.received.p)}\nमीटर बिक्री: ${lit(r.result.petrol.sale)}\nअसली Dip फर्क: *${pDiff > 0 ? '+' : ''}${r2(pDiff)} L*\n\n🛢️ *डीज़ल*\nटैंकर आया: ${lit(r.received.d)}\nमीटर बिक्री: ${lit(r.result.diesel.sale)}\nअसली Dip फर्क: *${dDiff > 0 ? '+' : ''}${r2(dDiff)} L*`;
+      const text = `*माज़दा ऑयल कंपनी*\n*टैंकर रिपोर्ट*\n\n📅 तारीख: ${dmy(r.date)}\n🕒 समय: ${r.startTime} - ${r.endTime}\n🚛 टैंकर: ${r.tankerNo||'-'}\n👤 ड्राइवर: ${r.driverName||'-'}\n\n⛽ *पेट्रोल*\nटैंकर आया: ${lit(r.received.p)}\nमीटर बिक्री: ${lit(r.result.petrol.sale)}\nअसली Dip फर्क: *${pDiff > 0 ? '+' : ''}${r2(pDiff)} L*\n\n🛢️ *डीज़ल*\nटैंकर आया: ${lit(r.received.d)}\nमीटर बिक्री: ${lit(r.result.diesel.sale)}\nअसली Dip फर्क: *${dDiff > 0 ? '+' : ''}${r2(dDiff)} L*`;
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
     };
   }
@@ -147,6 +146,9 @@
       <div class="row">
         <div><label>तारीख</label><input type="date" id="tr-date" value="${date}"></div>
         <div><label>टैंकर नंबर</label><input id="tr-no" placeholder="UK01AB1234" style="text-transform:uppercase"></div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div><label>ड्राइवर का नाम</label><input id="tr-driver" placeholder="Driver ka naam"></div>
       </div>
       <div class="row">
         <div><label>Start Time</label><input type="time" id="tr-st" value="${APP.nowTime()}"></div>
@@ -202,7 +204,6 @@
     const q = id => $('#' + id, m);
     const gv = id => num(q(id).value);
 
-    // Auto-fill from day if exists
     if (dayData) {
       const autofill = document.createElement('div');
       autofill.innerHTML = `<button class="btn sm w" id="tr-auto" style="margin-top:8px;width:100%;">📥 आज के हिसाब से डेटा भरें</button>`;
@@ -232,7 +233,7 @@
           after[k] = gv('tr-ao-'+k);
           if (after[k] > before[k]) sale += (after[k] - before[k]);
         });
-        sale = Math.max(0, sale - 5); // assume 5L testing
+        sale = Math.max(0, sale - 5);
         const dipB = gv('tr-bdip'+pre);
         const dipA = gv('tr-adip'+pre);
         const rec = gv('tr-rec'+pre);
@@ -278,7 +279,7 @@
         ['p1','p2','p3','p4','d1','d2','d3','d4'].filter(k=>k.startsWith(pre.toLowerCase())).forEach(k => {
           if (after.nz[k] > before.nz[k]) sale += (after.nz[k] - before.nz[k]);
         });
-        sale = Math.max(0, sale - 5); // testing
+        sale = Math.max(0, sale - 5);
         const exp = before['dip'+pre] + received[pre.toLowerCase()] - sale;
         return { sale: r2(sale), expected: r2(exp), diff: r2(after['dip'+pre] - exp) };
       };
@@ -291,6 +292,7 @@
         await db().collection('tanker_reports').add({
           date: dStr,
           tankerNo: q('tr-no').value.trim().toUpperCase(),
+          driverName: q('tr-driver').value.trim(),
           startTime: q('tr-st').value,
           endTime: q('tr-et').value,
           before, after, received, result,
@@ -298,7 +300,6 @@
           createdBy: S.user ? S.user.email : 'Manager'
         });
         
-        // Autofill into day
         try {
           const dayRef = db().collection('days').doc(dStr);
           const daySnap = await dayRef.get();
@@ -320,7 +321,6 @@
     };
   }
 
-  // More menu me button add karna
   const origMore = APP.views.more;
   APP.views.more = async function (arg) {
     if (origMore) await origMore.apply(this, arguments);
