@@ -588,7 +588,6 @@
         <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockP" inputmode="decimal" ${stkRO(d.openStockP)} value="${esc(d.openStockP || '')}" ${dis}>${stkBtn('P')}</div>
         <div>
           <label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}
-          ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="petrol" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
         </div>
       </div>
       <div class="row" style="margin-top:8px">
@@ -603,7 +602,6 @@
         <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockD" inputmode="decimal" ${stkRO(d.openStockD)} value="${esc(d.openStockD || '')}" ${dis}>${stkBtn('D')}</div>
         <div>
           <label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}
-          ${locked ? '' : `<button class="btn sm w" type="button" data-do="tankerRep" data-f="diesel" style="margin-top:4px;font-size:11px;padding:6px;">📤 ओनर रिपोर्ट</button>`}
         </div>
       </div>
       <div class="row" style="margin-top:8px">
@@ -761,7 +759,6 @@
 
     const kvEl = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
     
-    // ---- NAYA HISAB LAYOUT (Galla vs Kharcha) ----
     const gallaIn = r2(num(d.openCash) + o.sale + o.jCash + o.jPaytm + o.jSwipe);
     const gallaOut = r2(num(d.paytm) + num(d.swipe) + o.udhar + o.totalKharcha + num(d.malikDiya));
 
@@ -792,8 +789,6 @@
         <span style="font-size:22px; font-weight:bold;">${money(o.close)}</span>
       </div>
     `;
-    // ---------------------------------------------
-    
     st.o = o;
   }
 
@@ -1049,7 +1044,6 @@
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
-        // MINUS amount (Udhar) = Red, PLUS amount (Advance) = Green (UI fix)
         const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
         const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
         return `<div class="item" data-id="${p.id}" style="cursor:pointer">
@@ -1149,24 +1143,24 @@
     const tCr = st.rows.filter(r => r.kind === 'jama').reduce((a, b) => a + num(b.amount), 0);
     const ph = String(p.phone || '').replace(/\D/g, '').replace(/^0+/, ''), wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
     const mism = !priv && Math.abs(num(p.bal) - st.close) > 0.5;
+    const viewer = isViewer();
     const desc = r => {
       if (r.opening) return '<b>पिछला बैलेंस</b>' + (r.note && !/Opening Balance/i.test(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
       if (r.kind === 'udhar') return '<b>' + esc(r.vehicle || '-') + '</b>' + (r.fuel ? '<br><small class="mut">' + (FUEL[r.fuel] || '') + ' · ' + lit(r.litre) + (num(r.rate) ? ' × ₹' + num(r.rate) : '') + '</small>' : '') + (r.note ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
       return '<b>जमा</b> · ' + esc(MODE[r.mode] || 'नकद') + (r.note && !AUTO_NOTES.includes(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
     };
 
-    // COLOR FIX: Minus amount red, Plus amount green
     const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
     const balColor = st.close > 0 ? 'var(--r)' : (st.close < 0 ? 'var(--g)' : 'var(--t)');
 
     main.innerHTML = `
       <div class="btns" style="margin-bottom:10px">
         <button class="btn sm w" id="back">← वापस</button>
-        ${isOwner() ? '<button class="btn sm o" id="editP">✏️ पार्टी बदलें</button>' : ''}
-        <button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>
-        <button class="btn sm g" id="addU">+ उधार</button>
-        <button class="btn sm g" id="addJ">+ जमा</button>
-        ${priv && isOwner() ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
+        ${(isOwner() && !viewer) ? '<button class="btn sm o" id="editP">✏️ पार्टी बदलें</button>' : ''}
+        ${viewer ? '' : '<button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>'}
+        ${viewer ? '' : '<button class="btn sm g" id="addU">+ उधार</button>'}
+        ${viewer ? '' : '<button class="btn sm g" id="addJ">+ जमा</button>'}
+        ${priv && isOwner() && !viewer ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
       
       <div class="card" style="padding:12px;">
@@ -1189,7 +1183,7 @@
           </div>
         </div>
         
-        ${mism && isOwner() ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
+        ${mism && isOwner() && !viewer ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
         <button class="btn full" id="shareStmt" style="margin-top:8px;background:#0b3d91">📄 प्रोफेशनल स्टेटमेंट देखें / भेजें</button>
       </div>
 
@@ -1203,7 +1197,7 @@
                 <th style="text-align:right">उधार (Dr)</th>
                 <th style="text-align:right">जमा (Cr)</th>
                 <th style="text-align:right">बैलेंस</th>
-                <th style="text-align:center">एक्शन</th>
+                ${viewer ? '' : '<th style="text-align:center">एक्शन</th>'}
               </tr>
             </thead>
             <tbody>
@@ -1216,24 +1210,30 @@
                   <td class="dr">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
                   <td class="cr">${r.kind === 'jama' ? money(r.amount) : ''}</td>
                   <td class="bal" style="color:${r.run > 0.005 ? '#c0392b' : r.run < -0.005 ? '#0a7d33' : 'inherit'}">${Math.abs(r.run) < 0.005 ? '₹0' : (r.run > 0 ? '-' : '+') + '₹' + Math.abs(r.run).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                  <td>
-                    <div class="action-btns">
-                      <button class="edit" data-edit-row="${r.id}">✏️</button>
-                      <button class="del" data-del-row="${r.id}">🗑</button>
-                    </div>
-                  </td>
+                  ${viewer ? '' : `
+                    <td>
+                      <div class="action-btns">
+                        <button class="edit" data-edit-row="${r.id}">✏️</button>
+                        <button class="del" data-del-row="${r.id}">🗑</button>
+                      </div>
+                    </td>
+                  `}
                 </tr>
-              `).join('') : '<tr><td colspan="6" class="mut" style="text-align:center;padding:20px;">कोई एंट्री नहीं है</td></tr>'}
+              `).join('') : `<tr><td colspan="${viewer ? 5 : 6}" class="mut" style="text-align:center;padding:20px;">कोई एंट्री नहीं है</td></tr>`}
             </tbody>
           </table>
         </div>
       </div>`;
       
-    $('#back').onclick = () => { S.partyView = null; priv ? APP.views.priv() : ledgerView(); };
-    if (isOwner() && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
-    $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
-    $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
-    $('#addOB').onclick = () => openingBalanceModal(id, priv);
+    $('#back').onclick = () => { 
+      S.partyView = null; 
+      if (viewer) return APP.go('v_parties');
+      priv ? APP.views.priv() : ledgerView(); 
+    };
+    if (isOwner() && !viewer && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
+    if (!viewer && $('#addU')) $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
+    if (!viewer && $('#addJ')) $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
+    if (!viewer && $('#addOB')) $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
     
     $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
@@ -1243,29 +1243,31 @@
       catch (e) { toast('नहीं हुआ: ' + e.message); }
     };
     
-    $$('[data-edit-row]').forEach(b => b.onclick = () => {
-      const row = all.find(x => x.id === b.dataset.editRow);
-      if (row) entryModal({ entry: row, date: row.date, priv: priv });
-    });
-    $$('[data-del-row]').forEach(b => b.onclick = async () => {
-      const row = all.find(x => x.id === b.dataset.delRow);
-      if (!row) return;
-      if (!priv && await dayIsLocked(row.date)) return toast(LOCKMSG);
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?\n\n' + dmy(row.date) + ' · ' + (row.kind === 'udhar' ? 'उधार ' : 'जमा ') + money(row.amount))) return;
-      b.disabled = true;
-      try {
-        const b2 = db.batch();
-        b2.delete(db.collection(col).doc(row.id));
-        const delta = -sigEntry(priv, row);
-        if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
-        await commit(b2.commit());
-        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '', priv });
-        if (!priv) refreshDaySum(row.date);
-        toast('एंट्री हटा दी गई ✔');
-        S.parties[priv ? 'priv' : 'pub'] = null;
-        partyView(id, priv);
-      } catch (e) { b.disabled = false; toast('नहीं हटा: ' + e.message); }
-    });
+    if (!viewer) {
+      $$('[data-edit-row]').forEach(b => b.onclick = () => {
+        const row = all.find(x => x.id === b.dataset.editRow);
+        if (row) entryModal({ entry: row, date: row.date, priv: priv });
+      });
+      $$('[data-del-row]').forEach(b => b.onclick = async () => {
+        const row = all.find(x => x.id === b.dataset.delRow);
+        if (!row) return;
+        if (!priv && await dayIsLocked(row.date)) return toast(LOCKMSG);
+        if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?\n\n' + dmy(row.date) + ' · ' + (row.kind === 'udhar' ? 'उधार ' : 'जमा ') + money(row.amount))) return;
+        b.disabled = true;
+        try {
+          const b2 = db.batch();
+          b2.delete(db.collection(col).doc(row.id));
+          const delta = -sigEntry(priv, row);
+          if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
+          await commit(b2.commit());
+          audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '', priv });
+          if (!priv) refreshDaySum(row.date);
+          toast('एंट्री हटा दी गई ✔');
+          S.parties[priv ? 'priv' : 'pub'] = null;
+          partyView(id, priv);
+        } catch (e) { b.disabled = false; toast('नहीं हटा: ' + e.message); }
+      });
+    }
   }
   APP.partyView = partyView;
 
@@ -1345,64 +1347,6 @@
     } catch(e) { toast('सिंक एरर: ' + e.message); }
   };
 
-  APP.openTankerReportModal = function(fuelType, liters) {
-    const fuelName = fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल';
-    const m = modal(`
-      <h3>🚛 टैंकर रिपोर्ट (${fuelName})</h3>
-      <div class="mut" style="margin-bottom:8px;">यह रिपोर्ट सीधे ओनर को WhatsApp पर जाएगी।</div>
-      <label>टैंकर में कितना लीटर आया? (L)</label>
-      <input id="tr-lit" inputmode="decimal" value="${liters || ''}">
-      <div class="row">
-        <div><label>Before Dip</label><input id="tr-bdip" inputmode="decimal"></div>
-        <div><label>After Dip</label><input id="tr-adip" inputmode="decimal"></div>
-      </div>
-      <div class="row">
-        <div><label>Start Time</label><input type="time" id="tr-st" value="${APP.nowTime()}"></div>
-        <div><label>End Time</label><input type="time" id="tr-et" value="${APP.nowTime()}"></div>
-      </div>
-      <div class="btns" style="margin-top:12px;">
-        <button class="btn g" id="tr-share">📤 WhatsApp पर भेजें</button>
-        <button class="btn w" id="tr-cancel">रद्द</button>
-      </div>
-    `);
-    
-    $('#tr-cancel', m).onclick = () => m.close();
-    
-    $('#tr-share', m).onclick = () => {
-      const lit = $('#tr-lit', m).value;
-      const bDip = $('#tr-bdip', m).value;
-      const aDip = $('#tr-adip', m).value;
-      const st = $('#tr-st', m).value;
-      const et = $('#tr-et', m).value;
-      
-      if (!lit) return toast('लीटर भरें');
-      
-      let timeTaken = '';
-      if (st && et) {
-        const [sh, sm] = st.split(':').map(Number);
-        const [eh, em] = et.split(':').map(Number);
-        let mins = (eh * 60 + em) - (sh * 60 + sm);
-        if (mins < 0) mins += 1440; 
-        const h = Math.floor(mins / 60);
-        const mnt = mins % 60;
-        timeTaken = `${h} घंटे ${mnt} मिनट`;
-      }
-      
-      const text = `*माज़दा ऑयल कंपनी* 🚛\n*टैंकर रिपोर्ट (${fuelName})*\n\n` +
-                   `📅 तारीख: ${APP.dmy(APP.todayISO())}\n` +
-                   `🛢️ टैंकर लीटर: ${lit} L\n` +
-                   `📉 Before Dip: ${bDip || '-'}\n` +
-                   `📈 After Dip: ${aDip || '-'}\n` +
-                   `⏱️ Start Time: ${st || '-'}\n` +
-                   `⏱️ End Time: ${et || '-'}\n` +
-                   `⌛ कुल समय: ${timeTaken || '-'}\n\n` +
-                   `कृपया जाँच लें।`;
-                   
-      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-      m.close();
-    };
-  };
-
   const A = {
     addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
     addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
@@ -1428,12 +1372,6 @@
         lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
         onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
       });
-    },
-    tankerRep(ds) {
-      const fuelType = ds.f;
-      const inputId = fuelType === 'petrol' ? 'f-tankerP' : 'f-tankerD';
-      const currentLiters = num($('#' + inputId).value);
-      APP.openTankerReportModal(fuelType, currentLiters);
     },
     save() { saveDay(false); },
     submit() { saveDay(true); },
@@ -1519,7 +1457,6 @@
   };
   APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
 
-  /* आज का हिसाब: हर text अपने box के अंदर रहे */
   (function () {
     const st = document.createElement('style'); st.id = 'sum-fix';
     st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
