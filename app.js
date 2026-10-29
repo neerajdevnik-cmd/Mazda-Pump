@@ -969,7 +969,7 @@
     const pid0 = e ? e.partyId : (o.partyId || parties[0].id);
 
     const m = modal(`<h3>${e ? 'एंट्री बदलें' : priv ? 'निजी उधार जोड़ें' : 'नई एंट्री'}</h3>
-      ${(priv || isSalesman()) ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
+      ${(isSalesman()) ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
       <div class="row"><div><label>तारीख</label><input type="date" id="e-date" value="${date0}"></div><div><label>समय</label><input type="time" id="e-time" value="${e ? e.time || '' : nowTime()}"></div></div>
       <label>पार्टी</label><select id="e-party">${parties.map(p => `<option value="${p.id}" ${p.id === pid0 ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <div id="blkU">
@@ -1053,13 +1053,17 @@
     q('e-save').onclick = async () => {
       const partyId = q('e-party').value, party = partyById(priv, partyId);
       if (!party) return toast('पार्टी नहीं मिली, रिफ्रेश करें');
-      const data = { partyId, partyName: party.name, date: q('e-date').value, time: q('e-time').value || nowTime(), kind: priv ? 'udhar' : kind, note: q('e-note').value.trim() };
+      const data = { partyId, partyName: party.name, date: q('e-date').value, time: q('e-time').value || nowTime(), kind: kind, note: q('e-note').value.trim() };
       if (!data.date) return toast('तारीख चुनें');
+      
       if (data.kind === 'udhar') {
         data.vehicle = q('e-veh').value === '__x' ? q('e-vehx').value.trim().toUpperCase() : q('e-veh').value;
         data.fuel = q('e-fuel').value; data.rate = num(q('e-rate').value); data.litre = num(q('e-lit').value); data.amount = num(q('e-amtU').value);
-        if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
-        if (!(data.litre > 0) || !(data.amount > 0)) return toast('लीटर व रुपये भरें');
+        if (!(data.amount > 0)) return toast('रुपये भरें');
+        if (!priv) {
+            if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
+            if (!(data.litre > 0)) return toast('लीटर भरें');
+        }
       } else {
         data.mode = q('e-mode').value; data.amount = num(q('e-amtJ').value);
         if (!(data.amount > 0)) return toast('रुपये भरें');
@@ -1197,9 +1201,11 @@
       if (p) { b.update(db.collection(pcol).doc(p.id), data); }
       else { const ref = db.collection(pcol).doc(); data.bal = 0; data.createdAt = FV.serverTimestamp(); b.set(ref, data); }
       await commit(b.commit()); m.close(); toast('सेव हो गया'); S.parties[priv ? 'priv' : 'pub'] = null; 
-      if(priv) partyView(p.id, true); else ledgerView();
+      if(p) { if(priv) partyView(p.id, true); else ledgerView(); }
+      else { if(priv) APP.views.priv(); else ledgerView(); }
     };
   }
+  APP.partyModal = partyModal;
 
   async function bulkPartyModal() {
     const m = modal(`<h3>📥 पार्टी लिस्ट जोड़ें</h3>
@@ -1313,6 +1319,7 @@
         
         ${mism && isOwner() && !viewer ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
         <button class="btn full" id="shareStmt" style="margin-top:8px;background:#0b3d91">📄 प्रोफेशनल स्टेटमेंट देखें / भेजें</button>
+        ${!viewer && st.close > 0 ? `<button class="btn full" id="invoiceBtn" style="margin-top:8px;background:#0a7d33">🧾 Professional Invoice (UPI QR)</button>` : ''}
       </div>
 
       <div class="card" style="padding:0;overflow:hidden;">
@@ -1366,6 +1373,7 @@
     if ($('#portalBtn')) $('#portalBtn').onclick = () => APP.portal.openCodeModal(p, priv);
     
     $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
+    if ($('#invoiceBtn')) $('#invoiceBtn').onclick = () => APP.showInvoiceModal(p, all);
     if ($('#fixBal')) $('#fixBal').onclick = async () => {
       if (!confirm('पार्टी का बैलेंस ' + money(p.bal) + ' से बदलकर ' + money(st.close) + ' (एंट्रियों के जोड़ के बराबर) करें?')) return;
       try { await commit(db.collection(pcol).doc(id).update({ bal: st.close })); audit('party_bal_fix', { party: p.name, was: p.bal, now: st.close }); toast('बैलेंस ठीक हो गया ✔'); S.parties[priv ? 'priv' : 'pub'] = null; partyView(id, priv); }
@@ -1561,39 +1569,4 @@
       collectDraft();
       try {
         await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
-        toast('मिलान ✔'); dayView(S.date);
-      } catch (e) { toast('नहीं हुआ: ' + e.message); }
-    },
-    async delE(data) {
-      collectDraft();
-      const row = S.cur.rows.find(r => r.id === data.id);
-      if (!row) return;
-      if (await dayIsLocked(row.date)) return toast(LOCKMSG);
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
-      try {
-        const b = db.batch();
-        b.delete(db.collection('ledger').doc(row.id));
-        const delta = -K.signed(row); 
-        if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
-        await commit(b.commit());
-        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '' });
-        refreshDaySum(row.date);
-        toast('एंट्री हटा दी गई ✔');
-        S.parties.pub = null;
-        dayView(S.date);
-      } catch (e) { toast('नहीं हटा: ' + e.message); }
-    }
-  };
-  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
-
-  (function () {
-    const st = document.createElement('style'); st.id = 'sum-fix';
-    st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
-#sum .kv span{font-size:12.5px;color:#555;line-height:1.25;overflow-wrap:anywhere}
-#sum .kv b{font-size:clamp(14px,4.3vw,17px);line-height:1.2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
-#sum > div:first-child{flex-wrap:wrap;gap:4px 12px}`;
-    document.head.appendChild(st);
-  })();
-
-  window.addEventListener('load', boot);
-})();
+        toast
