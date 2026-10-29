@@ -10,18 +10,12 @@ window.CFG = {
     measurementId: "G-W4FED5NHJD"
   },
 
-  ownerEmail: "neeraj@mazda-pump.in",
-  managerEmail: "manager@mazda-pump.in",
+  // 🔔 PUSH NOTIFICATIONS KEY (Firebase Console -> Project Settings -> Cloud Messaging -> Web Push Certificates se lein)
+  vapidKey: "YAHAN_APNI_VAPID_KEY_PASTE_KAREIN",
 
-  /* ===== Naye fields (baaki system inhe optional samjhega) ===== */
-  ownerPhone: "",                 // Owner ka WhatsApp number (jaise "919876543210"). Empty rakho to share sheet khulega.
-  autoWhatsApp: false,            // true = udhar/jama entry save hote hi party ko auto WhatsApp
-  applock: {                      // App PIN + fingerprint lock
-    enabled: false,               // true karne pe app kholte hi PIN puchega
-    pin: "",                      // 4-digit PIN (jaise "1234")
-    fingerprint: true             // fingerprint/face unlock ka option
-  },
-  depotHolidays: [],              // Custom holidays (Sunday default hai). Format: ["2026-11-12", "2026-11-13"]
+  ownerEmail: "neeraj@mazda-pump.in",
+  ownerPin: "9999",
+  managerEmail: "manager@mazda-pump.in",
 
   salesmen: [
     { id: "manoj", name: "Manoj", pin: "1234", phone: "9876543211", active: true },
@@ -41,13 +35,7 @@ window.CFG = {
     gstin: "05AAAAA0000A1Z5",
     upi: "paytmqr621vlg@ptys",
     upiName: "Mazda Oil Company",
-    merchant: {
-      mc: "5541",
-      mode: "02",
-      orgid: "159011",
-      mid: "",
-      sign: ""
-    }
+    merchant: { mc: "5541", mode: "02", orgid: "159011", mid: "", sign: "" }
   },
 
   loginDomain: "mazda-pump.in",
