@@ -1,11 +1,12 @@
 {
   "name": "mazda-pump-app",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Mazda Oil Company Petrol Pump Management App",
   "scripts": {
     "build": "echo 'Deploying static files & functions'"
   },
   "dependencies": {
-    "@netlify/functions": "^2.8.2"
+    "@netlify/functions": "^2.8.2",
+    "firebase-admin": "^11.11.1"
   }
 }
