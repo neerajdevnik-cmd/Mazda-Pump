@@ -1,79 +1,39 @@
-<!doctype html>
-<html lang="hi">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>माज़दा पंप हिसाब</title>
-
-  <link rel="manifest" href="./manifest.json">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Mazda BPCL">
-  <meta name="theme-color" content="#0b3d91">
-  <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="icon" type="image/png" href="./icon-192.png">
-
-  <link rel="stylesheet" href="./style.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-</head>
-<body>
-  <div id="app">
-    <div style="padding:50px 20px; text-align:center;">
-      <h2 style="color:#0b3d91; margin-bottom:10px;">माज़दा ऑयल कंपनी</h2>
-      <p id="loading-text" style="color:#666;">लोड हो रहा है…</p>
-      <div id="error-box" style="display:none; color:red; margin-top:10px;"></div>
-    </div>
-  </div>
-
-  <div id="toast"></div>
-
-  <!-- ===== Core (order matters) ===== -->
-  <script src="./config.js"></script>
-  <script src="./dip_chart.js"></script>
-  <script src="./calc.js"></script>
-  <script src="./app.js"></script>
-  <script src="./views2.js"></script>
-  <script src="./features.js"></script>
-  <script src="./features2.js"></script>
-  <script src="./salesman.js"></script>
-  <script src="./shop.js"></script>
-  <script src="./runsheet.js"></script>
-  <script src="./monthly.js"></script>
-  <script src="./shifts.js"></script>
-  <script src="./extras.js"></script>
-
-  <!-- ===== Report (overrides K.compute) ===== -->
-  <script src="./dayreport.js"></script>
-
-  <!-- ===== Phase A ===== -->
-  <script src="./tanker_report.js"></script>
-
-  <!-- ===== Phase B ===== -->
-  <script src="./analytics.js"></script>
-  <script src="./margins.js"></script>
-
-  <!-- ===== Phase C ===== -->
-  <script src="./cibil.js"></script>
-  <script src="./applock.js"></script>
-  <script src="./vehicle_profile.js"></script>
-
-  <!-- ===== Phase D ===== -->
-  <script src="./shop_orders.js"></script>
-
-  <!-- ===== Phase E ===== -->
-  <script src="./vendors.js"></script>
-
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
+const V = 'mazda-v31';
+const SHELL = [
+  './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
+  'app.js', 'views2.js', 'features.js', 'features2.js',
+  'salesman.js', 'shop.js', 'runsheet.js', 'monthly.js',
+  'shifts.js', 'extras.js', 'dayreport.js',
+  'tanker_report.js', 'analytics.js', 'margins.js',
+  'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
+  'portal_gen.js', 'preset_parties.js', 'manifest.json', 'logo.png', 'icon-192.png', 'icon-512.png',
+  'party.html', 'party_portal.js', 'party_manifest.json'
+];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(V).then(c => Promise.allSettled(SHELL.map(f => c.add(f)))).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => { 
+  e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())); 
+});
+self.addEventListener('fetch', e => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET') return;
+  if (u.hostname.endsWith('googleapis.com') || u.hostname.endsWith('firebaseio.com') || u.pathname.startsWith('/.netlify/functions/') || u.pathname === '/pay') return;
+  const same = u.origin === location.origin;
+  if (same) {
+    e.respondWith(new Promise(res => {
+      let done = false;
+      const t = setTimeout(() => { caches.match(e.request).then(h => { if (h && !done) { done = true; res(h); } }); }, 4000);
+      fetch(e.request).then(r => {
+        clearTimeout(t);
+        if (r.ok) { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); }
+        if (!done) { done = true; res(r); }
+      }).catch(() => {
+        clearTimeout(t);
+        caches.match(e.request).then(h => { if (!done) { done = true; res(h || Response.error()); } });
       });
-    }
-  </script>
-</body>
-</html>
+    }));
+  } else {
+    e.respondWith(caches.match(e.request).then(h => h || fetch(e.request).then(r => { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); return r; })));
+  }
+});
