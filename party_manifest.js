@@ -1,6 +1,6 @@
 {
-  "name": "माज़दा पार्टी पोर्टल",
-  "short_name": "Mazda Party",
+  "name": "माज़दा ऑयल - पार्टी खाता",
+  "short_name": "माज़दा खाता",
   "start_url": "./party.html",
   "scope": "./",
   "display": "standalone",
@@ -8,7 +8,7 @@
   "theme_color": "#0a2f6b",
   "lang": "hi",
   "orientation": "portrait",
-  "description": "माज़दा ऑयल कंपनी - अपना हिसाब, गाड़ी और शॉप देखें",
+  "description": "अपना हिसाब, गाड़ी और शॉप देखें",
   "icons": [
     {
       "src": "./icon-192.png",
