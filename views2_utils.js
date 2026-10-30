@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Views Utils (Thermal Slip & Strict AI Scanner) */
+/* Mazda Oil Company - Views Utils (Thermal Slip & AI Scanner Fix) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -67,7 +67,8 @@
 
   /* ======================= STRICT AI REGISTER SCANNER ======================= */
   async function askGemini(key, payload) {
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+    // 🔥 FIX: Added gemini-3.8-flash
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash'];
     let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
@@ -235,5 +236,5 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
     toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  console.log('[Mazda views2_utils.js] loaded ✓');
+  console.log('[Mazda views2_utils.js] Model 3.8 Added ✓');
 })();
