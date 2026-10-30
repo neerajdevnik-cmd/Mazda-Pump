@@ -5,7 +5,9 @@
   if (!APP || !APP.C) return;
   const C = APP.C, K = APP.K, S = APP.S, $ = APP.$, $$ = APP.$$, esc = APP.esc, num = APP.num, r2 = APP.r2;
   const money = APP.money, lit = APP.lit, dmy = APP.dmy, toast = APP.toast, modal = APP.modal;
-  const db = APP.db, FV = APP.FV;
+  // 🔥 FIX: DB aur FV ko function banaya taaki load hote time error na aaye
+  const db = () => APP.db; 
+  const FV = () => APP.FV;
   const today = () => APP.todayISO();
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
 
@@ -19,10 +21,10 @@
     
     try {
       const [ds, gs, ls, ps] = await Promise.all([
-        db.collection('days').doc(date).get(),
-        db.collection('cash_galla').where('date', '==', date).get().catch(() => ({ docs: [] })),
-        db.collection('ledger').where('date', '==', date).get(),
-        db.collection('priv_ledger').where('date', '==', date).get().catch(() => ({ docs: [] }))
+        db().collection('days').doc(date).get(),
+        db().collection('cash_galla').where('date', '==', date).get().catch(() => ({ docs: [] })),
+        db().collection('ledger').where('date', '==', date).get(),
+        db().collection('priv_ledger').where('date', '==', date).get().catch(() => ({ docs: [] }))
       ]);
       daySnap = ds; gallaSnap = gs; ledgerSnap = ls; privSnap = ps;
     } catch (e) { main.innerHTML = APP.errBox(e); return; }
@@ -33,7 +35,6 @@
 
     // 1. Base AD & Opening Meter Readings (From Main Hisab)
     const ad = num(d.openCash);
-    const openNz = d.nz || {};
 
     // 2. Calculations for the day
     const o = K.compute(d, rows.filter(r => !K.isOpening(r)));
@@ -139,7 +140,7 @@
         }
       });
       try {
-        await db.collection('days').doc(date).set(nzData, { merge: true });
+        await db().collection('days').doc(date).set(nzData, { merge: true });
         toast('मीटर रीडिंग अपडेट ✔');
         APP.views.manager_desk();
       } catch(e) { btn.disabled = false; toast('एरर: ' + e.message); }
@@ -159,7 +160,7 @@
         const amt = num($('#ex-amt', m).value);
         if(!lbl || !amt) return toast('नाम और रकम दोनों डालें');
         try {
-          const dayRef = db.collection('days').doc(date);
+          const dayRef = db().collection('days').doc(date);
           const snap = await dayRef.get();
           let items = (snap.exists && snap.data().kharchaItems) ? snap.data().kharchaItems : [];
           items.push({ label: lbl, amount: amt });
@@ -183,17 +184,16 @@
         const amt = num($('#pv-amt', m).value);
         if(!name || !amt) return toast('नाम और रकम दोनों डालें');
         try {
-          // Find or create party
-          let ps = await db.collection('priv_parties').where('name', '==', name).get();
-          let pid = ps.empty ? db.collection('priv_parties').doc().id : ps.docs[0].id;
+          let ps = await db().collection('priv_parties').where('name', '==', name).get();
+          let pid = ps.empty ? db().collection('priv_parties').doc().id : ps.docs[0].id;
           
-          const b = db.batch();
-          if(ps.empty) b.set(db.collection('priv_parties').doc(pid), { name: name, bal: amt, createdAt: FV.serverTimestamp() });
-          else b.update(db.collection('priv_parties').doc(pid), { bal: FV.increment(amt) });
+          const b = db().batch();
+          if(ps.empty) b.set(db().collection('priv_parties').doc(pid), { name: name, bal: amt, createdAt: FV().serverTimestamp() });
+          else b.update(db().collection('priv_parties').doc(pid), { bal: FV().increment(amt) });
 
-          b.set(db.collection('priv_ledger').doc(), {
+          b.set(db().collection('priv_ledger').doc(), {
             partyId: pid, partyName: name, date: date, time: APP.nowTime(),
-            kind: 'udhar', amount: amt, note: 'Manager Desk से दिया', by: S.user.email, at: FV.serverTimestamp()
+            kind: 'udhar', amount: amt, note: 'Manager Desk से दिया', by: S.user.email, at: FV().serverTimestamp()
           });
           await b.commit();
           m.close(); toast('निजी उधार जुड़ गया ✔'); APP.views.manager_desk();
@@ -213,12 +213,12 @@
         const amt = num($('#bn-amt', m).value);
         if (!amt) return toast('रकम डालें');
         try {
-          const b = db.batch();
-          b.set(db.collection('bank_deposits').doc(), {
+          const b = db().batch();
+          b.set(db().collection('bank_deposits').doc(), {
             bank: 'SBI', date: date, amount: amt, mode: 'cash', note: 'Manager Desk से जमा',
-            by: S.user.email, at: FV.serverTimestamp()
+            by: S.user.email, at: FV().serverTimestamp()
           });
-          b.set(db.collection('days').doc(date), { malikDiya: FV.increment(amt) }, { merge: true });
+          b.set(db().collection('days').doc(date), { malikDiya: FV().increment(amt) }, { merge: true });
           await b.commit();
           m.close(); toast('बैंक में जमा हो गया ✔'); APP.views.manager_desk();
         } catch(e) { toast('एरर: ' + e.message); }
@@ -239,17 +239,17 @@
         const amt = num($('#jm-amt', m).value);
         if(!name || !amt) return toast('नाम और रकम दोनों डालें');
         try {
-          let ps = await db.collection('parties').where('name', '==', name).get();
+          let ps = await db().collection('parties').where('name', '==', name).get();
           if(ps.empty) return toast('यह पार्टी मुख्य खाते में नहीं है');
           const pid = ps.docs[0].id;
           
-          const b = db.batch();
-          b.set(db.collection('ledger').doc(), {
+          const b = db().batch();
+          b.set(db().collection('ledger').doc(), {
             partyId: pid, partyName: name, date: date, time: APP.nowTime(),
             kind: 'jama', mode: 'cash', amount: amt, note: 'Manager Desk से जमा', 
-            by: S.user.email, at: FV.serverTimestamp()
+            by: S.user.email, at: FV().serverTimestamp()
           });
-          b.update(db.collection('parties').doc(pid), { bal: FV.increment(-amt) });
+          b.update(db().collection('parties').doc(pid), { bal: FV().increment(-amt) });
           await b.commit();
           m.close(); toast('पार्टी जमा जुड़ गया ✔'); APP.views.manager_desk();
         } catch(e) { toast('एरर: ' + e.message); }
@@ -314,14 +314,14 @@
 
       $('#galla-sv', m).disabled = true;
       try {
-        await db.collection('cash_galla').add({
+        await db().collection('cash_galla').add({
           date: date, total: tot, breakdown: breakdown, expected: expectedCash,
-          time: APP.nowTime(), by: S.user.email, at: FV.serverTimestamp()
+          time: APP.nowTime(), by: S.user.email, at: FV().serverTimestamp()
         });
         m.close(); toast('गल्ला सेव हो गया ✔'); APP.views.manager_desk();
       } catch (e) { $('#galla-sv', m).disabled = false; toast('सेव नहीं हुआ: ' + e.message); }
     };
   }
 
-  console.log('[Mazda manager_desk.js] NEW LOGIC loaded ✓');
+  console.log('[Mazda manager_desk.js] FIXED LOGIC loaded ✓');
 })();
