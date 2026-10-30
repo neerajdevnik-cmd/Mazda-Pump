@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Fast Voice AI + Updated Model) */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Auto-Model Voice AI) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -11,6 +11,48 @@
   const nowTime = () => APP.nowTime();
 
   const sigEntry = (priv, e) => K.signed(e);
+
+  // 🔥 SMART AI MODEL DETECTOR
+  async function askGemini(key, payload) {
+    let modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
+    try {
+      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + key);
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        if (listData.models) {
+          let valid = listData.models
+            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+            .map(m => m.name.replace('models/', ''));
+          valid.sort((a, b) => {
+            if(a.includes('2.0-flash')) return -1; if(b.includes('2.0-flash')) return 1;
+            if(a.includes('1.5-flash')) return -1; if(b.includes('1.5-flash')) return 1;
+            return 0;
+          });
+          modelsToTry = [...valid.slice(0, 3), ...modelsToTry];
+        }
+      }
+    } catch(e) {}
+
+    modelsToTry = [...new Set(modelsToTry)];
+    let lastErr = new Error('AI connect नहीं हो पाया');
+
+    for (const model of modelsToTry) {
+      try {
+        const controller = new AbortController();
+        const tId = setTimeout(() => controller.abort(), 12000);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
+        });
+        clearTimeout(tId);
+        if (res.ok) {
+          const data = await res.json();
+          const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (txt && txt.trim()) return txt;
+        }
+      } catch(e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
 
   async function findDupEntry(d) {
     try {
@@ -133,7 +175,7 @@
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
-    /* ================= FAST VOICE ENTRY LOGIC (Updated Model) ================= */
+    /* ================= SMART VOICE ENTRY LOGIC ================= */
     q('e-voice').onclick = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है');
@@ -160,25 +202,14 @@
           {"kind": "udhar" or "jama", "partyName": "string", "vehicle": "string", "fuel": "petrol" or "diesel", "litre": number, "amount": number, "mode": "cash" or "paytm" or "swipe" or "bank"}. 
           If null, omit key. Party name extract exactly as spoken.`;
 
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-          // 🔥 FIX: Model changed to gemini-2.0-flash
-          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } }),
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
+          const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } };
+          const txt = await askGemini(key, payload);
           
-          const j = await res.json();
-          let txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
-          txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const a = txt.indexOf('{'), b = txt.lastIndexOf('}');
+          let cleanTxt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const a = cleanTxt.indexOf('{'), b = cleanTxt.lastIndexOf('}');
           if (a < 0 || b <= a) throw new Error('AI understand nahi kar paya.');
           
-          const data = JSON.parse(txt.slice(a, b + 1));
+          const data = JSON.parse(cleanTxt.slice(a, b + 1));
           
           if (data.kind) { kind = data.kind; showKind(); }
           
@@ -204,7 +235,7 @@
 
           toast('✅ AI ne form bhar diya');
         } catch (err) {
-          toast('❌ ' + (err.name === 'AbortError' ? 'AI Time Out (Net slow hai)' : err.message));
+          toast('❌ ' + err.message);
         } finally {
           q('e-voice-load').style.display = 'none';
           btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
@@ -693,5 +724,5 @@
     };
   }
 
-  console.log('[Mazda app_ledger.js] Updated Model loaded ✓');
+  console.log('[Mazda app_ledger.js] Smart Model loaded ✓');
 })();
