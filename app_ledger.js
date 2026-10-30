@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Strict AI Fallback) */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Model 3.8 Added) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -12,9 +12,9 @@
 
   const sigEntry = (priv, e) => K.signed(e);
 
-  // 🔥 Strict AI Fallback (Only reliable models)
+  // 🔥 FIX: Added gemini-3.8-flash (based on your error message)
   async function askGemini(key, payload) {
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash']; // Only these two are highly reliable now
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash'];
     let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
@@ -165,7 +165,7 @@
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
-    /* ================= STRICT VOICE ENTRY LOGIC ================= */
+    /* ================= FAST VOICE ENTRY LOGIC ================= */
     q('e-voice').onclick = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है');
@@ -714,5 +714,5 @@
     };
   }
 
-  console.log('[Mazda app_ledger.js] loaded ✓');
+  console.log('[Mazda app_ledger.js] Model 3.8 Added ✓');
 })();
