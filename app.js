@@ -26,7 +26,9 @@
   };
   const S = APP.S;
   let auth, db, FV;
+  
   const isOwner = () => S.role === 'owner';
+  const isTrueOwner = () => S.user && S.user.email && S.user.email.toLowerCase() === 'neeraj@mazda.in';
   const isSalesman = () => S.role === 'salesman';
   const isViewer = () => S.role === 'viewer';
 
@@ -67,7 +69,7 @@
     m.close = () => m.remove();
     return m;
   }
-  Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer });
+  Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer, isTrueOwner });
 
   /* ================= खर्चा: अलग-अलग चीज़ों में बाँटने / एडिट करने वाला एडिटर ================= */
   const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
@@ -349,9 +351,10 @@
         ['day', '🧾', 'हिसाब'],
         ['ledger', '📒', 'खाते'],
         ['gaadicash', '🚚', 'गाड़ी कैश'],
-        ['stock', '🛢️', 'स्टॉक']
+        ['stock', '🛢️', 'स्टॉक'],
+        ['manager_desk', '💼', 'मैनेजर डेस्क']
       ];
-      if (isOwner()) tabs.push(['priv', '🔒', 'निजी']);
+      tabs.push(['priv', '🔒', 'निजी']);
       tabs.push(['more', '⚙️', 'और']);
     }
 
@@ -463,7 +466,7 @@
   }
 
   async function dayIsLocked(date) {
-    if (isOwner()) return false;
+    if (isTrueOwner()) return false;
     try { const s = await db.collection('days').doc(date).get(); return s.exists && s.data().status === 'submitted'; } catch (e) { return false; }
   }
   async function refreshDaySum(date) {
@@ -535,7 +538,6 @@
     const dis = locked ? 'disabled' : '';
     const chainLock = !!(ch && d.opening_locked !== false);
     const stkRO = () => (!locked && chainLock) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : '';
-    const stkBtn = () => '';
     const isOpeningLocked = chainLock;
     const ro = isOpeningLocked ? 'readonly style="background:#f0f0f0;color:#555;font-weight:bold;"' : '';
 
@@ -568,7 +570,8 @@
       <div style="flex:0 0 auto;align-self:end">${locked ? '<span class="chip g">जमा ✔ लॉक</span>' : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
 
     <div class="card"><h3>आज का रेट (₹/लीटर)</h3><div class="row">
-      <div><label>पेट्रोल</label>${inp('f-rateP', d.rateP)}</div><div><label>डीज़ल</label>${inp('f-rateD', d.rateD)}</div>
+      <div><label>पेट्रोल 🔒</label><input id="f-rateP" inputmode="decimal" value="${esc(d.rateP)}" readonly style="background:#f0f0f0;color:#555;font-weight:bold" ${dis}></div>
+      <div><label>डीज़ल 🔒</label><input id="f-rateD" inputmode="decimal" value="${esc(d.rateD)}" readonly style="background:#f0f0f0;color:#555;font-weight:bold" ${dis}></div>
       <div><label>टेस्टिंग (L)</label>${inp('f-testing', d.testing)}</div></div></div>
 
     <div class="card"><h3>मीटर रीडिंग</h3>
@@ -584,10 +587,8 @@
 
     <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
       <div class="row">
-        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockP" inputmode="decimal" ${stkRO(d.openStockP)} value="${esc(d.openStockP || '')}" ${dis}>${stkBtn('P')}</div>
-        <div>
-          <label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}
-        </div>
+        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockP" inputmode="decimal" ${stkRO(d.openStockP)} value="${esc(d.openStockP || '')}" ${dis}></div>
+        <div><label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}</div>
       </div>
       <div class="row" style="margin-top:8px">
         <div><label>आज की डिप</label>${inp('f-dipP', d.dipP)}</div>
@@ -598,10 +599,8 @@
 
     <div class="card"><h3>🛢️ डीज़ल स्टॉक (लीटर)</h3>
       <div class="row">
-        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockD" inputmode="decimal" ${stkRO(d.openStockD)} value="${esc(d.openStockD || '')}" ${dis}>${stkBtn('D')}</div>
-        <div>
-          <label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}
-        </div>
+        <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockD" inputmode="decimal" ${stkRO(d.openStockD)} value="${esc(d.openStockD || '')}" ${dis}></div>
+        <div><label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}</div>
       </div>
       <div class="row" style="margin-top:8px">
         <div><label>आज की डिप</label>${inp('f-dipD', d.dipD)}</div>
@@ -655,7 +654,6 @@
     renderRows(state);
     recalc();
     
-    // Analytics card injection (async, doesn't block)
     if (APP.ANALYTICS && APP.ANALYTICS.getDayCardHtml && !isViewer()) {
       APP.ANALYTICS.getDayCardHtml(date).then(html => {
         if (!html) return;
@@ -700,7 +698,7 @@
     }
 
     $$('#main input').forEach(i => {
-      if (i.id !== 'f-date' && !i.closest('#expbox')) {
+      if (i.id !== 'f-date' && !i.closest('#expbox') && !i.readOnly) {
         i.addEventListener('input', () => { recalc(); triggerAutoSave(); });
       }
     });
@@ -735,8 +733,8 @@
     $('#rowsbox').innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="a"><b>${esc(r.partyName)}</b>
       <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FUEL[r.fuel] || '') + ' ' + lit(r.litre) : '') : 'जमा · ' + (MODE[r.mode] || '') + (r.note && !AUTO_NOTES.includes(r.note) ? ' · ' + esc(r.note) : '')}</small>
       ${r.src === 'salesman' ? `<small style="color:${r.verified ? '#0a7d33' : '#b26a00'}">👤 ${esc(r.by)} ने की · ${r.verified ? '✔ मिलान हो गया' : '⏳ मिलान बाकी'}</small>` : ''}</div>
-      <div style="text-align:right"><b class="${r.kind === 'udhar' ? 'neg' : 'pos'}">${r.kind === 'udhar' ? '' : '+'}${money(r.amount)}</b>
-      ${isOwner() ? `<div>${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
+      <div style="text-align:right"><b class="${r.kind === 'udhar' ? 'neg' : 'pos'}">${r.kind === 'udhar' ? '-' : '+'}${money(r.amount)}</b>
+      ${isTrueOwner() ? `<div>${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
       : '<p class="mut">आज कोई पार्टी एंट्री नहीं</p>';
   }
 
@@ -866,7 +864,6 @@
     `;
     st.o = o;
     
-    // Margin card injection
     updateMarginCard(d, o, st.date).catch(() => {});
   }
 
@@ -936,7 +933,9 @@
   }
   APP.findDupEntry = findDupEntry;
 
-  const sigEntry = (priv, e) => priv ? (e.status === 'pending' ? num(e.amount) : 0) : K.signed(e);
+  // 🔥 FIX: Private party calculation now uses standard K.signed() (Udhar = +amount, Jama = -amount)
+  // This fixes the massive calculation bug in Niji (Private) ledgers.
+  const sigEntry = (priv, e) => K.signed(e);
 
   function sendEntryWhatsApp(data, party, priv) {
     if (!party.phone) return;
@@ -962,6 +961,12 @@
   async function entryModal(o) {
     if (isViewer()) return toast('आप केवल देख सकते हैं');
     const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (isSalesman() ? 'udhar' : (o.kind || 'udhar'));
+    
+    // 🔥 Permission check: Only Owner can edit existing entries in the main ledger
+    if (e && !isTrueOwner()) {
+        return toast('सिर्फ मालिक (Neeraj) ही पुरानी एंट्री बदल सकते हैं');
+    }
+
     const parties = await getParties(priv);
     if (!parties.length) { toast('पहले खाते में पार्टी जोड़ें'); return; }
     const date0 = e ? e.date : (o.date || S.date || todayISO());
@@ -975,7 +980,7 @@
       <div id="blkU">
         <label>गाड़ी नंबर</label><select id="e-veh"></select><input id="e-vehx" placeholder="गाड़ी नंबर टाइप करें" style="display:none;margin-top:6px">
         <div class="row"><div><label>तेल</label><select id="e-fuel"><option value="petrol">पेट्रोल</option><option value="diesel">डीज़ल</option></select></div>
-        <div><label>रेट</label><input id="e-rate" inputmode="decimal"></div></div>
+        <div><label>रेट (Locked) 🔒</label><input id="e-rate" readonly style="background:#f0f0f0;color:#555;font-weight:bold"></div></div>
         <div class="row"><div><label>लीटर</label><input id="e-lit" inputmode="decimal"></div><div><label>रुपये</label><input id="e-amtU" inputmode="decimal"></div></div>
       </div>
       <div id="blkJ"><label>कैसे जमा हुआ</label>
@@ -1018,15 +1023,20 @@
     };
     q('e-veh').onchange = () => { q('e-vehx').style.display = q('e-veh').value === '__x' ? '' : 'none'; };
     q('e-party').onchange = fillVeh; fillVeh();
+    
+    // Set Rate Logic
     const setRate = () => { q('e-rate').value = rates[q('e-fuel').value] || ''; };
     const calcA = () => { const r = num(q('e-rate').value), l = num(q('e-lit').value); q('e-amtU').value = r && l ? r2(r * l) : ''; };
     const calcL = () => { const r = num(q('e-rate').value), a = num(q('e-amtU').value); q('e-lit').value = r && a ? r2(a / r) : ''; };
+    
     q('e-fuel').onchange = () => { setRate(); last === 'lit' ? calcA() : calcL(); };
     q('e-rate').oninput = () => { last === 'lit' ? calcA() : calcL(); };
     q('e-lit').oninput = () => { last = 'lit'; calcA(); };
     q('e-amtU').oninput = () => { last = 'amt'; calcL(); };
+    
     if (e && e.kind === 'udhar') { q('e-fuel').value = e.fuel; q('e-rate').value = e.rate; q('e-lit').value = e.litre; q('e-amtU').value = e.amount; }
     else { setRate(); }
+    
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
@@ -1085,7 +1095,6 @@
       if (sbtn.disabled) return;                       
       if (!priv && (await dayIsLocked(data.date) || (e && e.date !== data.date && await dayIsLocked(e.date)))) return toast(LOCKMSG);
       
-      // CIBIL-based credit limit check
       if (!e && data.kind === 'udhar' && APP.cibil && APP.cibil.checkLimit) {
         try {
           const check = await APP.cibil.checkLimit(party, data.amount, priv);
@@ -1133,7 +1142,6 @@
         else if (APP.views && APP.views[S.tab]) APP.views[S.tab]();
         if (APP.afterEntrySaved) { try { APP.afterEntrySaved({ data, party: savedParty, priv, isNew: !e, delta }); } catch (z) { console.error(z); } }
         
-        // WhatsApp prompt (only for new entries, non-private, party has phone)
         if (!e && !priv && party.phone) {
           setTimeout(() => {
             if (confirm('📤 ' + party.name + ' को WhatsApp पर भेजें?\n\n' + (data.kind === 'udhar' ? 'तेल भरने की पर्ची' : 'जमा की रसीद'))) {
@@ -1168,6 +1176,7 @@
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
+        // 🔥 UPDATED: Consistent Red/Green Signs
         const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
         const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
         const cibilBadge = (APP.cibil && APP.cibil.badgeHtml) ? APP.cibil.badgeHtml(p) : '';
@@ -1277,21 +1286,23 @@
       return '<b>जमा</b> · ' + esc(MODE[r.mode] || 'नकद') + (r.note && !AUTO_NOTES.includes(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
     };
 
+    // 🔥 UPDATED: Consistent Red/Green Signs
     const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
     const balColor = st.close > 0 ? 'var(--r)' : (st.close < 0 ? 'var(--g)' : 'var(--t)');
     
     const cibilCard = (APP.cibil && APP.cibil.cardHtml) ? APP.cibil.cardHtml(p, all) : '';
     const wasooliChip = (APP.cibil && APP.cibil.wasooliChip) ? APP.cibil.wasooliChip(p, all) : '';
     const showPortalBtn = isOwner() && !viewer && APP.portal && APP.portal.openCodeModal;
+    const canEdit = !viewer && isTrueOwner();
 
     main.innerHTML = `
       <div class="btns" style="margin-bottom:10px">
         <button class="btn sm w" id="back">← वापस</button>
         ${(isOwner() && !viewer) ? '<button class="btn sm o" id="editP">✏️ पार्टी बदलें</button>' : ''}
-        ${viewer ? '' : '<button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>'}
+        ${canEdit ? '<button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>' : ''}
         ${viewer ? '' : '<button class="btn sm g" id="addU">+ उधार</button>'}
         ${viewer ? '' : '<button class="btn sm g" id="addJ">+ जमा</button>'}
-        ${priv && isOwner() && !viewer ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
+        ${priv && canEdit ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
       
       ${cibilCard}
@@ -1317,7 +1328,7 @@
           </div>
         </div>
         
-        ${mism && isOwner() && !viewer ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
+        ${mism && canEdit ? `<div class="warn" style="margin-top:8px">⚠️ पार्टी का सेव बैलेंस ${money(p.bal)} है, पर एंट्रियों का जोड़ ${money(st.close)}। <button class="btn sm o" id="fixBal" type="button">🔧 ठीक करें</button></div>` : ''}
         <button class="btn full" id="shareStmt" style="margin-top:8px;background:#0b3d91">📄 प्रोफेशनल स्टेटमेंट देखें / भेजें</button>
         ${!viewer && st.close > 0 ? `<button class="btn full" id="invoiceBtn" style="margin-top:8px;background:#0a7d33">🧾 Professional Invoice (UPI QR)</button>` : ''}
       </div>
@@ -1332,29 +1343,27 @@
                 <th style="text-align:right">उधार (Dr)</th>
                 <th style="text-align:right">जमा (Cr)</th>
                 <th style="text-align:right">बैलेंस</th>
-                ${viewer ? '' : '<th style="text-align:center">एक्शन</th>'}
+                ${canEdit ? '<th style="text-align:center">एक्शन</th>' : ''}
               </tr>
             </thead>
             <tbody>
               ${st.rows.length ? st.rows.map(r => `
                 <tr>
                   <td class="dt">${dmy(r.date)}</td>
-                  <td>
-                    ${desc(r)}
-                  </td>
+                  <td>${desc(r)}</td>
                   <td class="dr">${r.kind === 'udhar' ? money(r.amount) : ''}</td>
                   <td class="cr">${r.kind === 'jama' ? money(r.amount) : ''}</td>
-                  <td class="bal" style="color:${r.run > 0.005 ? '#c0392b' : r.run < -0.005 ? '#0a7d33' : 'inherit'}">${Math.abs(r.run) < 0.005 ? '₹0' : (r.run > 0 ? '-' : '+') + '₹' + Math.abs(r.run).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                  ${viewer ? '' : `
+                  <td class="bal" style="color:${r.run > 0.005 ? '#c0392b' : r.run < -0.005 ? '#0a7d33' : 'inherit'}">${Math.abs(r.run) < 0.005 ? '₹0' : (r.run > 0 ? '-₹' : '+₹') + Math.abs(r.run).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                  ${canEdit ? `
                     <td>
                       <div class="action-btns">
                         <button class="edit" data-edit-row="${r.id}">✏️</button>
                         <button class="del" data-del-row="${r.id}">🗑</button>
                       </div>
                     </td>
-                  `}
+                  ` : ''}
                 </tr>
-              `).join('') : `<tr><td colspan="${viewer ? 5 : 6}" class="mut" style="text-align:center;padding:20px;">कोई एंट्री नहीं है</td></tr>`}
+              `).join('') : `<tr><td colspan="${canEdit ? 6 : 5}" class="mut" style="text-align:center;padding:20px;">कोई एंट्री नहीं है</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1368,19 +1377,20 @@
     if (isOwner() && !viewer && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
     if (!viewer && $('#addU')) $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
     if (!viewer && $('#addJ')) $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
-    if (!viewer && $('#addOB')) $('#addOB').onclick = () => openingBalanceModal(id, priv);
+    if (canEdit && $('#addOB')) $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
     if ($('#portalBtn')) $('#portalBtn').onclick = () => APP.portal.openCodeModal(p, priv);
     
     $('#shareStmt').onclick = () => APP.sharePartyStatement(id, priv);
     if ($('#invoiceBtn')) $('#invoiceBtn').onclick = () => APP.showInvoiceModal(p, all);
-    if ($('#fixBal')) $('#fixBal').onclick = async () => {
+    
+    if (canEdit && $('#fixBal')) $('#fixBal').onclick = async () => {
       if (!confirm('पार्टी का बैलेंस ' + money(p.bal) + ' से बदलकर ' + money(st.close) + ' (एंट्रियों के जोड़ के बराबर) करें?')) return;
       try { await commit(db.collection(pcol).doc(id).update({ bal: st.close })); audit('party_bal_fix', { party: p.name, was: p.bal, now: st.close }); toast('बैलेंस ठीक हो गया ✔'); S.parties[priv ? 'priv' : 'pub'] = null; partyView(id, priv); }
       catch (e) { toast('नहीं हुआ: ' + e.message); }
     };
     
-    if (!viewer) {
+    if (canEdit) {
       $$('[data-edit-row]').forEach(b => b.onclick = () => {
         const row = all.find(x => x.id === b.dataset.editRow);
         if (row) entryModal({ entry: row, date: row.date, priv: priv });
@@ -1397,8 +1407,9 @@
           const delta = -sigEntry(priv, row);
           if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
           await commit(b2.commit());
-          audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '', priv });
-          if (!priv) refreshDaySum(row.date);
+          audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '',
+          priv  }); 
+                    if (!priv) refreshDaySum(row.date);
           toast('एंट्री हटा दी गई ✔');
           S.parties[priv ? 'priv' : 'pub'] = null;
           partyView(id, priv);
