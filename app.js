@@ -750,7 +750,7 @@
         ]);
         let dc = null;
         try {
-          const snap = await db().collection('day_costs').doc(date).get();
+          const snap = await db.collection('day_costs').doc(date).get();
           if (snap.exists) dc = snap.data();
         } catch (e) {}
         rates = {
@@ -933,8 +933,6 @@
   }
   APP.findDupEntry = findDupEntry;
 
-  // 🔥 FIX: Private party calculation now uses standard K.signed() (Udhar = +amount, Jama = -amount)
-  // This fixes the massive calculation bug in Niji (Private) ledgers.
   const sigEntry = (priv, e) => K.signed(e);
 
   function sendEntryWhatsApp(data, party, priv) {
@@ -962,7 +960,6 @@
     if (isViewer()) return toast('आप केवल देख सकते हैं');
     const priv = !!o.priv, e = o.entry || null, kind0 = e ? e.kind : (isSalesman() ? 'udhar' : (o.kind || 'udhar'));
     
-    // 🔥 Permission check: Only Owner can edit existing entries in the main ledger
     if (e && !isTrueOwner()) {
         return toast('सिर्फ मालिक (Neeraj) ही पुरानी एंट्री बदल सकते हैं');
     }
@@ -1024,7 +1021,6 @@
     q('e-veh').onchange = () => { q('e-vehx').style.display = q('e-veh').value === '__x' ? '' : 'none'; };
     q('e-party').onchange = fillVeh; fillVeh();
     
-    // Set Rate Logic
     const setRate = () => { q('e-rate').value = rates[q('e-fuel').value] || ''; };
     const calcA = () => { const r = num(q('e-rate').value), l = num(q('e-lit').value); q('e-amtU').value = r && l ? r2(r * l) : ''; };
     const calcL = () => { const r = num(q('e-rate').value), a = num(q('e-amtU').value); q('e-lit').value = r && a ? r2(a / r) : ''; };
@@ -1176,7 +1172,6 @@
       const list = parties.filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.vehicles || []).join(' ').toLowerCase().includes(t));
       $('#plist').innerHTML = list.length ? list.map(p => {
         const b = num(p.bal);
-        // 🔥 UPDATED: Consistent Red/Green Signs
         const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(b).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
         const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
         const cibilBadge = (APP.cibil && APP.cibil.badgeHtml) ? APP.cibil.badgeHtml(p) : '';
@@ -1286,7 +1281,6 @@
       return '<b>जमा</b> · ' + esc(MODE[r.mode] || 'नकद') + (r.note && !AUTO_NOTES.includes(r.note) ? '<br><small class="mut">' + esc(r.note) + '</small>' : '');
     };
 
-    // 🔥 UPDATED: Consistent Red/Green Signs
     const balDisp = st.close === 0 ? '₹0' : (st.close > 0 ? '-₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '+₹' + Math.abs(st.close).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
     const balColor = st.close > 0 ? 'var(--r)' : (st.close < 0 ? 'var(--g)' : 'var(--t)');
     
@@ -1301,7 +1295,8 @@
         ${(isOwner() && !viewer) ? '<button class="btn sm o" id="editP">✏️ पार्टी बदलें</button>' : ''}
         ${canEdit ? '<button class="btn sm w" id="addOB">⚖️ पिछला बैलेंस</button>' : ''}
         ${viewer ? '' : '<button class="btn sm g" id="addU">+ उधार</button>'}
-        ${viewer ? '' : '<button class="btn sm g" id="addJ">+ जमा</button>'}
+        ${(!viewer && !priv) ? '<button class="btn sm g" id="addJ">+ जमा</button>' : ''}
+        ${(!viewer && priv) ? '<button class="btn sm g" id="markPaid">✅ Paid / वसूली</button>' : ''}
         ${priv && canEdit ? '<button class="btn sm r" id="closeK">✅ खाता बंद</button>' : ''}
       </div>
       
@@ -1377,6 +1372,7 @@
     if (isOwner() && !viewer && $('#editP')) $('#editP').onclick = () => partyModal(p, priv);
     if (!viewer && $('#addU')) $('#addU').onclick = () => entryModal({ kind: 'udhar', date: todayISO(), partyId: id, priv: priv });
     if (!viewer && $('#addJ')) $('#addJ').onclick = () => entryModal({ kind: 'jama', date: todayISO(), partyId: id, priv: priv });
+    if (!viewer && $('#markPaid')) $('#markPaid').onclick = () => paidPrivModal(p, priv);
     if (canEdit && $('#addOB')) $('#addOB').onclick = () => openingBalanceModal(id, priv);
     if ($('#closeK')) $('#closeK').onclick = () => closePrivKhata(p, all);
     if ($('#portalBtn')) $('#portalBtn').onclick = () => APP.portal.openCodeModal(p, priv);
@@ -1407,9 +1403,8 @@
           const delta = -sigEntry(priv, row);
           if (delta) b2.update(db.collection(pcol).doc(row.partyId), { bal: FV.increment(delta) });
           await commit(b2.commit());
-          audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '',
-          priv  }); 
-                    if (!priv) refreshDaySum(row.date);
+          audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '', priv });
+          if (!priv) refreshDaySum(row.date);
           toast('एंट्री हटा दी गई ✔');
           S.parties[priv ? 'priv' : 'pub'] = null;
           partyView(id, priv);
@@ -1418,6 +1413,48 @@
     }
   }
   APP.partyView = partyView;
+
+  async function paidPrivModal(p, priv) {
+    const bal = num(p.bal);
+    if (bal <= 0) return toast('कोई बकाया नहीं है');
+    const m = modal(`<h3>✅ Paid / वसूली - ${esc(p.name)}</h3>
+      <div class="kv"><span>कुल बकाया</span><b class="neg">${money(bal)}</b></div>
+      <label>कितना पैसा मिला? (₹)</label><input id="pd-amt" inputmode="decimal" value="${bal}">
+      <label>कैसे मिला?</label>
+      <select id="pd-mode">
+        <option value="cash">नकद (Cash)</option>
+        <option value="paytm">Paytm / UPI</option>
+        <option value="swipe">स्वाइप (Card)</option>
+        <option value="bank">बैंक</option>
+      </select>
+      <div class="btns" style="margin-top:12px">
+        <button class="btn g" id="pd-sv">✅ सेव करें</button>
+        <button class="btn w" id="pd-cl">रद्द</button>
+      </div>
+    `);
+    $('#pd-cl', m).onclick = () => m.close();
+    $('#pd-sv', m).onclick = async () => {
+      const amt = num($('#pd-amt', m).value);
+      const mode = $('#pd-mode', m).value;
+      if (!(amt > 0)) return toast('रकम डालें');
+      if (amt > bal) {
+        if(!confirm('रकम बकाये से ज्यादा है। एडवांस के रूप में सेव करें?')) return;
+      }
+      const data = {
+        partyId: p.id, partyName: p.name, date: todayISO(), time: APP.nowTime(),
+        kind: 'jama', mode: mode, amount: amt, note: 'Paid / वसूली', 
+        by: S.user.email, at: FV.serverTimestamp(), status: 'paid'
+      };
+      try {
+        const b = db().batch();
+        b.set(db().collection('priv_ledger').doc(), data);
+        b.update(db().collection('priv_parties').doc(p.id), { bal: FV().increment(-amt) });
+        await b.commit();
+        m.close(); toast('पैसा जमा हो गया ✔');
+        partyView(p.id, priv);
+      } catch(e) { toast('एरर: ' + e.message); }
+    };
+  }
 
   async function closePrivKhata(p, all) {
     const bal = r2(num(p.bal));
@@ -1482,137 +1519,138 @@
         const mdAmt = num(d.malikDiya);
         if (mdAmt > 0) {
           const docId = 'sbi_auto_' + d.date;
-          if (bankEx[docId] && (bankEx[docId].removed || bankEx[docId].edited)) continue;
-          await db.collection('bank_deposits').doc(docId).set({
-            bank: 'SBI', date: d.date, amount: mdAmt, mode: 'cash',
-            note: 'मालिक को दिया (SBI जमा)', by: d.by || 'system', at: FV.serverTimestamp()
-          }, { merge: true });
-          count++;
-        }
-      }
-      toast(count + ' दिन का पुराना डेटा बैंक में जुड़ गया ✔');
-      if (S.tab === 'bank') APP.views.bank();
-    } catch(e) { toast('सिंक एरर: ' + e.message); }
-  };
+                            if (bankEx[docId] && (bankEx[docId].removed || bankEx[docId].edited)) continue;
+                  await db.collection('bank_deposits').doc(docId).set({
+                    bank: 'SBI', date: d.date, amount: mdAmt, mode: 'cash',
+                    note: 'मालिक को दिया (SBI जमा)', by: d.by || 'system', at: FV.serverTimestamp()
+                  }, { merge: true });
+                  count++;
+                }
+              }
+              toast(count + ' दिन का पुराना डेटा बैंक में जुड़ गया ✔');
+              if (S.tab === 'bank') APP.views.bank();
+            } catch(e) { toast('सिंक एरर: ' + e.message); }
+          };
 
-  const A = {
-    addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
-    addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
-    addX() { const it = getExpItems(); it.push({ label: '', amount: '' }); setExpItems(it); const ls = $$('#expbox .exl'); if (ls.length) ls[ls.length - 1].focus(); },
-    delX(ds) { const it = getExpItems(); it.splice(+ds.i, 1); setExpItems(it); recalc(); triggerAutoSave(); },
-    splitX(ds) {
-      const it = getExpItems(), x = it[+ds.i], tot = num(x && x.amount);
-      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
-      expEditor({
-        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
-        note: `<b>${esc(x.label || 'यह खर्चा')}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
-        lines: [{ cat: 'other', label: x.label, amount: tot }, { cat: 'other', label: '', amount: '' }],
-        onOk: lines => { it.splice(+ds.i, 1); applyExpLines(it, lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
-      });
-    },
-    splitF(ds) {
-      const id = KHF[ds.f], el = $('#' + id), tot = num(el && el.value);
-      if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
-      const name = (EXP_CATS.find(c => c[0] === ds.f) || [])[1] || '';
-      expEditor({
-        title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
-        note: `<b>${esc(name)}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
-        lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
-        onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
-      });
-    },
-    save() { saveDay(false); },
-    submit() { saveDay(true); },
-    async unlock() {
-      audit('day_unlock', { date: S.cur.date });
-      await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
-    },
-    report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
-    async relink() {
-      const ch = S.cur.chain; if (!ch) return;
-      if (!confirm('इस दिन की ओपनिंग (मीटर, कैश, स्टॉक) कल के क्लोज़ से दोबारा जोड़ें?')) return;
-      collectDraft();
-      const date = S.cur.date, d = Object.assign({}, S.draft[date] || readForm());
-      applyChain(d, ch); d.opening_locked = true; S.draft[date] = d;
-      await dayView(date); await saveDay(false, true); toast('कल से जुड़ गया ✔');
-    },
-    async importShifts() {
-      const date = S.cur.date;
-      let sh;
-      try { sh = await db.collection('sm_shifts').where('date', '==', date).get(); } catch (e) { return toast('शिफ्ट नहीं मिली: ' + e.message); }
-      const list = sh.docs.map(x => x.data());
-      if (!list.length) return toast('इस दिन की कोई सेल्समैन शिफ्ट नहीं मिली');
-      const clo = {}, warns = []; let paytm = 0, swipe = 0; const exps = [];
-      list.forEach(x => {
-        K.NZ.forEach(k => {
-          const n = x.nz && x.nz[k];
-          if (!n || !K.has(n.o) || !K.has(n.c)) return;
-          if (!(k in clo) || num(n.c) > clo[k]) clo[k] = num(n.c);
-          const dOpen = $('.nzi[data-k="' + k + '"][data-f="o"]');
-          if (dOpen && K.has(dOpen.value) && Math.abs(num(dOpen.value) - num(n.o)) > 0.01 && !(num(n.o) > num(dOpen.value))) warns.push(k.toUpperCase() + ': शिफ्ट ओपनिंग ' + n.o + ' ≠ दिन की ओपनिंग ' + dOpen.value);
-        });
-        paytm += num(x.paytm); swipe += num(x.swipe);
-        if (num(x.expAmt)) exps.push({ label: (x.name || '') + ': ' + (x.expLabel || 'खर्चा'), amount: num(x.expAmt) });
-      });
-      const m = modal(`<h3>📥 शिफ्ट से भरें · ${dmy(date)}</h3>
-        ${list.map(x => `<div class="kv"><span><b>${esc(x.name || x.sid)}</b><br><small class="mut">Paytm ${money(x.paytm)} · स्वाइप ${money(x.swipe)} · खर्चा ${money(x.expAmt)}</small></span><b>${money((x.sum || {}).sale)}</b></div>`).join('')}
-        <div class="mut" style="margin-top:8px;font-size:13px">भरे जाएँगे: ${Object.keys(clo).length} नोज़ल की क्लोज़िंग · Paytm ${money(paytm)} · स्वाइप ${money(swipe)} · ${exps.length} खर्चे</div>
-        ${warns.length ? '<div class="warn" style="margin-top:8px">' + warns.map(esc).join('<br>') + '</div>' : ''}
-        <div class="btns" style="margin-top:10px"><button class="btn g" id="is-ok">✅ भर दो</button><button class="btn w" id="is-no">रद्द</button></div>`);
-      $('#is-no', m).onclick = () => m.close();
-      $('#is-ok', m).onclick = () => {
-        const fire = el => el.dispatchEvent(new Event('input', { bubbles: true }));
-        Object.keys(clo).forEach(k => { const el = $('.nzi[data-k="' + k + '"][data-f="c"]'); if (el && !el.disabled) { el.value = clo[k]; fire(el); } });
-        const pe = $('#f-paytm'), se = $('#f-swipe');
-        if (pe && !pe.disabled && paytm > 0) { pe.value = r2(paytm); fire(pe); }
-        if (se && !se.disabled && swipe > 0) { se.value = r2(swipe); fire(se); }
-        if (exps.length) mergeExpItems(exps);
-        m.close(); recalc(); triggerAutoSave(); toast('शिफ्ट से भर गया — जाँचकर 💾 सेव करें');
-      };
-    },
-    scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
-    editE(data) {
-      collectDraft();
-      const row = S.cur.rows.find(r => r.id === data.id);
-      if (row) entryModal({ entry: row, date: row.date });
-    },
-    async verE(data) {
-      collectDraft();
-      try {
-        await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
-        toast('मिलान ✔'); dayView(S.date);
-      } catch (e) { toast('नहीं हुआ: ' + e.message); }
-    },
-    async delE(data) {
-      collectDraft();
-      const row = S.cur.rows.find(r => r.id === data.id);
-      if (!row) return;
-      if (await dayIsLocked(row.date)) return toast(LOCKMSG);
-      if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
-      try {
-        const b = db.batch();
-        b.delete(db.collection('ledger').doc(row.id));
-        const delta = -K.signed(row); 
-        if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
-        await commit(b.commit());
-        audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '' });
-        refreshDaySum(row.date);
-        toast('एंट्री हटा दी गई ✔');
-        S.parties.pub = null;
-        dayView(S.date);
-      } catch (e) { toast('नहीं हटा: ' + e.message); }
-    }
-  };
-  APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
+          const A = {
+            addU() { collectDraft(); entryModal({ kind: 'udhar', date: S.cur.date }); },
+            addJ() { collectDraft(); entryModal({ kind: 'jama', date: S.cur.date }); },
+            addX() { const it = getExpItems(); it.push({ label: '', amount: '' }); setExpItems(it); const ls = $$('#expbox .exl'); if (ls.length) ls[ls.length - 1].focus(); },
+            delX(ds) { const it = getExpItems(); it.splice(+ds.i, 1); setExpItems(it); recalc(); triggerAutoSave(); },
+            splitX(ds) {
+              const it = getExpItems(), x = it[+ds.i], tot = num(x && x.amount);
+              if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
+              expEditor({
+                title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
+                note: `<b>${esc(x.label || 'यह खर्चा')}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
+                lines: [{ cat: 'other', label: x.label, amount: tot }, { cat: 'other', label: '', amount: '' }],
+                onOk: lines => { it.splice(+ds.i, 1); applyExpLines(it, lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
+              });
+            },
+            splitF(ds) {
+              const id = KHF[ds.f], el = $('#' + id), tot = num(el && el.value);
+              if (!(tot > 0)) return toast('पहले इस खर्चे की रकम भरें');
+              const name = (EXP_CATS.find(c => c[0] === ds.f) || [])[1] || '';
+              expEditor({
+                title: '✂️ खर्चा अलग-अलग बाँटें', mustTotal: tot,
+                note: `<b>${esc(name)}</b> · ${money(tot)} — इसे अलग-अलग चीज़ों में बाँटें। सबका जोड़ ${money(tot)} ही रहना चाहिए।`,
+                lines: [{ cat: ds.f, label: '', amount: tot }, { cat: 'other', label: '', amount: '' }],
+                onOk: lines => { el.value = ''; applyExpLines(getExpItems(), lines); toast('खर्चा बँट गया — 💾 सेव करना न भूलें'); }
+              });
+            },
+            save() { saveDay(false); },
+            submit() { saveDay(true); },
+            async unlock() {
+              audit('day_unlock', { date: S.cur.date });
+              await commit(db.collection('days').doc(S.cur.date).update({ status: 'open' })); dayView(S.cur.date);
+            },
+            report() { if (APP.shareCompactDayReport) APP.shareCompactDayReport(S.cur, readForm()); },
+            async relink() {
+              const ch = S.cur.chain; if (!ch) return;
+              if (!confirm('इस दिन की ओपनिंग (मीटर, कैश, स्टॉक) कल के क्लोज़ से दोबारा जोड़ें?')) return;
+              collectDraft();
+              const date = S.cur.date, d = Object.assign({}, S.draft[date] || readForm());
+              applyChain(d, ch); d.opening_locked = true; S.draft[date] = d;
+              await dayView(date); await saveDay(false, true); toast('कल से जुड़ गया ✔');
+            },
+            async importShifts() {
+              const date = S.cur.date;
+              let sh;
+              try { sh = await db.collection('sm_shifts').where('date', '==', date).get(); } catch (e) { return toast('शिफ्ट नहीं मिली: ' + e.message); }
+              const list = sh.docs.map(x => x.data());
+              if (!list.length) return toast('इस दिन की कोई सेल्समैन शिफ्ट नहीं मिली');
+              const clo = {}, warns = []; let paytm = 0, swipe = 0; const exps = [];
+              list.forEach(x => {
+                K.NZ.forEach(k => {
+                  const n = x.nz && x.nz[k];
+                  if (!n || !K.has(n.o) || !K.has(n.c)) return;
+                  if (!(k in clo) || num(n.c) > clo[k]) clo[k] = num(n.c);
+                  const dOpen = $('.nzi[data-k="' + k + '"][data-f="o"]');
+                  if (dOpen && K.has(dOpen.value) && Math.abs(num(dOpen.value) - num(n.o)) > 0.01 && !(num(n.o) > num(dOpen.value))) warns.push(k.toUpperCase() + ': शिफ्ट ओपनिंग ' + n.o + ' ≠ दिन की ओपनिंग ' + dOpen.value);
+                });
+                paytm += num(x.paytm); swipe += num(x.swipe);
+                if (num(x.expAmt)) exps.push({ label: (x.name || '') + ': ' + (x.expLabel || 'खर्चा'), amount: num(x.expAmt) });
+              });
+              const m = modal(`<h3>📥 शिफ्ट से भरें · ${dmy(date)}</h3>
+                ${list.map(x => `<div class="kv"><span><b>${esc(x.name || x.sid)}</b><br><small class="mut">Paytm ${money(x.paytm)} · स्वाइप ${money(x.swipe)} · खर्चा ${money(x.expAmt)}</small></span><b>${money((x.sum || {}).sale)}</b></div>`).join('')}
+                <div class="mut" style="margin-top:8px;font-size:13px">भरे जाएँगे: ${Object.keys(clo).length} नोज़ल की क्लोज़िंग · Paytm ${money(paytm)} · स्वाइप ${money(swipe)} · ${exps.length} खर्चे</div>
+                ${warns.length ? '<div class="warn" style="margin-top:8px">' + warns.map(esc).join('<br>') + '</div>' : ''}
+                <div class="btns" style="margin-top:10px"><button class="btn g" id="is-ok">✅ भर दो</button><button class="btn w" id="is-no">रद्द</button></div>`);
+              $('#is-no', m).onclick = () => m.close();
+              $('#is-ok', m).onclick = () => {
+                const fire = el => el.dispatchEvent(new Event('input', { bubbles: true }));
+                Object.keys(clo).forEach(k => { const el = $('.nzi[data-k="' + k + '"][data-f="c"]'); if (el && !el.disabled) { el.value = clo[k]; fire(el); } });
+                const pe = $('#f-paytm'), se = $('#f-swipe');
+                if (pe && !pe.disabled && paytm > 0) { pe.value = r2(paytm); fire(pe); }
+                if (se && !se.disabled && swipe > 0) { se.value = r2(swipe); fire(se); }
+                if (exps.length) mergeExpItems(exps);
+                m.close(); recalc(); triggerAutoSave(); toast('शिफ्ट से भर गया — जाँचकर 💾 सेव करें');
+              };
+            },
+            scan() { if (APP.scanRegister) APP.scanRegister(S.cur); },
+            editE(data) {
+              collectDraft();
+              const row = S.cur.rows.find(r => r.id === data.id);
+              if (row) entryModal({ entry: row, date: row.date });
+            },
+            async verE(data) {
+              collectDraft();
+              try {
+                await commit(db.collection('ledger').doc(data.id).update({ verified: true, verifiedBy: S.user.email, verifiedAt: FV.serverTimestamp() }));
+                toast('मिलान ✔'); dayView(S.date);
+              } catch (e) { toast('नहीं हुआ: ' + e.message); }
+            },
+            async delE(data) {
+              collectDraft();
+              const row = S.cur.rows.find(r => r.id === data.id);
+              if (!row) return;
+              if (await dayIsLocked(row.date)) return toast(LOCKMSG);
+              if (!confirm('क्या आप सच में इस एंट्री को हटाना चाहते हैं?')) return;
+              try {
+                const b = db.batch();
+                b.delete(db.collection('ledger').doc(row.id));
+                const delta = -K.signed(row); 
+                if (delta) b.update(db.collection('parties').doc(row.partyId), { bal: FV.increment(delta) });
+                await commit(b.commit());
+                audit('ledger_delete', { party: row.partyName, kind: row.kind, amount: row.amount, litre: row.litre || 0, vehicle: row.vehicle || '', date: row.date, enteredBy: row.by || '' });
+                refreshDaySum(row.date);
+                toast('एंट्री हटा दी गई ✔');
+                S.parties.pub = null;
+                dayView(S.date);
+              } catch (e) { toast('नहीं हटा: ' + e.message); }
+            }
+          };
+          APP.expEditor = expEditor; APP.mergeExpItems = mergeExpItems; APP.getExpItems = getExpItems; APP.A = A; APP.dayView = dayView; APP.readForm = readForm; APP.recalc = recalc; APP.collectDraft = collectDraft; APP.entryModal = entryModal; APP.triggerAutoSave = triggerAutoSave;
 
-  (function () {
-    const st = document.createElement('style'); st.id = 'sum-fix';
-    st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
-#sum .kv span{font-size:12.5px;color:#555;line-height:1.25;overflow-wrap:anywhere}
-#sum .kv b{font-size:clamp(14px,4.3vw,17px);line-height:1.2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
-#sum > div:first-child{flex-wrap:wrap;gap:4px 12px}`;
-    document.head.appendChild(st);
-  })();
+          (function () {
+            const st = document.createElement('style'); st.id = 'sum-fix';
+            st.textContent = `#sum .kv{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 0;min-width:0}
+        #sum .kv span{font-size:12.5px;color:#555;line-height:1.25;overflow-wrap:anywhere}
+        #sum .kv b{font-size:clamp(14px,4.3vw,17px);line-height:1.2;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+        #sum > div:first-child{flex-wrap:wrap;gap:4px 12px}`;
+            document.head.appendChild(st);
+          })();
 
-  window.addEventListener('load', boot);
-})();
+          window.addEventListener('load', boot);
+        })();
+              
