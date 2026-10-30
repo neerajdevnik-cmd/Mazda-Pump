@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Features pack 1 (backup, reports, cash alert, party cards, extras) */
+/* Mazda Oil Company - Features pack 1 (backup, reports, requests, party cards) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -8,6 +8,7 @@
   const db = () => APP.db;
   const today = () => APP.todayISO();
   const isViewer = () => APP.isViewer && APP.isViewer();
+  const isTrueOwner = () => APP.isTrueOwner && APP.isTrueOwner();
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c||''}">${b}</b></div>`;
   APP.views = APP.views || {};
 
@@ -20,6 +21,120 @@
   function monthKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
   function monthLabel(ym) { const p = ym.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleString('hi-IN', { month: 'long', year: 'numeric' }); }
   function waNum(ph) { let p = String(ph || '').replace(/\D/g, ''); if (!p) return ''; p = p.replace(/^0+/, ''); if (!p.startsWith('91')) p = '91' + p; return p; }
+
+  /* ============ REQUESTS (RATE CHANGE & MOHALAT) ============ */
+  APP.views.requests = async function () {
+    if (isViewer() || S.role === 'salesman') return toast('अनुमति नहीं');
+    const main = $('#main'); if (!main) return;
+    main.innerHTML = '<p class="mut">Requests लोड हो रही हैं…</p>';
+
+    let reqSnap, rateSnap;
+    try {
+      [reqSnap, rateSnap] = await Promise.all([
+        db().collection('requests').orderBy('createdAt', 'desc').limit(50).get(),
+        db().collection('rate_requests').where('status', '==', 'pending').get()
+      ]);
+    } catch (e) { main.innerHTML = APP.errBox(e); return; }
+
+    const requests = reqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const rateReqs = rateSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    let html = '<div class="card" style="background:#0b3d91;color:#fff"><h3 style="color:#fff;margin:0">📩 रिक्वेस्ट्स</h3></div>';
+
+    // Rate Requests (Owner Only)
+    if (isTrueOwner() && rateReqs.length) {
+      html += '<div class="card"><h3 style="color:var(--b)">📈 रेट बदलने की रिक्वेस्ट</h3>';
+      rateReqs.forEach(r => {
+        html += `<div class="item">
+          <div class="a"><b>नया रेट: P ₹${r.petrol} | D ₹${r.diesel}</b><small>${dmy(r.date)} · ${esc(r.requestedBy)}</small></div>
+          <div>
+            <button class="btn sm g" data-rate-approve="${r.id}">✔</button>
+            <button class="btn sm r" data-rate-reject="${r.id}">✖</button>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    // Party Mohalat Requests
+    const partyReqs = requests.filter(r => r.status === 'pending');
+    html += '<div class="card"><h3 style="color:var(--b)">⏰ पार्टी मोहलत (Pending)</h3>';
+    if (!partyReqs.length) html += '<p class="mut">कोई पेंडिंग रिक्वेस्ट नहीं।</p>';
+    else {
+      partyReqs.forEach(r => {
+        html += `<div class="item">
+          <div class="a"><b>${esc(r.partyName)}</b><small>${esc(r.message)}</small><small>${dmy(r.date)}</small></div>
+          <div><button class="btn sm g" data-req-ok="${r.id}">✔</button></div>
+        </div>`;
+      });
+    }
+    html += '</div>';
+
+    main.innerHTML = html;
+
+    // Approve / Reject Rate
+    $$('[data-rate-approve]').forEach(b => b.onclick = async () => {
+      if (!confirm('रेट चेंज अप्रूव करें? यह पूरे सिस्टम पर लागू हो जाएगा।')) return;
+      const id = b.dataset.rateApprove;
+      const r = rateReqs.find(x => x.id === id);
+      try {
+        const batch = db().batch();
+        batch.update(db().collection('rate_requests').doc(id), { status: 'approved', approvedBy: S.user.email, approvedAt: APP.FV.serverTimestamp() });
+        // Update master rate
+        batch.set(db().collection('config').doc('rates'), { petrol: r.petrol, diesel: r.diesel, date: r.date, updatedAt: APP.FV.serverTimestamp() }, { merge: true });
+        await batch.commit();
+        toast('रेट अप्रूव हो गया ✔');
+        APP.views.requests();
+      } catch (e) { toast('एरर: ' + e.message); }
+    });
+    $$('[data-rate-reject]').forEach(b => b.onclick = async () => {
+      try {
+        await db().collection('rate_requests').doc(b.dataset.rateReject).update({ status: 'rejected', rejectedBy: S.user.email });
+        toast('रिजेक्ट कर दिया'); APP.views.requests();
+      } catch (e) { toast('एरर: ' + e.message); }
+    });
+
+    // Approve Mohalat
+    $$('[data-req-ok]').forEach(b => b.onclick = async () => {
+      try {
+        await db().collection('requests').doc(b.dataset.reqOk).update({ status: 'approved', approvedBy: S.user.email });
+        toast('अप्रूव हो गया ✔'); APP.views.requests();
+      } catch (e) { toast('एरर: ' + e.message); }
+    });
+
+    // Manager Rate Change Button
+    if (!isTrueOwner() && !isViewer()) {
+      const btn = document.createElement('button');
+      btn.className = 'btn w full'; btn.style.marginTop = '12px';
+      btn.innerHTML = '📈 नया रेट चेंज रिक्वेस्ट भेजें';
+      btn.onclick = () => {
+        const m = modal(`
+          <h3>नया रेट (Request)</h3>
+          <label>पेट्रोल (₹)</label><input id="rq-p" inputmode="decimal" value="${S.rates.petrol}">
+          <label>डीज़ल (₹)</label><input id="rq-d" inputmode="decimal" value="${S.rates.diesel}">
+          <label>कब से लागू हो?</label><input type="date" id="rq-dt" value="${today()}">
+          <div class="btns"><button class="btn g" id="rq-sv">भेजें</button><button class="btn w" id="rq-cl">रद्द</button></div>
+        `);
+        $('#rq-cl', m).onclick = () => m.close();
+        $('#rq-sv', m).onclick = async () => {
+          const p = num($('#rq-p', m).value), d = num($('#rq-d', m).value);
+          if (!p || !d) return toast('रेट डालें');
+          try {
+            await db().collection('rate_requests').add({
+              petrol: p, diesel: d, date: $('#rq-dt', m).value,
+              requestedBy: S.user.email, status: 'pending', createdAt: APP.FV.serverTimestamp()
+            });
+            m.close(); toast('रिक्वेस्ट भेज दी गई ✔'); APP.views.requests();
+          } catch (e) { toast('एरर: ' + e.message); }
+        };
+      };
+      main.appendChild(btn);
+    }
+
+    const back = document.createElement('div'); back.className = 'btns';
+    back.innerHTML = '<button class="btn w" onclick="APP.go(\'more\')">← वापस</button>';
+    main.appendChild(back);
+  };
 
   /* ============ AUTO-DRAFT ============ */
   const DRAFT_K = 'mazda_draft_', TS_K = 'mazda_draft_ts_';
@@ -93,7 +208,7 @@
       const cols = ['days', 'ledger', 'parties', 'priv_ledger', 'priv_parties', 'gaadi_cash',
                     'bank_deposits', 'audit', 'workers', 'attendance', 'salary_payments',
                     'rate_history', 'day_costs', 'day_photos', 'runsheets', 'sm_shifts', 'cash_submissions', 'shop',
-                    'tanker_reports', 'tanker_invoices', 'shop_orders', 'vendors', 'depot_holidays'];
+                    'tanker_reports', 'tanker_invoices', 'shop_orders', 'vendors', 'depot_holidays', 'cash_galla', 'requests', 'rate_requests'];
       const out = {};
       for (const c of cols) {
         try {
@@ -101,7 +216,7 @@
           out[c] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) { out[c] = []; }
       }
-      out._meta = { exportedAt: new Date().toISOString(), app: 'mazda-pump', version: 4 };
+      out._meta = { exportedAt: new Date().toISOString(), app: 'mazda-pump', version: 6 };
       const stamp = today();
       if (fmt === 'csv') {
         const lines = ['collection,id,data'];
@@ -459,13 +574,17 @@
       $('#cgrid').innerHTML = list.map(p => {
         const b = num(p.bal), photo = p.photo || '', ini = initials(p.name);
         const ph = (p.phone || '').replace(/\D/g, ''), w = waNum(p.phone);
+        // FIX: Red/Green
+        const disp = b === 0 ? '₹0' : (b > 0 ? '-₹' + Math.abs(b).toLocaleString('en-IN') : '+₹' + Math.abs(b).toLocaleString('en-IN'));
+        const cls = b > 0 ? 'r' : (b < 0 ? 'g' : '');
+        
         return '<div class="card" style="padding:10px;cursor:pointer" data-pid="' + p.id + '">' +
           '<div style="display:flex;flex-direction:column;align-items:center">' +
           (photo
             ? '<img src="' + esc(photo) + '" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #0b3d91">'
             : '<div style="width:64px;height:64px;border-radius:50%;background:#0b3d91;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700">' + esc(ini) + '</div>') +
           '<b style="margin-top:6px;text-align:center;font-size:13px;line-height:1.2">' + esc(p.name) + '</b>' +
-          '<span class="chip ' + (b > 0 ? 'r' : 'g') + '" style="margin-top:4px;font-size:11px">' + money(b) + '</span>' +
+          '<span class="chip ' + cls + '" style="margin-top:4px;font-size:11px">' + disp + '</span>' +
           (ph ? '<div style="display:flex;gap:4px;margin-top:6px" onclick="event.stopPropagation()">' +
             '<a href="tel:' + esc(p.phone) + '" class="btn sm w" style="padding:4px 8px;font-size:11px">📞</a>' +
             (w ? '<a href="https://wa.me/' + w + '" target="_blank" class="btn sm g" style="padding:4px 8px;font-size:11px">💬</a>' : '') +
@@ -795,6 +914,7 @@
     if (analysisBtns.trim()) html += '<div class="card"><h3>📊 विश्लेषण</h3><div class="btns">' + analysisBtns + '</div></div>';
 
     const finBtns =
+      btn('requests-btn', '📩 रिक्वेस्ट्स (Rate/Mohalat)', 'requests') +
       btn('bank-btn', '🏦 बैंक जमा', 'bank') +
       btn('invoices-more-btn', '📄 खरीद बिल / मार्जिन', 'invoices') +
       btn('reminders-btn', '⏰ उधार रिमाइंडर', 'reminders') +
@@ -866,5 +986,5 @@
     setTimeout(() => { restoreDraftsSmart(); startObs(); }, 800);
   });
 
-  console.log('[Mazda features.js] loaded ✓ (final menu)');
+  console.log('[Mazda features.js] loaded ✓ (Requests system added)');
 })();
