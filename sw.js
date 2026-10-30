@@ -1,4 +1,4 @@
-const V = 'mazda-v43';
+const V = 'mazda-v44';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js',
@@ -14,7 +14,7 @@ const SHELL = [
   'owner.html', 'owner_portal.js', 'owner_manifest.json',
   
   // 🔥 Nayi Split Files
-  'app_core.js', 'app_day.js', 'app_ledger.js',
+  'app_core.js', 'ai_core.js', 'app_day.js', 'app_ledger.js',
   'views2_core.js', 'views2_utils.js',
   'features_core.js', 'features_utils.js', 'features_custom.js'
 ];
