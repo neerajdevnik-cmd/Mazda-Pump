@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Auto-Model Voice AI) */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Strict AI Fallback) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -12,28 +12,9 @@
 
   const sigEntry = (priv, e) => K.signed(e);
 
-  // 🔥 SMART AI MODEL DETECTOR (With Better Errors)
+  // 🔥 Strict AI Fallback (Only reliable models)
   async function askGemini(key, payload) {
-    let modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
-    try {
-      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + key);
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        if (listData.models) {
-          let valid = listData.models
-            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-            .map(m => m.name.replace('models/', ''));
-          valid.sort((a, b) => {
-            if(a.includes('2.0-flash')) return -1; if(b.includes('2.0-flash')) return 1;
-            if(a.includes('1.5-flash')) return -1; if(b.includes('1.5-flash')) return 1;
-            return 0;
-          });
-          modelsToTry = [...valid.slice(0, 3), ...modelsToTry];
-        }
-      }
-    } catch(e) {}
-
-    modelsToTry = [...new Set(modelsToTry)];
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash']; // Only these two are highly reliable now
     let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
@@ -49,7 +30,7 @@
         const data = await res.json();
         if (!res.ok) {
           lastErr = new Error(data.error?.message || 'HTTP ' + res.status);
-          continue; // Try next model
+          continue; 
         }
         
         const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -184,7 +165,7 @@
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
-    /* ================= SMART VOICE ENTRY LOGIC ================= */
+    /* ================= STRICT VOICE ENTRY LOGIC ================= */
     q('e-voice').onclick = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है');
@@ -207,9 +188,9 @@
           const key = localStorage.getItem('mazda_gemini_key');
           if (!key) throw new Error('API Key नहीं मिली');
 
-          const prompt = `Extract data from voice: "${transcript}". Return ONLY a raw JSON object (no markdown, no backticks): 
+          const prompt = `Extract data from voice: "${transcript}". Return ONLY JSON (no markdown): 
           {"kind": "udhar" or "jama", "partyName": "string", "vehicle": "string", "fuel": "petrol" or "diesel", "litre": number, "amount": number, "mode": "cash" or "paytm" or "swipe" or "bank"}. 
-          If null, omit key. Extract party name exactly as spoken.`;
+          If null, omit key.`;
 
           const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } };
           const txt = await askGemini(key, payload);
@@ -733,5 +714,5 @@
     };
   }
 
-  console.log('[Mazda app_ledger.js] Smart Model loaded ✓');
+  console.log('[Mazda app_ledger.js] loaded ✓');
 })();
