@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Fast Voice AI) */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Fast Voice AI + Updated Model) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -133,7 +133,7 @@
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
-    /* ================= FAST VOICE ENTRY LOGIC ================= */
+    /* ================= FAST VOICE ENTRY LOGIC (Updated Model) ================= */
     q('e-voice').onclick = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है');
@@ -160,11 +160,11 @@
           {"kind": "udhar" or "jama", "partyName": "string", "vehicle": "string", "fuel": "petrol" or "diesel", "litre": number, "amount": number, "mode": "cash" or "paytm" or "swipe" or "bank"}. 
           If null, omit key. Party name extract exactly as spoken.`;
 
-          // 🔥 Timeout Lagaya (10 seconds)
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + encodeURIComponent(key), {
+          // 🔥 FIX: Model changed to gemini-2.0-flash
+          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } }),
@@ -183,7 +183,6 @@
           if (data.kind) { kind = data.kind; showKind(); }
           
           if (data.partyName) {
-            // 🔥 Fuzzy Match in JS (AI ko list nahi bhejni padi)
             const pObj = parties.find(p => p.name.toLowerCase().includes(data.partyName.toLowerCase()) || data.partyName.toLowerCase().includes(p.name.toLowerCase()));
             if (pObj) { q('e-party').value = pObj.id; fillVeh(); }
           }
@@ -694,5 +693,5 @@
     };
   }
 
-  console.log('[Mazda app_ledger.js] Fast Voice AI loaded ✓');
+  console.log('[Mazda app_ledger.js] Updated Model loaded ✓');
 })();
