@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Party Portal Logic (With Month Filter & Download) */
+/* Mazda Oil Company - Party Portal Logic (Download Fixed) */
 (function () {
   'use strict';
   let auth, db;
@@ -122,9 +122,8 @@
         return t2 - t1;
       });
       
-      // Default Month Setup
       if (S.ledger.length > 0) {
-        S.currentMonth = S.ledger[0].date.slice(0, 7); // e.g. "2026-10"
+        S.currentMonth = S.ledger[0].date.slice(0, 7); 
       } else {
         S.currentMonth = today().slice(0, 7);
       }
@@ -147,8 +146,6 @@
 
   function renderHome(c) {
     const bal = calcBal(); const lastTrx = S.ledger.slice(0, 3);
-    
-    // Color logic: >0 means they owe us (Red, Minus), <0 means advance (Green, Plus)
     const isDue = bal > 0;
     const dispBal = bal === 0 ? '₹0' : (isDue ? '-' : '+') + money(Math.abs(bal));
 
@@ -193,13 +190,9 @@
   }
 
   function renderHisab(c) {
-    // 1. Get unique months from ledger
     const months = [...new Set(S.ledger.map(r => r.date.slice(0,7)))].sort((a,b) => b.localeCompare(a));
-    
-    // 2. Filter data for selected month
     const filtered = S.ledger.filter(r => r.date.startsWith(S.currentMonth));
     
-    // 3. Calculate running balance up to this month for accurate closing
     let openingBal = 0;
     S.ledger.forEach(r => {
       if (r.date < S.currentMonth + '-01') {
@@ -272,7 +265,6 @@
     if (!window.html2canvas) return toast('Download tool load nahi hua. Page refresh karein.');
     toast('Statement ban raha hai...');
 
-    // Create hidden div for A4-like statement
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed; left:-9999px; top:0; width:800px; background:#fff; padding:30px; font-family:sans-serif; color:#333;';
     
@@ -339,14 +331,22 @@
     try {
       const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff' });
       const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
-      const file = new File([blob], `Statement_${monthName}.jpg`, { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
       
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Mazda Statement' });
-      } else {
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
-        toast('Statement Download ho gaya ✔');
-      }
+      // FIX: Direct Link Download bypasses iOS restrictions
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Statement_${monthName}.jpg`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+      
+      toast('Statement Download ho gaya ✔');
     } catch(e) {
       toast('Download fail: ' + e.message);
     } finally {
