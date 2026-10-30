@@ -12,7 +12,7 @@
 
   const sigEntry = (priv, e) => K.signed(e);
 
-  // 🔥 SMART AI MODEL DETECTOR
+  // 🔥 SMART AI MODEL DETECTOR (With Better Errors)
   async function askGemini(key, payload) {
     let modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
     try {
@@ -34,22 +34,31 @@
     } catch(e) {}
 
     modelsToTry = [...new Set(modelsToTry)];
-    let lastErr = new Error('AI connect नहीं हो पाया');
+    let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
       try {
         const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 12000);
+        const tId = setTimeout(() => controller.abort(), 15000);
+        
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
         });
         clearTimeout(tId);
-        if (res.ok) {
-          const data = await res.json();
-          const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (txt && txt.trim()) return txt;
+        
+        const data = await res.json();
+        if (!res.ok) {
+          lastErr = new Error(data.error?.message || 'HTTP ' + res.status);
+          continue; // Try next model
         }
-      } catch(e) { lastErr = e; }
+        
+        const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (txt && txt.trim()) return txt;
+        else lastErr = new Error('AI ne khaali jawab diya');
+      } catch(e) { 
+        lastErr = e;
+        if (e.name === 'AbortError') lastErr = new Error('Net Timeout (15 sec)');
+      }
     }
     throw lastErr;
   }
@@ -198,16 +207,16 @@
           const key = localStorage.getItem('mazda_gemini_key');
           if (!key) throw new Error('API Key नहीं मिली');
 
-          const prompt = `Extract data from voice: "${transcript}". Return ONLY JSON (no markdown): 
+          const prompt = `Extract data from voice: "${transcript}". Return ONLY a raw JSON object (no markdown, no backticks): 
           {"kind": "udhar" or "jama", "partyName": "string", "vehicle": "string", "fuel": "petrol" or "diesel", "litre": number, "amount": number, "mode": "cash" or "paytm" or "swipe" or "bank"}. 
-          If null, omit key. Party name extract exactly as spoken.`;
+          If null, omit key. Extract party name exactly as spoken.`;
 
           const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } };
           const txt = await askGemini(key, payload);
           
           let cleanTxt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
           const a = cleanTxt.indexOf('{'), b = cleanTxt.lastIndexOf('}');
-          if (a < 0 || b <= a) throw new Error('AI understand nahi kar paya.');
+          if (a < 0 || b <= a) throw new Error('AI ne JSON format mein jawab nahi diya');
           
           const data = JSON.parse(cleanTxt.slice(a, b + 1));
           
