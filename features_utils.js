@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Features Utils (Professional Statement Generator) */
+/* Mazda Oil Company - Features Utils (Statement & Report Preview) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -7,6 +7,40 @@
   const money = APP.money, dmy = APP.dmy, toast = APP.toast, modal = APP.modal;
   const db = () => APP.db;
   const today = () => APP.todayISO();
+
+  /* ============ REPORT PREVIEW (FIX) ============ */
+  APP.showReportPreview = function (files, title) {
+    if (!files || !files.length) return toast('कोई फोटो नहीं बनी');
+    const urls = files.map(f => URL.createObjectURL(f));
+    const n = files.length;
+
+    const m = modal(
+      '<h3>🖼️ ' + (title || 'रिपोर्ट की फोटो') + ' (' + n + ' पेज)</h3>' +
+      '<div class="mut" style="font-size:12px;margin-bottom:8px">पहले देख लें, ठीक लगे तो सेव या शेयर करें।</div>' +
+      '<div style="max-height:60vh;overflow:auto;border:1px solid #e3e8f2;border-radius:10px;background:#eef2fa;padding:8px">' +
+        urls.map((u, i) => '<div style="font-size:11px;color:#6b7385;margin:0 0 3px">पेज ' + (i + 1) + ' / ' + n + '</div>' +
+          '<img src="' + u + '" style="width:100%;display:block;border-radius:6px;box-shadow:0 2px 8px rgba(10,42,102,.15);margin-bottom:10px;background:#fff">').join('') +
+      '</div>' +
+      '<div class="btns" style="margin-top:10px">' +
+        '<button class="btn g" id="rp-sh">📤 भेजें (WhatsApp आदि)</button>' +
+        '<button class="btn w" id="rp-dl">💾 फोन में सेव</button>' +
+        '<button class="btn w" id="rp-x">बंद</button>' +
+      '</div>');
+
+    const save = () => files.forEach((f, i) => setTimeout(() => {
+      const a = document.createElement('a'); a.href = urls[i]; a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }, i * 350));
+
+    m.querySelector('#rp-x').onclick = () => { m.close(); setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 500); };
+    m.querySelector('#rp-dl').onclick = () => { save(); toast('सेव हो रहा है ✔'); };
+    m.querySelector('#rp-sh').onclick = async () => {
+      try {
+        if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ files, title: title || 'Report' });
+        else { save(); toast('सीधा शेयर नहीं — फोटो सेव हो गई, WhatsApp में लगा दें'); }
+      } catch (e) { if (!e || e.name !== 'AbortError') toast('शेयर नहीं हो पाया — "फोन में सेव" दबाएँ'); }
+    };
+  };
 
   /* ============ PROFESSIONAL PARTY STATEMENT ============ */
   APP.sharePartyStatement = async function (partyId, priv) {
