@@ -8,7 +8,6 @@
   const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
   const activeNz = () => { const a = (window.CFG || {}).activeNozzles; return (Array.isArray(a) && a.length) ? NZ.filter(k => a.includes(k)) : NZ.slice(); };
 
-  /* ---------- खर्चा: अलग-अलग चीज़ों की लिस्ट ---------- */
   const KH = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
   const KH_NONAME = 'अन्य (नाम नहीं लिखा)';
   function khList(d) {
@@ -113,7 +112,7 @@
     };
   }
 
-  /* ---------- पार्टी स्टेटमेंट और रनिंग बैलेंस इंजन (Photo Statement Ready) ---------- */
+  /* ---------- पार्टी स्टेटमेंट (FIXED: Opening Balance included in Totals) ---------- */
   function stmt(rows, from, to) {
     rows = (rows || []).slice().sort((a, b) => {
       const da = String(a.date || ''), db = String(b.date || '');
@@ -137,7 +136,6 @@
         else if (r.kind === 'udhar') lastUdhar = r;
       }
 
-      // अगर तारीख 'from' से पहले की है, या 'from' वाली तारीख पर ही Opening Balance एंट्री है, तो उसे पिछला बैलेंस (Balance b/f) मानें
       if ((from && d < from) || (from && d === from && isOp)) {
         if (r.kind === 'udhar') open += a;
         else if (r.kind === 'jama') open -= a;
@@ -151,7 +149,11 @@
       }
     });
 
-    let run = open, totU = 0, totJ = 0, litP = 0, litD = 0;
+    let run = open;
+    let totU = open > 0 ? open : 0;
+    let totJ = open < 0 ? Math.abs(open) : 0;
+    let litP = 0, litD = 0;
+    
     const out = inRange.map(r => {
       const a = num(r.amount);
       const l = num(r.litre);
@@ -184,7 +186,6 @@
     return e.kind === 'udhar' ? a : -a;
   }
 
-  /* ---------- हिसाब जमा करने से पहले जाँच ---------- */
   function validate(d, rows, ctx) {
     ctx = ctx || {};
     const errors = [], warns = [];
