@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Views Utils (Thermal Slip & Smart AI Scanner) */
+/* Mazda Oil Company - Views Utils (Thermal Slip & Strict AI Scanner) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -65,28 +65,9 @@
     };
   };
 
-  /* ======================= SMART AI REGISTER SCANNER ======================= */
+  /* ======================= STRICT AI REGISTER SCANNER ======================= */
   async function askGemini(key, payload) {
-    let modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
-    try {
-      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + key);
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        if (listData.models) {
-          let valid = listData.models
-            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-            .map(m => m.name.replace('models/', ''));
-          valid.sort((a, b) => {
-            if(a.includes('2.0-flash')) return -1; if(b.includes('2.0-flash')) return 1;
-            if(a.includes('1.5-flash')) return -1; if(b.includes('1.5-flash')) return 1;
-            return 0;
-          });
-          modelsToTry = [...valid.slice(0, 3), ...modelsToTry];
-        }
-      }
-    } catch(e) {}
-
-    modelsToTry = [...new Set(modelsToTry)];
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash'];
     let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
@@ -94,18 +75,15 @@
         const controller = new AbortController();
         const tId = setTimeout(() => controller.abort(), 15000);
         
-        // Ensure we don't send unsupported configs for some models
-        const safePayload = JSON.parse(JSON.stringify(payload));
-        
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(safePayload), signal: controller.signal
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
         });
         clearTimeout(tId);
         
         const data = await res.json();
         if (!res.ok) {
           lastErr = new Error(data.error?.message || 'HTTP ' + res.status);
-          continue; // Try next model
+          continue; 
         }
         
         const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -257,5 +235,5 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
     toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  console.log('[Mazda views2_utils.js] Smart Model loaded ✓');
+  console.log('[Mazda views2_utils.js] loaded ✓');
 })();
