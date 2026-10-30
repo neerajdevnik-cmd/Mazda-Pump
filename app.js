@@ -1414,7 +1414,7 @@
   }
   APP.partyView = partyView;
 
-  async function paidPrivModal(p, priv) {
+    async function paidPrivModal(p, priv) {
     const bal = num(p.bal);
     if (bal <= 0) return toast('कोई बकाया नहीं है');
     const m = modal(`<h3>✅ Paid / वसूली - ${esc(p.name)}</h3>
@@ -1441,20 +1441,21 @@
         if(!confirm('रकम बकाये से ज्यादा है। एडवांस के रूप में सेव करें?')) return;
       }
       const data = {
-        partyId: p.id, partyName: p.name, date: todayISO(), time: APP.nowTime(),
+        partyId: p.id, partyName: p.name, date: todayISO(), time: nowTime(),
         kind: 'jama', mode: mode, amount: amt, note: 'Paid / वसूली', 
         by: S.user.email, at: FV.serverTimestamp(), status: 'paid'
       };
       try {
-        const b = db().batch();
-        b.set(db().collection('priv_ledger').doc(), data);
-        b.update(db().collection('priv_parties').doc(p.id), { bal: FV().increment(-amt) });
-        await b.commit();
+        const b = db.batch();
+        b.set(db.collection('priv_ledger').doc(), data);
+        b.update(db.collection('priv_parties').doc(p.id), { bal: FV.increment(-amt) });
+        await commit(b.commit());
         m.close(); toast('पैसा जमा हो गया ✔');
         partyView(p.id, priv);
       } catch(e) { toast('एरर: ' + e.message); }
     };
   }
+
 
   async function closePrivKhata(p, all) {
     const bal = r2(num(p.bal));
