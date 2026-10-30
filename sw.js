@@ -1,4 +1,4 @@
-const V = 'mazda-v37';
+const V = 'mazda-v38';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'app.js', 'views2.js', 'features.js', 'features2.js',
@@ -7,6 +7,7 @@ const SHELL = [
   'tanker_report.js', 'analytics.js', 'margins.js',
   'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
   'portal_gen.js', 'invoice_gen.js', 'device_features.js', 
+  'manager_desk.js', // 🔥 Nayi file yahan add kar di hai
   'preset_parties.js', 'manifest.json', 
   'logo.png', 'icon-192.png', 'icon-512.png',
   'party.html', 'party_portal.js', 'party_manifest.json',
