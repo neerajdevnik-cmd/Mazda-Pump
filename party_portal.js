@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Party Portal Logic (Download Fixed) */
+/* Mazda Oil Company - Party Portal Logic */
 (function () {
   'use strict';
   let auth, db;
@@ -165,28 +165,7 @@
         `).join('') || '<p class="text-mut" style="font-size:13px;text-align:center;">कोई एंट्री नहीं</p>'}
         <button class="btn" style="margin-top:16px;background:rgba(255,255,255,0.1);color:#fff;box-shadow:none;" onclick="document.querySelector('[data-tab=hisab]').click()">पूरा हिसाब देखें</button>
       </div>
-      <div class="glass-card" style="text-align:center;padding:20px; border:1px solid #f4b41a;">
-        <h3 style="color:#f4b41a;margin-bottom:12px;">📩 Owner को Request भेजें</h3>
-        <p class="text-mut" style="font-size:12px;margin-bottom:10px;">अगर आपको पेमेंट के लिए कुछ दिन की मोहलत चाहिए, तो यहाँ से मैसेज भेजें।</p>
-        <button class="btn" onclick="window.sendReq()" style="background:#f4b41a;color:#000;">मोहलत मांगें (Request)</button>
-      </div>
     `;
-
-    window.sendReq = async () => {
-      const msg = prompt("कितने दिन की मोहलत चाहिए और क्यों? (जैसे: '4-5 दिन चाहिए, तबीयत खराब है')");
-      if (!msg) return;
-      try {
-        await db.collection('requests').add({
-          partyId: S.party.id,
-          partyName: S.party.name,
-          message: msg,
-          status: 'pending',
-          date: today(),
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        toast('✅ Request भेज दी गई है');
-      } catch(e) { toast('नहीं भेज पाए: ' + e.message); }
-    };
   }
 
   function renderHisab(c) {
@@ -215,7 +194,6 @@
             const nm = new Date(m + '-01T12:00:00').toLocaleString('hi-IN', { month: 'long', year: 'numeric' });
             return `<option value="${m}" ${m === S.currentMonth ? 'selected' : ''}>${nm}</option>`;
           }).join('')}
-          ${!months.includes(S.currentMonth) ? `<option value="${S.currentMonth}" selected>${monthName}</option>` : ''}
         </select>
       </div>
 
@@ -247,7 +225,7 @@
       </div>
 
       <div style="padding:16px;">
-        <button class="btn" id="btn-download" style="background:#0a7d33; display:flex; align-items:center; justify-content:center; gap:8px;">
+        <button class="btn" id="btn-download" style="background:#0a7d33; display:flex; align-items: center; justify-content: center; gap: 8px;">
           📥 Download / Share Statement
         </button>
       </div>
@@ -329,24 +307,23 @@
     document.body.appendChild(wrap);
 
     try {
-      const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
       const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
-      const url = URL.createObjectURL(blob);
       
-      // FIX: Direct Link Download bypasses iOS restrictions
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Statement_${monthName}.jpg`;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 1000);
-      
-      toast('Statement Download ho gaya ✔');
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], 'stmt.jpg', { type: 'image/jpeg' })] })) {
+        await navigator.share({ files: [new File([blob], `Statement_${monthName}.jpg`, { type: 'image/jpeg' })], title: 'Statement' });
+      } else {
+        // Direct Download Fix for Mobile Browsers
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Statement_${S.party.name}_${monthName}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+        toast('Statement Download ho gaya ✔');
+      }
     } catch(e) {
       toast('Download fail: ' + e.message);
     } finally {
@@ -427,19 +404,37 @@
         status: 'payment_pending', date: today(),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      
       const upiId = window.CFG.pump.upi;
       const upiName = window.CFG.pump.upiName;
       const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${p.rate}&tn=${encodeURIComponent(upiNote)}&cu=INR`;
+      
       toast('UPI ऐप खोल रहे हैं...'); window.location.href = upiLink;
+      
+      // Naya Smooth Flow (Confirm dialog hata diya)
       setTimeout(() => {
-        if (confirm('क्या आपने UPI से पेमेंट कर दिया है?\n\n(हाँ दबाने पर हम मैनेजर को भेज देंगे)')) {
-          db.collection('shop_orders').doc(oRef.id).update({ status: 'paid_awaiting_delivery' })
-            .then(() => { toast('✅ पेमेंट सफल!'); fetchData().then(renderTab); })
-            .catch(e => toast('एरर: ' + e.message));
-        } else {
-          db.collection('shop_orders').doc(oRef.id).update({ status: 'cancelled' });
+        const m = document.createElement('div');
+        m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        m.innerHTML = `
+          <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;width:100%;max-width:300px;">
+            <h3 style="color:#0a2f6b;margin-top:0">Payment Status</h3>
+            <p style="font-size:14px;color:#555">क्या आपने UPI से पेमेंट कर दिया है?</p>
+            <button class="btn g" id="pay-yes" style="width:100%;margin-bottom:8px">✔ हाँ, पेमेंट हो गया</button>
+            <button class="btn w" id="pay-no" style="width:100%;color:#c62828;border-color:#c62828">✖ नहीं, रद्द करें</button>
+          </div>
+        `;
+        document.body.appendChild(m);
+        m.querySelector('#pay-yes').onclick = async () => {
+          m.remove();
+          await db.collection('shop_orders').doc(oRef.id).update({ status: 'paid_awaiting_delivery' });
+          toast('✅ पेमेंट सफल! मैनेजर जाँच करेगा।');
+          fetchData().then(renderTab);
+        };
+        m.querySelector('#pay-no').onclick = async () => {
+          m.remove();
+          await db.collection('shop_orders').doc(oRef.id).delete();
           toast('ऑर्डर रद्द हो गया');
-        }
+        };
       }, 2000);
     } catch (e) { toast('ऑर्डर फेल: ' + e.message); }
   };
