@@ -73,6 +73,9 @@
             return '<button class="btn w" data-key="' + k + '" style="height:56px;font-size:22px;font-weight:700">' + k + '</button>';
           }).join('') +
         '</div>' +
+        '<div style="max-width:280px;margin:10px auto 0;">' +
+          '<button class="btn g" id="ap-enter" style="width:100%;height:48px;font-size:18px">✔ Unlock / Enter</button>' +
+        '</div>' +
         '<div id="ap-pin-error" class="err" style="display:none;margin-top:12px"></div>' +
       '</div>'
     );
@@ -88,6 +91,7 @@
     };
 
     const verify = async () => {
+      if (entered.length < 4) return toast('4 अंकों का PIN डालें');
       const stored = await sha256(getPin());
       if (await sha256(entered) === stored) {
         try { localStorage.setItem(LS_LASTUNLOCK, String(Date.now())); } catch (e) {}
@@ -101,7 +105,8 @@
         if (attempts >= 5) {
           errBox.textContent = '❌ 5 बार गलत — 30 सेकंड रुकें';
           $$('[data-key]', m).forEach(b => b.disabled = true);
-          setTimeout(() => { $$('[data-key]', m).forEach(b => { if (b.dataset.key !== 'bio' || hasBiometric()) b.disabled = false; }); errBox.style.display = 'none'; attempts = 0; }, 30000);
+          $('#ap-enter', m).disabled = true;
+          setTimeout(() => { $$('[data-key]', m).forEach(b => { if (b.dataset.key !== 'bio' || hasBiometric()) b.disabled = false; }); $('#ap-enter', m).disabled = false; errBox.style.display = 'none'; attempts = 0; }, 30000);
         }
       }
     };
@@ -121,9 +126,12 @@
         if (entered.length >= 4) return;
         entered += String(k);
         update();
-        if (entered.length === 4) setTimeout(verify, 200);
+        // Auto-submit hata diya hai, user ko enter dabana hoga
       };
     });
+    
+    $('#ap-enter', m).onclick = verify;
+
     m.close = function() { if (onFail) onFail(); modal.prototype.remove.call(m); };
     return m;
   }
