@@ -87,22 +87,34 @@
     } catch(e) {}
 
     modelsToTry = [...new Set(modelsToTry)];
-    let lastErr = new Error('AI connect नहीं हो पाया');
+    let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
 
     for (const model of modelsToTry) {
       try {
         const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 12000);
+        const tId = setTimeout(() => controller.abort(), 15000);
+        
+        // Ensure we don't send unsupported configs for some models
+        const safePayload = JSON.parse(JSON.stringify(payload));
+        
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(safePayload), signal: controller.signal
         });
         clearTimeout(tId);
-        if (res.ok) {
-          const data = await res.json();
-          const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (txt && txt.trim()) return txt;
+        
+        const data = await res.json();
+        if (!res.ok) {
+          lastErr = new Error(data.error?.message || 'HTTP ' + res.status);
+          continue; // Try next model
         }
-      } catch(e) { lastErr = e; }
+        
+        const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (txt && txt.trim()) return txt;
+        else lastErr = new Error('AI ne khaali jawab diya');
+      } catch(e) { 
+        lastErr = e;
+        if (e.name === 'AbortError') lastErr = new Error('Net Timeout (15 sec)');
+      }
     }
     throw lastErr;
   }
@@ -130,7 +142,7 @@
       return !!k.trim();
     };
     
-    const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY JSON (no markdown):
+    const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY a raw JSON object (no markdown, no backticks):
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
 "nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
 "openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"kharchaItems":[{"label":"","amount":0}],"malikDiya":0,
@@ -156,7 +168,7 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
       const b64 = await toJpegB64(file, 800, 0.7);
       
-      const payload = { contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } };
+      const payload = { contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0 } };
       const txt = await askGemini(key, payload);
       return txt;
     };
@@ -194,7 +206,7 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
     try {
       let t = text.replace(/```json/gi, '').replace(/```/g, '');
       const a = t.indexOf('{'), b = t.lastIndexOf('}');
-      if (a < 0 || b < a) throw new Error('{ } नहीं मिला');
+      if (a < 0 || b < a) throw new Error('AI ne JSON format mein jawab nahi diya');
       t = t.slice(a, b + 1).replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/,\s*([}\]])/g, '$1');
       raw = JSON.parse(t);
     } catch (e) { alert('JSON पढ़ नहीं पाया: ' + e.message); return; }
