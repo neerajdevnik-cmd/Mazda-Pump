@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (With Voice AI) */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (Fast Voice AI) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -86,7 +86,6 @@
         <button class="btn w" id="e-cancel">रद्द</button>
       </div>
       
-      <!-- Voice Loading Overlay -->
       <div id="e-voice-load" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:99999; align-items:center; justify-content:center; flex-direction:column; color:#fff; border-radius:14px;">
         <div class="spin" style="width:40px; height:40px; border:4px solid rgba(255,255,255,0.3); border-top-color:#f4b41a; border-radius:50%; animation:spin 1s linear infinite;"></div>
         <div style="margin-top:16px; font-weight:bold;">AI सुन रहा है...</div>
@@ -134,10 +133,10 @@
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
 
-    /* ================= VOICE ENTRY LOGIC ================= */
+    /* ================= FAST VOICE ENTRY LOGIC ================= */
     q('e-voice').onclick = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है (Chrome use karein)');
+      if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है');
       
       const rec = new SR();
       rec.lang = 'hi-IN';
@@ -154,45 +153,37 @@
         q('e-voice-load').style.display = 'flex';
         
         try {
-          // Get Gemini Key
           const key = localStorage.getItem('mazda_gemini_key');
-          if (!key) {
-            q('e-voice-load').style.display = 'none';
-            btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
-            return alert('Voice AI ke liye pehle Gemini API key chahiye. Settings me jao aur key save karo.');
-          }
+          if (!key) throw new Error('API Key नहीं मिली');
 
-          const partyNames = parties.map(p => p.name).join(', ');
-          const prompt = `You are a petrol pump app assistant. Extract data from this voice input: "${transcript}".
-Available parties: [${partyNames}].
-Return ONLY a JSON object (no markdown, no code fences) with these keys: 
-"kind" (either "udhar" or "jama"), 
-"partyName" (exact match from available parties if possible), 
-"vehicle" (string), 
-"fuel" ("petrol" or "diesel"), 
-"litre" (number), 
-"amount" (number),
-"mode" (if kind is jama, one of "cash", "paytm", "swipe", "bank").
-If a value is not mentioned, set it to null.`;
+          const prompt = `Extract data from voice: "${transcript}". Return ONLY JSON (no markdown): 
+          {"kind": "udhar" or "jama", "partyName": "string", "vehicle": "string", "fuel": "petrol" or "diesel", "litre": number, "amount": number, "mode": "cash" or "paytm" or "swipe" or "bank"}. 
+          If null, omit key. Party name extract exactly as spoken.`;
 
-          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + encodeURIComponent(key), {
+          // 🔥 Timeout Lagaya (10 seconds)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + encodeURIComponent(key), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } }),
+            signal: controller.signal
           });
+          clearTimeout(timeoutId);
           
           const j = await res.json();
           let txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
           txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
           const a = txt.indexOf('{'), b = txt.lastIndexOf('}');
-          if (a < 0 || b <= a) throw new Error('AI understand nahi kar paya. Dobara bolein.');
+          if (a < 0 || b <= a) throw new Error('AI understand nahi kar paya.');
           
           const data = JSON.parse(txt.slice(a, b + 1));
           
-          // Autofill Form
           if (data.kind) { kind = data.kind; showKind(); }
           
           if (data.partyName) {
+            // 🔥 Fuzzy Match in JS (AI ko list nahi bhejni padi)
             const pObj = parties.find(p => p.name.toLowerCase().includes(data.partyName.toLowerCase()) || data.partyName.toLowerCase().includes(p.name.toLowerCase()));
             if (pObj) { q('e-party').value = pObj.id; fillVeh(); }
           }
@@ -214,7 +205,7 @@ If a value is not mentioned, set it to null.`;
 
           toast('✅ AI ne form bhar diya');
         } catch (err) {
-          toast('❌ ' + err.message);
+          toast('❌ ' + (err.name === 'AbortError' ? 'AI Time Out (Net slow hai)' : err.message));
         } finally {
           q('e-voice-load').style.display = 'none';
           btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
@@ -703,5 +694,5 @@ If a value is not mentioned, set it to null.`;
     };
   }
 
-  console.log('[Mazda app_ledger.js] Voice AI loaded ✓');
+  console.log('[Mazda app_ledger.js] Fast Voice AI loaded ✓');
 })();
