@@ -104,7 +104,11 @@
     if (S.cur && !S.cur.locked && !APP.isViewer()) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => {
-        saveDay(false, true);
+        // 🔥 BULLETPROOF GUARD: Only save if the DOM still matches the current date
+        const dateInput = $('#f-date');
+        if (dateInput && dateInput.value === S.cur.date) {
+          saveDay(false, true);
+        }
       }, 2500);
     }
   }
@@ -308,7 +312,14 @@
   }
 
   function readForm() {
-    const st = S.cur, g = id => { const el = $('#' + id); return el ? el.value : ''; };
+    const st = S.cur;
+    if (!st) return {};
+    
+    // 🔥 BULLETPROOF GUARD: If DOM is not for this date (user navigated away), return DB state
+    const dateInput = $('#f-date');
+    if (!dateInput || dateInput.value !== st.date) return st.d;
+
+    const g = id => { const el = $('#' + id); return el ? el.value : ''; };
     const d = Object.assign({}, st.d, {
       date: st.date, rateP: g('f-rateP'), rateD: g('f-rateD'), testing: g('f-testing'),
       openCash: g('f-openCash'), paytm: g('f-paytm'), swipe: g('f-swipe'),
@@ -327,7 +338,14 @@
     $$('.nzi').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
     return d;
   }
-  function collectDraft() { if (S.cur && !S.cur.locked) { const d = readForm(); delete d.sum; S.draft[S.cur.date] = d; } }
+  
+  function collectDraft() { 
+    if (S.cur && !S.cur.locked) { 
+      const d = readForm(); 
+      delete d.sum; 
+      S.draft[S.cur.date] = d; 
+    } 
+  }
 
   function renderRows(st) {
     const rows = st.rows;
