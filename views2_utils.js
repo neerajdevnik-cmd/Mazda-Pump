@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Views Utils (Thermal Slip & Fast AI Scanner) */
+/* Mazda Oil Company - Views Utils (Thermal Slip & Fast AI Scanner + Updated Model) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -90,7 +90,6 @@
     };
     const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
     
-    // 🔥 OPTIMIZED: Prompt kam kiya, model direct use kiya
     const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY JSON (no markdown):
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
 "nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
@@ -115,16 +114,15 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
 
     const geminiRead = async (file) => {
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
-      // 🔥 Image chhoti kar di (800px) taaki fast upload ho
       const b64 = await toJpegB64(file, 800, 0.7);
       
       const body = JSON.stringify({ contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
       
-      // 🔥 15 Second Timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const r = await fetch(GBASE + '/models/gemini-1.5-flash:generateContent?key=' + encodeURIComponent(key), {
+      // 🔥 FIX: Model changed to gemini-2.0-flash
+      const r = await fetch(GBASE + '/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
         signal: controller.signal
       });
@@ -223,5 +221,5 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
     toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  console.log('[Mazda views2_utils.js] Fast AI loaded ✓');
+  console.log('[Mazda views2_utils.js] Updated Model loaded ✓');
 })();
