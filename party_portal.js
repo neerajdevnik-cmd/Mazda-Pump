@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Party Portal Logic */
+/* Mazda Oil Company - Party Portal Logic (Preview & UPI Link Fixed) */
 (function () {
   'use strict';
   let auth, db;
@@ -309,21 +309,41 @@
     try {
       const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
       const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+      const file = new File([blob], `Statement_${monthName}.jpg`, { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+
+      // Show Preview Modal First
+      const m = document.createElement('div');
+      m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+      m.innerHTML = `
+        <div style="background:#fff;padding:15px;border-radius:12px;text-align:center;width:100%;max-width:350px;">
+          <h3 style="color:#0a2f6b;margin-top:0;font-size:16px;">Statement Preview</h3>
+          <img src="${url}" style="width:100%; border-radius:6px; box-shadow:0 2px 10px rgba(0,0,0,0.2); margin-bottom:12px;">
+          <div style="display:flex; gap:8px; justify-content:center;">
+            <button class="btn g" id="preview-dl" style="flex:1;">💾 Save</button>
+            <button class="btn" id="preview-sh" style="flex:1; background:#25D366;">💬 Share</button>
+            <button class="btn w" id="preview-cl" style="flex:1;">❌</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(m);
+
+      m.querySelector('#preview-cl').onclick = () => { m.remove(); URL.revokeObjectURL(url); };
       
-      if (navigator.canShare && navigator.canShare({ files: [new File([blob], 'stmt.jpg', { type: 'image/jpeg' })] })) {
-        await navigator.share({ files: [new File([blob], `Statement_${monthName}.jpg`, { type: 'image/jpeg' })], title: 'Statement' });
-      } else {
-        // Direct Download Fix for Mobile Browsers
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `Statement_${S.party.name}_${monthName}.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-        toast('Statement Download ho gaya ✔');
-      }
+      m.querySelector('#preview-dl').onclick = () => {
+        const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+        toast('Save ho gaya ✔');
+      };
+      
+      m.querySelector('#preview-sh').onclick = async () => {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: 'Statement' }); m.remove(); URL.revokeObjectURL(url); } 
+          catch (e) { toast('Share नहीं हो पाया'); }
+        } else {
+          m.querySelector('#preview-dl').click();
+        }
+      };
+
     } catch(e) {
       toast('Download fail: ' + e.message);
     } finally {
@@ -394,48 +414,51 @@
   window.partyBuyNow = async (pid) => {
     const p = S.shop.find(x => x.id === pid);
     if (!p || !(p.stock > 0)) return toast('आउट ऑफ स्टॉक');
-    if (!confirm(`क्या आप ${p.name} (₹${p.rate}) खरीदना चाहते हैं?`)) return;
-    try {
-      const upiNote = `Mazda ${p.name} buy`;
-      const oRef = await db.collection('shop_orders').add({
-        partyId: S.party.id, partyName: S.party.name, partyPhone: S.party.phone || '',
-        productId: p.id, productName: p.name, productImage: p.photo || '',
-        qty: 1, rate: p.rate, totalAmount: p.rate, upiNote: upiNote,
-        status: 'payment_pending', date: today(),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      const upiId = window.CFG.pump.upi;
-      const upiName = window.CFG.pump.upiName;
-      const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${p.rate}&tn=${encodeURIComponent(upiNote)}&cu=INR`;
-      
-      toast('UPI ऐप खोल रहे हैं...'); window.location.href = upiLink;
-      
-      // Naya Smooth Flow (Confirm dialog hata diya)
-      setTimeout(() => {
-        const m = document.createElement('div');
-        m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-        m.innerHTML = `
-          <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;width:100%;max-width:300px;">
-            <h3 style="color:#0a2f6b;margin-top:0">Payment Status</h3>
-            <p style="font-size:14px;color:#555">क्या आपने UPI से पेमेंट कर दिया है?</p>
-            <button class="btn g" id="pay-yes" style="width:100%;margin-bottom:8px">✔ हाँ, पेमेंट हो गया</button>
-            <button class="btn w" id="pay-no" style="width:100%;color:#c62828;border-color:#c62828">✖ नहीं, रद्द करें</button>
-          </div>
-        `;
-        document.body.appendChild(m);
-        m.querySelector('#pay-yes').onclick = async () => {
-          m.remove();
-          await db.collection('shop_orders').doc(oRef.id).update({ status: 'paid_awaiting_delivery' });
-          toast('✅ पेमेंट सफल! मैनेजर जाँच करेगा।');
-          fetchData().then(renderTab);
-        };
-        m.querySelector('#pay-no').onclick = async () => {
-          m.remove();
-          await db.collection('shop_orders').doc(oRef.id).delete();
-          toast('ऑर्डर रद्द हो गया');
-        };
-      }, 2000);
-    } catch (e) { toast('ऑर्डर फेल: ' + e.message); }
+    
+    const upiNote = `Mazda ${p.name} buy`;
+    const upiId = window.CFG.pump.upi;
+    const upiName = window.CFG.pump.upiName;
+    const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${p.rate}&tn=${encodeURIComponent(upiNote)}&cu=INR`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`;
+
+    const m = document.createElement('div');
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:#fff;padding:20px;border-radius:16px;text-align:center;width:100%;max-width:320px;">
+        <h3 style="color:#0a2f6b;margin-top:0">Pay ₹${p.rate}</h3>
+        
+        <!-- UPI Link Button -->
+        <a href="${upiLink}" class="btn g" style="display:block; margin-bottom:12px; text-decoration:none; padding:12px; font-size:15px;">📱 UPI App se pay karein</a>
+        
+        <div style="font-size:12px; color:#666; margin:10px 0;">— या QR स्कैन करें —</div>
+
+        <img src="${qrUrl}" style="width:180px; height:180px; display:block; margin:0 auto; border:1px solid #ddd; border-radius:8px;">
+        
+        <div style="font-size:11px;color:#666;margin:8px 0;">UPI ID: ${upiId}</div>
+        
+        <button class="btn" id="pay-yes" style="width:100%;margin-top:10px;margin-bottom:8px;background:#0a7d33;color:#fff;">✔ Payment ho gaya</button>
+        <button class="btn w" id="pay-no" style="width:100%;color:#c62828;border-color:#c62828;">✖ रद्द करें</button>
+      </div>
+    `;
+    document.body.appendChild(m);
+
+    m.querySelector('#pay-yes').onclick = async () => {
+      m.remove();
+      try {
+        await db.collection('shop_orders').add({
+          partyId: S.party.id, partyName: S.party.name, partyPhone: S.party.phone || '',
+          productId: p.id, productName: p.name, productImage: p.photo || '',
+          qty: 1, rate: p.rate, totalAmount: p.rate, upiNote: upiNote,
+          status: 'paid_awaiting_delivery', date: today(),
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        toast('✅ पेमेंट सफल! मैनेजर जाँच करेगा।');
+        fetchData().then(renderTab);
+      } catch(e) { toast('एरर: ' + e.message); }
+    };
+
+    m.querySelector('#pay-no').onclick = () => {
+      m.remove();
+    };
   };
 })();
