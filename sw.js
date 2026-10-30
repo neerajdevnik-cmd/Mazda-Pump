@@ -1,4 +1,4 @@
-const V = 'mazda-v41';
+const V = 'mazda-v42';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js',
