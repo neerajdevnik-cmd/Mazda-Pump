@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Views Utils (Thermal Slip & Fast AI Scanner + Updated Model) */
+/* Mazda Oil Company - Views Utils (Thermal Slip & Smart AI Scanner) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -65,7 +65,48 @@
     };
   };
 
-  /* ======================= FAST AI REGISTER SCANNER ======================= */
+  /* ======================= SMART AI REGISTER SCANNER ======================= */
+  async function askGemini(key, payload) {
+    let modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
+    try {
+      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + key);
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        if (listData.models) {
+          let valid = listData.models
+            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+            .map(m => m.name.replace('models/', ''));
+          valid.sort((a, b) => {
+            if(a.includes('2.0-flash')) return -1; if(b.includes('2.0-flash')) return 1;
+            if(a.includes('1.5-flash')) return -1; if(b.includes('1.5-flash')) return 1;
+            return 0;
+          });
+          modelsToTry = [...valid.slice(0, 3), ...modelsToTry];
+        }
+      }
+    } catch(e) {}
+
+    modelsToTry = [...new Set(modelsToTry)];
+    let lastErr = new Error('AI connect नहीं हो पाया');
+
+    for (const model of modelsToTry) {
+      try {
+        const controller = new AbortController();
+        const tId = setTimeout(() => controller.abort(), 12000);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
+        });
+        clearTimeout(tId);
+        if (res.ok) {
+          const data = await res.json();
+          const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (txt && txt.trim()) return txt;
+        }
+      } catch(e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
   APP.scanRegister = async function (st) {
     const esc = APP.esc;
     const NZ = K.NZ;
@@ -88,7 +129,6 @@
       lsSet(KEY_LS, k.trim()); lsSet(MODEL_LS, '');
       return !!k.trim();
     };
-    const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
     
     const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY JSON (no markdown):
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
@@ -116,24 +156,8 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
       const b64 = await toJpegB64(file, 800, 0.7);
       
-      const body = JSON.stringify({ contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-      // 🔥 FIX: Model changed to gemini-2.0-flash
-      const r = await fetch(GBASE + '/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error('Gemini Error: ' + (j.error?.message || 'HTTP ' + r.status));
-      
-      const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
-      const txt = parts.map(x => x.text || '').join('');
-      if (!txt.trim()) throw new Error('Gemini khaali jawab');
+      const payload = { contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } };
+      const txt = await askGemini(key, payload);
       return txt;
     };
 
@@ -221,5 +245,5 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
     toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  console.log('[Mazda views2_utils.js] Updated Model loaded ✓');
+  console.log('[Mazda views2_utils.js] Smart Model loaded ✓');
 })();
