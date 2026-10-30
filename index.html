@@ -25,14 +25,27 @@
   <div id="app"></div>
   <div id="toast"></div>
 
-  <!-- ===== Core ===== -->
+  <!-- ===== Core Base ===== -->
   <script src="./config.js"></script>
   <script src="./dip_chart.js"></script>
   <script src="./calc.js"></script>
-  <script src="./device_features.js"></script> <!-- Camera & GPS -->
-  <script src="./app.js"></script>
-  <script src="./views2.js"></script>
-  <script src="./features.js"></script>
+  <script src="./device_features.js"></script> 
+  
+  <!-- ===== App Logic (Split) ===== -->
+  <script src="./app_core.js"></script>
+  <script src="./app_day.js"></script>
+  <script src="./app_ledger.js"></script>
+
+  <!-- ===== Views (Split) ===== -->
+  <script src="./views2_core.js"></script>
+  <script src="./views2_utils.js"></script>
+
+  <!-- ===== Features (Split) ===== -->
+  <script src="./features_core.js"></script>
+  <script src="./features_utils.js"></script>
+  <script src="./features_custom.js"></script>
+
+  <!-- ===== Other Modules ===== -->
   <script src="./features2.js"></script>
   <script src="./salesman.js"></script>
   <script src="./shop.js"></script>
@@ -40,8 +53,6 @@
   <script src="./monthly.js"></script>
   <script src="./shifts.js"></script>
   <script src="./extras.js"></script>
-
-  <!-- ===== Naye Modules ===== -->
   <script src="./dayreport.js"></script>
   <script src="./tanker_report.js"></script>
   <script src="./analytics.js"></script>
@@ -54,7 +65,7 @@
   <script src="./portal_gen.js"></script>
   <script src="./invoice_gen.js"></script>
   
-  <!-- ===== Manager Desk (Nayi File) ===== -->
+  <!-- ===== Manager Desk ===== -->
   <script src="./manager_desk.js"></script>
 
   <script>
