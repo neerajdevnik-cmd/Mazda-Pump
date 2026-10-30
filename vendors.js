@@ -296,13 +296,8 @@
       const d = collect();
       if (!d.cat) return toast('Category चुनें');
       
-      let key = lsGet(KEY_LS);
-      if (!key) {
-        key = prompt('Gemini API key डालें (aistudio.google.com/app/apikey से):');
-        if (!key || !key.trim()) return toast('❌ Key नहीं दी');
-        lsSet(KEY_LS, key.trim());
-        key = key.trim();
-      }
+      if (!APP.AI.hasKey()) { APP.AI.manageKeys(); return toast('पहले 🔑 Gemini key जोड़ें'); }
+      const key = '';
       
       const btn = $('#rp-gen-ai', m);
       btn.disabled = true;
@@ -403,68 +398,12 @@
     const extras = Object.keys(d.extras || {}).filter(k => d.extras[k]).map(k => k + ': ' + d.extras[k]).join('\n');
     const prompt = `You are helping a petrol pump owner write a professional complaint email.\n\nPump Details:\n- Name: ${pump.nameEn}\n- Dealer: ${pump.dealer}\n- RO Code: ${pump.roCode}\n- Address: ${pump.addressEn}\n- Phone: ${pump.phone}\n- GSTIN: ${pump.gstin}\n- FSSAI: ${pump.fssai}\n\nVendor: ${v.name} (${v.category})\nIssue Category: ${d.cat}\nIssue Details:\n${extras}\nDescription: ${d.detail}\nDate: ${dmy(today())}\n\nWrite TWO versions and return ONLY valid JSON (no markdown, no code fences):\n{"en": "English professional email body (with Subject line at top)", "hi": "Same email in Hindi (Devanagari)"}\n\nKeep tone: professional, respectful, concise. Include all pump details for verification. Mention this is an urgent issue. Sign off with pump name and phone.`;
 
-    const body = JSON.stringify({
+    const out = await APP.AI.askJSON({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.4 }
     });
-
-    const tryModel = async (model) => {
-      const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      if (!r.ok) {
-        const e = new Error('HTTP ' + r.status);
-        e.status = r.status;
-        try { const j = await r.json(); e.detail = (j.error && j.error.message) || ''; } catch (x) {}
-        throw e;
-      }
-      const j = await r.json();
-      const txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
-      if (!txt.trim()) throw new Error('Empty response from AI');
-      return txt;
-    };
-
-    const listModels = async () => {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key));
-      if (!r.ok) throw new Error('HTTP ' + r.status + ' (list models)');
-      const j = await r.json();
-      const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
-      const ver = n => { const m = /^gemini-(\d+(?:\.\d+)?)-flash/.exec(n); return m ? parseFloat(m[1]) : 0; };
-      const flash = all.filter(n => ver(n) > 0 && !/image|tts|live|audio|embed|thinking|robotics|computer|exp|8b/.test(n));
-      const rank = n => (/preview/.test(n) ? 0 : /lite/.test(n) ? 1 : 2);
-      flash.sort((a, b) => rank(b) - rank(a) || ver(b) - ver(a));
-      const out = flash.slice(0, 4);
-      if (all.includes('gemini-flash-latest') && !out.includes('gemini-flash-latest')) out.push('gemini-flash-latest');
-      return out;
-    };
-
-    let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [];
-    let lastErr;
-    for (let round = 0; round < 2; round++) {
-      for (const mdl of models) {
-        try {
-          const txt = await tryModel(mdl);
-          lsSet(MODEL_LS, mdl);
-          let t = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const a = t.indexOf('{'), b = t.lastIndexOf('}');
-          if (a < 0 || b <= a) throw new Error('AI ने JSON नहीं दिया');
-          t = t.slice(a, b + 1);
-          const out = JSON.parse(t);
-          if (!out.en || !out.hi) throw new Error('AI ne en/hi दोनों नहीं दिए');
-          return out;
-        } catch (e) {
-          lastErr = e;
-          const msg = e.message || '';
-          if (e.status && ![404, 429, 500, 503].includes(e.status)) throw e;
-          if (!e.status && !/JSON|en\/hi|Empty/.test(msg)) throw e;
-        }
-      }
-      if (round === 0) {
-        lsSet(MODEL_LS, '');
-        models = await listModels();
-        if (!models.length) throw new Error('कोई Gemini model इस key के लिए नहीं मिला');
-      }
-    }
-    throw lastErr || new Error('AI failed after retries');
+    if (!out.en || !out.hi) throw new Error('AI ne en/hi दोनों नहीं दिए');
+    return out;
   }
 
   const origMore = APP.views.more;
