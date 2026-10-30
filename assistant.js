@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Ultimate Master Assistant (Local, Voice, Smart Pivot) */
+/* Mazda Oil Company - Over-Smart Cognitive Assistant (No AI, TTS Fixed, Multi-Intent) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -9,59 +9,47 @@
   const today = () => APP.todayISO();
 
   // ==========================================
-  // 1. MASTER INTENTS (काम की पहचान)
+  // 1. DICTIONARIES & BRAIN SETUP
   // ==========================================
   const INTENTS = {
-    // 1. उधार और खाता
     LEDGER: ["ledger", "khata", "hisaab", "hisab", "खाता", "लेजर", "kholo", "dikhao", "statement"],
     BALANCE: ["udhar", "baaki", "balance", "उधार", "बकाया", "pending", "lena", "dena", "bakiya"],
-    ADVANCE: ["advance", "jama", "पेशगी", "जमा"],
-    BLOCK: ["block", "hold", "रोक", "band"],
-    
-    // 2. सेल और कलेक्शन
     SALE_TODAY: ["aaj ki sale", "aaj ki bikri", "today sale", "आज की सेल", "आज की बिक्री", "aaj ka business"],
     SALE_YESTERDAY: ["kal ki sale", "yesterday sale", "कल की सेल", "कल की बिक्री"],
-    SALE_MONTH: ["mahine ki sale", "month sale", "महीने की सेल", "monthly sale"],
-    SALE_BEST: ["best sale", "sabse jyada sale", "record sale", "सबसे ज्यादा सेल", "सबसे ज्यादा बिक्री"],
-    CASH_COLLECTION: ["galla", "cash", "कैश", "गल्ला", "collection"],
-    
-    // 3. स्टॉक
     STOCK_PETROL: ["petrol stock", "petrol kitna", "पेट्रोल स्टॉक", "पेट्रोल"],
     STOCK_DIESEL: ["diesel stock", "diesel kitna", "डीजल स्टॉक", "डीजल"],
-    STOCK_DAYS: ["kitne din chalega", "stock days", "कितने दिन चलेगा", "stock khatam"],
-    LOW_DIESEL: ["kam diesel", "diesel kam", "कम डीजल"],
-    
-    // 4. पार्टी और गाड़ी
-    VEHICLES: ["gaadi", "गाड़ी", "vehicles", "gadiyan"],
-    DRIVER_CASH: ["driver", "ड्राइवर", "driver cash"],
-    
-    // 5. एक्शन (WhatsApp)
-    SEND_WA: ["whatsapp", "message bhejo", "व्हाट्सएप", "भेजो", "send"],
-    
-    // 6. एनालिटिक्स
     PEAK_SEASON: ["peak season", "पीक सीजन", "season", "सीजन"],
-    TOP_UDHAR: ["sabse jyada udhar", "top udhar", "सबसे ज्यादा उधार"],
-    LATE_PAYMENT: ["late payment", "deri", "देरी", "payment late"]
+    SEND_WA: ["whatsapp", "message bhejo", "व्हाट्सएप", "भेजो", "send", "reminder"],
+    VEHICLES: ["gaadi", "गाड़ी", "vehicles", "gadiyan"]
   };
 
-  // बाहरी दुनिया (Smart Pivot के लिए)
-  const EXTERNAL_TOPICS = {
-    WEATHER: ["mausam", "barish", "dhup", "thand", "garmi", "weather", "मौसम", "बारिश", "ठंड", "धूप", "कोहरा"],
-    SPORTS: ["match", "cricket", "kohli", "ipl", "खेल", "मैच", "क्रिकेट"],
-    POLITICS: ["chunav", "party", "sarkar", "election", "चुनाव", "सरकार", "हड़ताल"],
-    TECH: ["share market", "sone ka rate", "dollar", "internet", "शेयर", "सोना", "डॉलर"],
-    HEALTH: ["sar dard", "bhookh", "neend", "mood", "सिर दर्द", "भूख", "नींद"],
-    RANDOM: ["joke", "lottery", "rashifal", "time", "जोक", "लॉटरी", "समय", "तारीख"]
-  };
+  const STOP_WORDS = ['ka','ki','ke','kholo','dikhao','ledger','khata','hisaab','hisab','udhar','baaki','kitna','hai','kaun','kab','se','kam','jyada','sabse','gaadi','nayi','add','hui','kya','ko','diya','tha','driver','cash','sale','aaj','kal','din','dinon','2000','litre','diesel','petrol','kitni','thi','wala','wali','karta','karti','karte','h','ho','raha','rahi','par','mein','me','batao','bata','dijiye','do','de','dena','total','koi','sab','sare','sari','mahine','month','season','peak','payment','late','deri','bikri','bika','biki','kis','konsa','konsi','a','an','the','is','of','to','in','ji','bhai','sahab','aur','and','तथा','और'];
 
-  // स्टॉप वर्ड्स (नाम ढूँढते समय ये शब्द हटा दिए जाएंगे)
-  const STOP_WORDS = ['ka','ki','ke','kholo','dikhao','ledger','khata','hisaab','hisab','udhar','baaki','kitna','hai','kaun','kab','se','kam','jyada','sabse','gaadi','nayi','add','hui','kya','ko','diya','tha','driver','cash','sale','aaj','kal','din','dinon','2000','litre','diesel','petrol','kitni','thi','wala','wali','karta','karti','karte','h','ho','raha','rahi','par','mein','me','batao','bata','dijiye','do','de','dena','total','koi','sab','sare','sari','mahine','month','season','peak','payment','late','deri','bikri','bika','biki','kis','konsa','konsi','a','an','the','is','of','to','in','ji','bhai','sahab', 'whatsapp', 'message', 'bhejo', 'send', 'block', 'hold', 'rok', 'roko'];
+  // Phonetic Normalization (Soundex jaisa)
+  function getPhonetic(str) {
+    return cleanText(str)
+      .replace(/[कखगघ]/g, "k").replace(/[चछजझ]/g, "j").replace(/[तथदधटठडढ]/g, "t")
+      .replace(/[पफबभ]/g, "p").replace(/[शषस]/g, "s")
+      .replace(/[aeiouy]/g, "").replace(/c|q/g, "k").replace(/sh|ss/g, "s")
+      .replace(/ph/g, "f").replace(/v/g, "w").replace(/(.)\1+/g, "$1");
+  }
 
-  let isTTSEnabled = true; // आवाज़ चालू रहेगी
+  function cleanText(str) {
+    return String(str).toLowerCase().replace(/[^a-z0-9\u0900-\u097F\s]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Relative Date Parser
+  function parseDateRange(q) {
+    if (/kal|yesterday|कल/i.test(q)) return { date: APP.shiftDate(today(), -1), label: "कल" };
+    if (/parso|परसों/i.test(q)) return { date: APP.shiftDate(today(), -2), label: "परसों" };
+    return { date: today(), label: "आज" };
+  }
 
   // ==========================================
-  // 2. UI SETUP
+  // 2. UI & TTS ENGINE
   // ==========================================
+  let isTTSEnabled = true;
+
   function injectFAB() {
     if (document.getElementById('ai-assist-fab')) return;
     const fab = document.createElement('button');
@@ -86,7 +74,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <h3 style="margin:0;color:#0b3d91;font-size:18px;display:flex;align-items:center;gap:8px;">
             🤖 माज़दा असिस्टेंट 
-            <button id="assist-tts-toggle" style="background:none;border:none;font-size:18px;cursor:pointer;" title="आवाज़ चालू/बंद करें">🔊</button>
+            <button id="assist-tts-toggle" style="background:none;border:none;font-size:18px;cursor:pointer;">🔊</button>
           </h3>
           <button id="assist-close" style="background:none;border:none;font-size:20px;cursor:pointer;">❌</button>
         </div>
@@ -105,7 +93,7 @@
       </div>
       <style>
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .assist-btn { background:#fff;border:1px solid #0b3d91;border-radius:20px;padding:8px 14px;font-size:13px;color:#0b3d91;cursor:pointer;font-family:inherit;font-weight:600; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+        .assist-btn { background:#fff;border:1px solid #0b3d91;border-radius:20px;padding:8px 14px;font-size:13px;color:#0b3d91;cursor:pointer;font-family:inherit;font-weight:600; box-shadow:0 2px 5px rgba(0,0,0,0.1); transition:0.2s; }
         .assist-btn:active { background:#e8eefc; }
       </style>
     `;
@@ -125,31 +113,47 @@
       if (!isTTSEnabled) window.speechSynthesis.cancel();
     };
 
-    // --- बोलने का फंक्शन (TTS) ---
-    const speak = (text) => {
+    // 🔥 FIXED TTS ENGINE (Chunking to avoid 15s cutoff)
+    const speak = (htmlText) => {
       if (!isTTSEnabled || !window.speechSynthesis) return;
-      // HTML टैग्स हटाएं ताकि साफ बोले
-      const cleanText = text.replace(/<[^>]*>?/gm, ' ').replace(/₹/g, ' रुपये ').replace(/[|•·]/g, ' ');
-      const utt = new SpeechSynthesisUtterance(cleanText);
-      utt.lang = 'hi-IN';
-      utt.rate = 1.0;
+      // HTML tags clean karo
+      let rawText = htmlText.replace(/<br\s*\/?>/gi, '. ').replace(/<[^>]*>?/gm, ' ').replace(/₹/g, ' रुपये ').replace(/[|•·]/g, ' ');
       
-      const voices = window.speechSynthesis.getVoices();
-      const hindiVoice = voices.find(v => v.lang.includes('IN') || v.lang.includes('hi'));
-      if (hindiVoice) utt.voice = hindiVoice;
+      // Sentences me todo
+      const sentences = rawText.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 0);
+      window.speechSynthesis.cancel(); // Purana clear karo
+      
+      let voices = window.speechSynthesis.getVoices();
+      let hindiVoice = voices.find(v => v.lang.includes('hi')) || voices.find(v => v.lang.includes('IN')) || voices[0];
 
-      window.speechSynthesis.cancel(); // पुरानी आवाज़ रोकें
-      window.speechSynthesis.speak(utt);
+      sentences.forEach((sentence) => {
+        const utt = new SpeechSynthesisUtterance(sentence);
+        utt.lang = 'hi-IN';
+        utt.rate = 1.0;
+        if (hindiVoice) utt.voice = hindiVoice;
+        window.speechSynthesis.speak(utt);
+      });
     };
 
-    const addMsg = (txt, isUser) => {
+    const streamReplyToUI = async (txt, isUser) => {
       const div = document.createElement('div');
       div.style.cssText = `padding:10px 14px;border-radius:12px;max-width:85%;line-height:1.4;${isUser ? 'background:#0b3d91;color:#fff;align-self:flex-end;border-bottom-right-radius:4px;' : 'background:#fff;border:1px solid #e6ebf5;align-self:flex-start;color:#333;border-bottom-left-radius:4px;'}`;
-      div.innerHTML = txt;
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
       
-      if (!isUser) speak(txt); // जवाब आते ही बोलें
+      if (isUser) {
+        div.innerHTML = txt;
+        return;
+      }
+
+      // Typewriter effect for Bot
+      const words = txt.split(' ');
+      for (let i = 0; i < words.length; i++) {
+        div.innerHTML += words[i] + ' ';
+        chat.scrollTop = chat.scrollHeight;
+        await new Promise(r => setTimeout(r, 20)); // NLG effect
+      }
+      speak(txt);
     };
 
     const showOptions = (opts) => {
@@ -159,7 +163,7 @@
         const b = document.createElement('button');
         b.className = 'assist-btn';
         b.textContent = o.label;
-        b.onclick = o.onClick;
+        b.onclick = () => { o.onClick(); };
         optBox.appendChild(b);
       });
     };
@@ -169,22 +173,22 @@
       m.isLoading = true;
       showOptions([]);
       
-      addMsg(esc(text), true);
+      await streamReplyToUI(esc(text), true);
       input.value = '';
       
       const load = document.createElement('div');
-      load.innerHTML = '⏳ सोच रहा हूँ...';
+      load.innerHTML = '⚡ सोच रहा हूँ...';
       load.style.cssText = 'background:#f0f0f0;padding:8px 12px;border-radius:12px;align-self:flex-start;color:#666;font-size:12px;';
       chat.appendChild(load);
       chat.scrollTop = chat.scrollHeight;
 
       try {
-        const reply = await handleQuery(text.toLowerCase(), addMsg, showOptions, processInput);
+        const reply = await handleQuery(text.toLowerCase(), streamReplyToUI, showOptions, processInput);
         load.remove();
-        if (reply) addMsg(reply, false);
+        if (reply) await streamReplyToUI(reply, false);
       } catch (e) {
         load.remove();
-        addMsg('❌ माफ़ कीजिये, कोई गड़बड़ हो गई: ' + e.message, false);
+        await streamReplyToUI('❌ माफ़ कीजिये, गड़बड़ हो गई: ' + e.message, false);
       } finally {
         m.isLoading = false;
       }
@@ -213,38 +217,41 @@
   }
 
   // ==========================================
-  // 3. UTILITIES (Cleaning & Matching)
-  // ==========================================
-  function cleanText(str) {
-    return String(str).toLowerCase().replace(/[^a-z0-9\u0900-\u097F\s]/g, '').replace(/\s+/g, ' ').trim();
-  }
-
-  function fuzzyMatch(text, target) {
-    const t = cleanText(text).replace(/(.)\1+/g, '$1');
-    const g = cleanText(target).replace(/(.)\1+/g, '$1');
-    return t.includes(g) || g.includes(t);
-  }
-
-  // ==========================================
-  // 4. CORE BRAIN (Logic Engine)
+  // 3. CORE BRAIN (Multi-Intent & Logic)
   // ==========================================
   async function handleQuery(q, addMsg, showOptions, processInput) {
     const cq = cleanText(q);
     
-    // 1. पहचानें कि क्या करना है (Intent)
-    let detectedIntent = null;
-    for (const [intent, keywords] of Object.entries(INTENTS)) {
-      if (keywords.some(kw => cq.includes(cleanText(kw)))) {
-        detectedIntent = intent;
-        break;
+    // 1. Multi-Intent Splitting (Split by "aur", "and", etc.)
+    const parts = q.split(/\s+(?:aur|and|तथा|और|\+)\s+/i);
+    if (parts.length > 1) {
+      let finalReply = "";
+      for (let i = 0; i < parts.length; i++) {
+        const subAns = await processSingleQuery(parts[i], addMsg, showOptions, processInput);
+        if (subAns) finalReply += `<b>${i+1}.</b> ${subAns}<br><br>`;
       }
+      return finalReply;
     }
 
-    // 2. गाड़ी या पार्टी का नाम/नंबर ढूंढें (Entity)
+    // 2. Single Intent
+    return await processSingleQuery(q, addMsg, showOptions, processInput);
+  }
+
+  async function processSingleQuery(q, addMsg, showOptions, processInput) {
+    const cq = cleanText(q);
+    
+    // Check Learned Dictionary
+    const learned = checkLearnedWords(cq);
+    if (learned) {
+      const p = (S.parties.pub || []).find(x => x.name === learned);
+      if (p) return showPartyMenu(p, addMsg, showOptions);
+    }
+
+    // Entity Extraction (Vehicle / Party)
     let searchNum = null;
-    const numMatch = q.match(/\b\d{4}\b/); // 4488
+    const numMatch = q.match(/\b\d{4}\b/);
     if (numMatch) searchNum = numMatch[0];
-    const fullMatch = q.match(/uk\s*\d{2}\s*[a-z]{1,2}\s*\d{4}/i); // UK01...
+    const fullMatch = q.match(/uk\s*\d{2}\s*[a-z]{1,2}\s*\d{4}/i);
     if (fullMatch) searchNum = fullMatch[0].replace(/\s+/g, '').toUpperCase();
 
     const parties = S.parties && S.parties.pub ? S.parties.pub : await APP.getParties(false, true);
@@ -252,9 +259,8 @@
 
     if (searchNum) {
       targetParties = parties.filter(p => p.vehicles && p.vehicles.some(v => v.toUpperCase().replace(/\s+/g, '').includes(searchNum)));
-    } 
-    
-    if (targetParties.length === 0) {
+    } else {
+      // Phonetic & Fuzzy matching
       const words = cq.split(' ');
       const nameWords = words.filter(w => w.length >= 2 && !STOP_WORDS.includes(w) && !/^\d+$/.test(w));
       
@@ -264,7 +270,7 @@
           let score = 0;
           const pName = cleanText(p.name);
           nameWords.forEach(nw => {
-            if (fuzzyMatch(nw, pName)) score += nw.length;
+            if (pName.includes(nw) || getPhonetic(pName).includes(getPhonetic(nw))) score += nw.length;
           });
           if (score > 0) matches.push({ p, score });
         });
@@ -275,217 +281,222 @@
       }
     }
 
-    // ==========================================
-    // 3. DECISION MATRIX (क्या जवाब देना है)
-    // ==========================================
-
-    // अगर पार्टी/गाड़ी मिल गई है
+    // ---- IF PARTY FOUND ----
     if (targetParties.length > 0) {
       if (targetParties.length === 1) {
         const p = targetParties[0];
-        
-        // खाता खोलना है
-        if (detectedIntent === 'LEDGER') {
-          setTimeout(() => { document.getElementById('assist-modal').remove(); APP.partyView(p.id, false); }, 800);
+        // Direct Ledger Open
+        if (q.includes('ledger') || q.includes('khata') || q.includes('खाता')) {
+          setTimeout(() => { document.getElementById('assist-modal').remove(); APP.partyView(p.id, false); }, 1200);
           return `⏳ <b>${esc(p.name)}</b> का खाता खोल रहा हूँ...`;
         }
-        
-        // बैलेंस बताना है
-        if (detectedIntent === 'BALANCE') {
-          return `पार्टी <b>${esc(p.name)}</b> का कुल उधार: <b class="neg">${money(p.bal)}</b>`;
+        // WhatsApp Action
+        if (q.includes('whatsapp') || q.includes('message') || q.includes('bhejo')) {
+          return sendWhatsApp(p, addMsg, showOptions);
         }
-
-        // गाड़ियां बतानी हैं
-        if (detectedIntent === 'VEHICLES') {
-          return `पार्टी <b>${esc(p.name)}</b> की गाड़ियां: <br> ${p.vehicles && p.vehicles.length ? p.vehicles.join(', ') : 'कोई गाड़ी नहीं'}`;
-        }
-        
-        // WhatsApp भेजना है
-        if (detectedIntent === 'SEND_WA') {
-          const ph = String(p.phone || '').replace(/\D/g, '');
-          const wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
-          if (!wa) return `पार्टी <b>${esc(p.name)}</b> का फोन नंबर नहीं है।`;
-          const msg = `नमस्ते ${p.name} जी, आपका बकाया ₹${p.bal} है। कृपया भुगतान करें। - माज़दा ऑयल कंपनी`;
-          setTimeout(() => window.open(`https://wa.me/${wa}?text=${encodeURIComponent(msg)}`, '_blank'), 500);
-          return `✅ <b>${esc(p.name)}</b> को WhatsApp मैसेज भेजा जा रहा है...`;
-        }
-
-        // अगर कुछ और है (या कन्फ्यूजन है)
-        showPartyMenu(p, addMsg, showOptions, processInput);
-        return null;
+        // Otherwise show Menu
+        showPartyMenu(p, addMsg, showOptions);
+        return null; // Menu handles the UI
       } 
       
-      // अगर एक से ज्यादा पार्टी मिलीं (Disambiguation)
+      // Multiple parties found (Disambiguation)
       const opts = targetParties.slice(0, 3).map(p => ({
         label: `${p.name} (${p.vehicles && p.vehicles[0] ? p.vehicles[0] : 'कोई गाड़ी नहीं'})`,
         onClick: () => { 
-          if (detectedIntent === 'LEDGER') {
+          saveLearnedWord(cq, p.name);
+          if (q.includes('ledger') || q.includes('khata')) {
             document.getElementById('assist-modal').remove(); APP.partyView(p.id, false);
           } else {
-            addMsg(`पार्टी <b>${esc(p.name)}</b> का कुल उधार: <b class="neg">${money(p.bal)}</b>`, false); showOptions([]);
+            showPartyMenu(p, addMsg, showOptions); showOptions([]);
           }
         }
       }));
-      opts.push({ label: '❌ कोई और पार्टी', onClick: () => { addMsg('कृपया पार्टी का नाम या 4 अंकों का गाड़ी नंबर टाइप करें:', false); } });
+      opts.push({ label: '❌ कोई और पार्टी', onClick: () => { addMsg('कृपया पूरा नाम या गाड़ी नंबर टाइप करें:', false); } });
       
-      addMsg(searchNum ? `नंबर <b>${searchNum}</b> पर कई पार्टियां मिलीं, कौन सी चुननी है?` : 'एक से ज्यादा पार्टियां मिलीं:', false);
+      addMsg(searchNum ? `नंबर <b>${searchNum}</b> पर कई पार्टियां मिलीं:` : 'आप किस पार्टी की बात कर रहे हैं?', false);
       showOptions(opts);
       return null;
     }
 
-    // अगर पार्टी नहीं मिली, तो PUMP इंटेंट्स चेक करें
-    if (detectedIntent) {
-      const ans = await executePumpIntent(detectedIntent);
-      if (ans) return ans;
+    // ---- IF NO PARTY, CHECK INTENTS ----
+    let detectedIntent = null;
+    for (const [intent, keywords] of Object.entries(INTENTS)) {
+      if (keywords.some(kw => cq.includes(cleanText(kw)))) { detectedIntent = intent; break; }
     }
 
-    // अगर बाहरी सवाल है (Smart Pivot)
-    return await handleSmartPivot(q);
+    if (detectedIntent === 'SALE_TODAY' || detectedIntent === 'SALE_YESTERDAY') {
+      const dateObj = detectedIntent === 'SALE_YESTERDAY' ? parseDateRange('kal') : parseDateRange('aaj');
+      return await getSaleAnswer(dateObj.date, dateObj.label, addMsg, showOptions);
+    }
+
+    if (detectedIntent === 'STOCK_DIESEL') return await getStockAnswer('diesel');
+    if (detectedIntent === 'STOCK_PETROL') return await getStockAnswer('petrol');
+    if (detectedIntent === 'BALANCE') return await getTotalUdhar();
+    if (detectedIntent === 'PEAK_SEASON') return await getPeakSeason();
+
+    // ---- SMART PIVOT (External Questions) ----
+    return await handleSmartPivot(q, addMsg, showOptions, processInput);
   }
 
   // ==========================================
-  // 5. SMART PIVOT (बाहरी सवालों के मजेदार जवाब)
+  // 4. ACTION & FORMATTING FUNCTIONS
   // ==========================================
-  async function handleSmartPivot(q) {
+  
+  // 📊 SMART SALE ANSWER (Direct + Insight + Action)
+  async function getSaleAnswer(dateStr, label, addMsg, showOptions) {
+    const ds = await db().collection('days').doc(dateStr).get();
+    if (!ds.exists) return `${label} (${dmy(dateStr)}) का हिसाब अभी शुरू नहीं हुआ है।`;
+    
+    const sum = ds.data().sum || {};
+    const sale = num(sum.sale);
+    const litP = num(sum.litP), litD = num(sum.litD);
+    
+    // Insight context
+    let insight = "";
+    if (label === "आज") {
+       const yDate = APP.shiftDate(today(), -1);
+       const yDs = await db().collection('days').doc(yDate).get();
+       if (yDs.exists) {
+         const ySale = num((yDs.data().sum || {}).sale);
+         if (ySale > 0) {
+           const diff = sale - ySale;
+           const pct = Math.round((diff / ySale) * 100);
+           insight = diff >= 0 ? `📈 कल के मुकाबले <b>${pct}% ज्यादा</b> है।` : `📉 कल के मुकाबले <b>${Math.abs(pct)}% कम</b> है।`;
+         }
+       }
+    }
+
+    showOptions([
+      { label: '🖨️ रिपोर्ट', onClick: () => { document.getElementById('assist-modal').remove(); APP.shareCompactDayReport({date: dateStr, d: ds.data(), rows: []}); } },
+      { label: '📊 कल की सेल', onClick: () => addMsg(await getSaleAnswer(APP.shiftDate(today(), -1), 'कल', addMsg, showOptions), false) }
+    ]);
+
+    return `<b>${label} की कुल बिक्री: ${money(sale)}</b><br><br>⛽ पेट्रोल: ${lit(litP)}<br>🛢️ डीज़ल: ${lit(litD)}<br><br>${insight}`;
+  }
+
+  // ⛽ SMART STOCK ANSWER
+  async function getStockAnswer(type) {
+    const snap = await db().collection('days').orderBy('date', 'desc').limit(1).get();
+    if (snap.empty) return 'डेटा नहीं मिला।';
+    const d = snap.docs[0].data();
+    const s = d.sum || {};
+    const isP = type === 'petrol';
+    const stock = isP ? (s.actStockP !== undefined ? s.actStockP : (s.expStockP || 0)) : (s.actStockD !== undefined ? s.actStockD : (s.expStockD || 0));
+    
+    // Insight
+    let insight = stock < 1500 ? "⚠️ स्टॉक खत्म होने वाला है, टैंकर मंगवा लें!" : "✅ स्टॉक पर्याप्त है।";
+    return `<b>${isP?'पेट्रोल':'डीज़ल'} का वर्तमान स्टॉक: ${lit(stock)}</b><br><br>${insight}`;
+  }
+
+  // 💰 SMART UDHAR ANSWER
+  async function getTotalUdhar() {
+    const ps = await APP.getParties(false, true);
+    const due = ps.filter(p => num(p.bal) > 0).sort((a, b) => num(b.bal) - num(a.bal));
+    const tot = due.reduce((a, p) => a + num(p.bal), 0);
+    if (!due.length) return '🎉 किसी पार्टी पर कोई उधार बाकी नहीं है!';
+    return `<b>कुल बाजार उधार: ${money(tot)}</b><br><br>सबसे ज्यादा उधार वाली पार्टी: <br>1. ${esc(due[0].name)} (${money(due[0].bal)})`;
+  }
+
+  // 🔮 SEASON PREDICTION
+  async function getPeakSeason() {
+    const snap = await db().collection('days').get();
+    if (snap.empty) return 'डेटा कम है।';
+    const months = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (!data.sum || !data.sum.sale) return;
+      const m = data.date.slice(0, 7);
+      months[m] = (months[m] || 0) + num(data.sum.sale);
+    });
+    const sorted = Object.keys(months).sort((a,b) => months[b] - months[a]);
+    const bestMonth = sorted[0];
+    const mName = new Date(bestMonth + '-01T12:00:00').toLocaleString('hi-IN', { month: 'long', year: 'numeric' });
+    return `<b>आपका पीक सीज़न: ${mName}</b><br><br>इस महीने में सबसे ज्यादा बिक्री (${money(months[bestMonth])}) देखी गई है।`;
+  }
+
+  // ==========================================
+  // 5. UI MENUS & ACTIONS
+  // ==========================================
+  
+  function showPartyMenu(p, addMsg, showOptions) {
+    const vehList = p.vehicles && p.vehicles.length ? p.vehicles.join(', ') : 'कोई गाड़ी नहीं';
+    addMsg(`पार्टी: <b>${esc(p.name)}</b><br>गाड़ियां: ${esc(vehList)}<br>बकाया: <b class="neg">${money(p.bal)}</b><br><br>आप क्या करना चाहेंगे?`, false);
+    
+    // Dynamic Chips based on context
+    showOptions([
+      { label: '📒 खाता खोलें', onClick: () => { document.getElementById('assist-modal').remove(); APP.partyView(p.id, false); } },
+      { label: '💬 WhatsApp', onClick: () => sendWhatsApp(p, addMsg, showOptions) },
+      { label: '🚗 गाड़ियां', onClick: () => { addMsg(`गाड़ियां: ${esc(vehList)}`, false); showOptions([]); } }
+    ]);
+  }
+
+  function sendWhatsApp(p, addMsg, showOptions) {
+    const ph = String(p.phone || '').replace(/\D/g, '');
+    const wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
+    if (!wa) { addMsg('इस पार्टी का फोन नंबर नहीं है।', false); showOptions([]); return; }
+    const msg = `नमस्ते ${p.name} जी, आपका माज़दा ऑयल कंपनी पर बकाया ₹${p.bal} है। कृपया भुगतान करें। - धन्यवाद!`;
+    window.open(`https://wa.me/${wa}?text=${encodeURIComponent(msg)}`, '_blank');
+    addMsg('✅ WhatsApp खोल दिया गया है...', false);
+    showOptions([]);
+  }
+
+  // ==========================================
+  // 6. SMART PIVOT (Roasting & External)
+  // ==========================================
+  async function handleSmartPivot(q, addMsg, showOptions, processInput) {
     const cq = cleanText(q);
     
-    // लाइव डेटा उठाएं
-    const ps = await APP.getParties(false, true);
-    const totUdhar = ps.reduce((a, p) => a + Math.max(0, num(p.bal)), 0);
+    // Live data for pivot
     const ds = await db().collection('days').doc(today()).get();
     const sum = ds.exists ? (ds.data().sum || {}) : {};
     const todaySale = money(sum.sale || 0);
 
-    let isWeather = EXTERNAL_TOPICS.WEATHER.some(k => cq.includes(cleanText(k)));
-    let isSports = EXTERNAL_TOPICS.SPORTS.some(k => cq.includes(cleanText(k)));
-    let isPolitics = EXTERNAL_TOPICS.POLITICS.some(k => cq.includes(cleanText(k)));
-    let isTech = EXTERNAL_TOPICS.TECH.some(k => cq.includes(cleanText(k)));
-    let isHealth = EXTERNAL_TOPICS.HEALTH.some(k => cq.includes(cleanText(k)));
-    let isRandom = EXTERNAL_TOPICS.RANDOM.some(k => cq.includes(cleanText(k)));
-
-    if (isWeather) {
-      const pivots = [
-        `मौसम का हाल तो बादल जानें, पर अगर बारिश हुई तो सेल गिरेगी; आज अभी तक <b>${todaySale}</b> की सेल हो चुकी है!`,
-        `धूप का तो पता नहीं, पर पंप पर नोज़ल लगातार गर्म हैं—आज का कुल कलेक्शन <b>${todaySale}</b> है।`,
-        `तापमान का मीटर तो नहीं देखा, लेकिन मार्केट में कुल <b>₹${totUdhar}</b> का उधार फंसा है, वो जरूर याद रखें!`
-      ];
-      return pivots[Math.floor(Math.random() * pivots.length)];
+    if (/mausam|barish|dhup|thand|weather|मौसम|बारिश|ठंड|धूप|कोहरा/i.test(cq)) {
+      return `मौसम का हाल तो बादल जानें, पर अगर बारिश हुई तो सेल गिरेगी; अभी तक <b>${todaySale}</b> की सेल हो चुकी है!`;
     }
-
-    if (isSports) {
-      const pivots = [
-        `मैच का स्कोर तो टीवी बताएगा, लेकिन आज हमारे पंप ने <b>${todaySale}</b> का स्कोर बनाकर मैच जीत लिया है!`,
-        `कोहली का शतक तो नहीं देखा, पर आज पंप पर गाड़ियों की लंबी लाइन जरूर लगी है। कुल सेल <b>${todaySale}</b>!`
-      ];
-      return pivots[Math.floor(Math.random() * pivots.length)];
+    if (/match|cricket|kohli|ipl|खेल|मैच|क्रिकेट/i.test(cq)) {
+      return `मैच का स्कोर तो टीवी बताएगा, लेकिन आज हमारे पंप ने <b>${todaySale}</b> का स्कोर बनाकर मैच जीत लिया है!`;
     }
-
-    if (isPolitics) {
+    if (/chunav|party|sarkar|election|चुनाव|सरकार/i.test(cq)) {
       return `पार्टियों की जीत-हार जनता तय करेगी, पर अपने गल्ले में आज 'कैश पार्टी' आगे है—कुल सेल <b>${todaySale}</b>!`;
     }
-
-    if (isTech) {
-      return `सेंसेक्स का तो नहीं पता, पर अपने पंप का ग्राफ आज ग्रीन में है—आज की सेल <b>${todaySale}</b> है।`;
+    if (/joke|lottery|time|जोक|लॉटरी|समय|तारीख/i.test(cq)) {
+      return `समय तो बदलता रहता है, पर पंप पर हर 10 मिनट में नई सेल आ रही है। आज का कलेक्शन <b>${todaySale}</b> है!`;
     }
 
-    if (isHealth) {
-      return `सेहत का ख्याल रखें भाई! तनाव मत लीजिए, क्योंकि आज का गल्ला <b>${todaySale}</b> बिल्कुल सही चल रहा है।`;
-    }
-
-    if (isRandom) {
-      return `बोरियत का समय किसे है? जब हर 10 मिनट में नई सेल आ रही है—आज का कलेक्शन <b>${todaySale}</b> पार हो चुका है!`;
-    }
-
-    // अगर कुछ समझ न आए
+    // Fallback
     addMsg('माफ़ कीजिये, मैं यह प्रश्न नहीं समझ पाया। आप नीचे दिए गए बटन दबाकर देख सकते हैं:', false);
     showOptions([
       { label: 'Aaj ki sale', onClick: () => processInput('aaj ki sale') },
       { label: 'Kul udhar', onClick: () => processInput('kul udhar') },
-      { label: 'Peak season', onClick: () => processInput('peak season') }
+      { label: 'Diesel stock', onClick: () => processInput('diesel stock') }
     ]);
     return null;
   }
 
   // ==========================================
-  // 6. PUMP INTENTS EXECUTION
+  // 7. SELF-LEARNING ALIAS (LocalStorage)
   // ==========================================
-  async function executePumpIntent(intent) {
-    if (intent === 'SALE_TODAY') {
-      const ds = await db().collection('days').doc(today()).get();
-      if (!ds.exists) return 'आज का हिसाब अभी शुरू नहीं हुआ है।';
-      const sum = ds.data().sum || {};
-      return `आज की कुल बिक्री: <b class="pos">${money(sum.sale)}</b><br>पेट्रोल: ${lit(sum.litP)}<br>डीज़ल: ${lit(sum.litD)}`;
-    }
-
-    if (intent === 'SALE_YESTERDAY') {
-      const yDate = APP.shiftDate(today(), -1);
-      const ds = await db().collection('days').doc(yDate).get();
-      if (!ds.exists) return `कल (${dmy(yDate)}) का हिसाब नहीं मिला।`;
-      const sum = ds.data().sum || {};
-      return `कल की कुल बिक्री (${dmy(yDate)}): <b class="pos">${money(sum.sale)}</b>`;
-    }
-
-    if (intent === 'BALANCE' || intent === 'TOP_UDHAR') {
-      const ps = await APP.getParties(false, true);
-      const due = ps.filter(p => num(p.bal) > 0).sort((a, b) => num(b.bal) - num(a.bal));
-      const tot = due.reduce((a, p) => a + num(p.bal), 0);
-      if (intent === 'TOP_UDHAR') {
-        return 'सबसे ज्यादा उधार वाली टॉप 3 पार्टियां:<br>' + due.slice(0, 3).map(p => `• <b>${esc(p.name)}</b>: ${money(p.bal)}`).join('<br>');
+  function saveLearnedWord(input, mappedName) {
+    try {
+      let dict = JSON.parse(localStorage.getItem('mazda_learned_words') || '{}');
+      const words = cleanText(input).split(' ').filter(w => !STOP_WORDS.includes(w) && w.length > 2);
+      if (words.length) {
+        dict[words[0]] = mappedName; // Save first major word as alias
+        localStorage.setItem('mazda_learned_words', JSON.stringify(dict));
       }
-      return `कुल मिलाकर सभी पार्टियों का बकाया: <b class="neg">${money(tot)}</b>`;
-    }
-
-    if (intent === 'STOCK_PETROL') {
-      const snap = await db().collection('days').orderBy('date', 'desc').limit(1).get();
-      if (snap.empty) return 'डेटा नहीं मिला।';
-      const d = snap.docs[0].data();
-      const s = d.sum || {};
-      const pStock = s.actStockP !== undefined ? s.actStockP : (s.expStockP || 0);
-      return `आज का पेट्रोल स्टॉक (${dmy(d.date)}): <b class="pos">${lit(pStock)}</b>`;
-    }
-
-    if (intent === 'PEAK_SEASON') {
-      const snap = await db().collection('days').get();
-      if (snap.empty) return 'डेटा कम है।';
-      const months = {};
-      snap.docs.forEach(d => {
-        const data = d.data();
-        if (!data.sum || !data.sum.sale) return;
-        const m = data.date.slice(0, 7);
-        months[m] = (months[m] || 0) + num(data.sum.sale);
-      });
-      const sorted = Object.keys(months).sort((a,b) => months[b] - months[a]);
-      if (sorted.length < 2) return 'डेटा कम है, पीक सीजन का अंदाजा नहीं लगा सकते।';
-      const bestMonth = sorted[0];
-      const mName = new Date(bestMonth + '-01T12:00:00').toLocaleString('hi-IN', { month: 'long', year: 'numeric' });
-      return `सबसे ज्यादा बिक्री <b>${mName}</b> में देखी गई है। यही आपका पीक सीजन हो सकता है।`;
-    }
-
-    return null; // अगर कोई लॉजिक मैच न हुआ
+    } catch(e) {}
   }
 
-  // ==========================================
-  // 7. Party Menu (Confirmation)
-  // ==========================================
-  function showPartyMenu(p, addMsg, showOptions, processInput) {
-    const vehList = p.vehicles && p.vehicles.length ? p.vehicles.join(', ') : 'कोई गाड़ी नहीं';
-    addMsg(`पार्टी: <b>${esc(p.name)}</b><br>गाड़ियां: ${esc(vehList)}<br>बकाया: <b class="neg">${money(p.bal)}</b><br><br>आप क्या करना चाहेंगे?`, false);
-    
-    showOptions([
-      { label: '📒 खाता (Ledger) खोलें', onClick: () => { document.getElementById('assist-modal').remove(); APP.partyView(p.id, false); } },
-      { label: '🚗 गाड़ियां देखें', onClick: () => { addMsg(`गाड़ियां: ${esc(vehList)}`, false); showOptions([]); } },
-      { label: '💰 उधार बताएं', onClick: () => { addMsg(`पार्टी <b>${esc(p.name)}</b> का कुल उधार: <b class="neg">${money(p.bal)}</b>`, false); showOptions([]); } },
-      { label: '💬 WhatsApp भेजें', onClick: () => { 
-          const ph = String(p.phone || '').replace(/\D/g, '');
-          const wa = ph ? (ph.length === 10 ? '91' + ph : ph) : '';
-          if (!wa) { addMsg('इस पार्टी का फोन नंबर नहीं है।', false); showOptions([]); return; }
-          const msg = `नमस्ते ${p.name} जी, आपका माज़दा ऑयल कंपनी पर बकाया ₹${p.bal} है। कृपया भुगतान करें।`;
-          window.open(`https://wa.me/${wa}?text=${encodeURIComponent(msg)}`, '_blank');
-          addMsg('WhatsApp खोल दिया गया है ✔', false); showOptions([]); 
-        } 
+  function checkLearnedWords(q) {
+    try {
+      let dict = JSON.parse(localStorage.getItem('mazda_learned_words') || '{}');
+      for (let key in dict) {
+        if (cleanText(q).includes(key)) return dict[key];
       }
-    ]);
+    } catch(e) {}
+    return null;
   }
 
-  console.log('[Mazda assistant.js] Ultimate Master Brain + Voice + Smart Pivot ✓');
+  console.log('[Mazda assistant.js] OVER-SMART Brain (Chunked TTS, Multi-Intent, Pivot) ✓');
 })();
