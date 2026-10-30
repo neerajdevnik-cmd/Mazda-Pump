@@ -1,17 +1,22 @@
-const V = 'mazda-v38';
+const V = 'mazda-v39';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
-  'app.js', 'views2.js', 'features.js', 'features2.js',
+  'device_features.js', 'features2.js',
   'salesman.js', 'shop.js', 'runsheet.js', 'monthly.js',
   'shifts.js', 'extras.js', 'dayreport.js',
   'tanker_report.js', 'analytics.js', 'margins.js',
   'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
-  'portal_gen.js', 'invoice_gen.js', 'device_features.js', 
-  'manager_desk.js', // 🔥 Nayi file yahan add kar di hai
+  'portal_gen.js', 'invoice_gen.js', 
+  'manager_desk.js',
   'preset_parties.js', 'manifest.json', 
   'logo.png', 'icon-192.png', 'icon-512.png',
   'party.html', 'party_portal.js', 'party_manifest.json',
-  'owner.html', 'owner_portal.js', 'owner_manifest.json'
+  'owner.html', 'owner_portal.js', 'owner_manifest.json',
+  
+  // 🔥 Nayi Split Files
+  'app_core.js', 'app_day.js', 'app_ledger.js',
+  'views2_core.js', 'views2_utils.js',
+  'features_core.js', 'features_utils.js', 'features_custom.js'
 ];
 
 self.addEventListener('install', e => {
