@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Party Ledger & Entry System */
+/* माज़दा ऑयल कंपनी - Party Ledger & Entry System (With Voice AI) */
 (function () {
   'use strict';
   const APP = window.APP;
@@ -57,7 +57,11 @@
     const rates = { petrol: S.rates.petrol, diesel: S.rates.diesel };
     const pid0 = e ? e.partyId : (o.partyId || parties[0].id);
 
-    const m = modal(`<h3>${e ? 'एंट्री बदलें' : priv ? 'निजी उधार जोड़ें' : 'नई एंट्री'}</h3>
+    const m = modal(`
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">${e ? 'एंट्री बदलें' : priv ? 'निजी उधार जोड़ें' : 'नई एंट्री'}</h3>
+        <button class="btn sm w" id="e-voice" style="background:#f4b41a; color:#000; border:0; padding:6px 12px; border-radius:20px;">🎤 बोलकर भरें</button>
+      </div>
       ${(APP.isSalesman()) ? '' : `<div class="seg"><button data-k="udhar">उधार (तेल दिया)</button><button data-k="jama">जमा (पैसा आया)</button></div>`}
       <div class="row"><div><label>तारीख</label><input type="date" id="e-date" value="${date0}"></div><div><label>समय</label><input type="time" id="e-time" value="${e ? e.time || '' : nowTime()}"></div></div>
       <label>पार्टी</label><select id="e-party">${parties.map(p => `<option value="${p.id}" ${p.id === pid0 ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
@@ -80,7 +84,14 @@
         <button class="btn g" id="e-save">सेव करें</button>
         <button class="btn bpcl" id="e-slip-btn">🖨️ थर्मल पर्ची</button>
         <button class="btn w" id="e-cancel">रद्द</button>
-      </div>`);
+      </div>
+      
+      <!-- Voice Loading Overlay -->
+      <div id="e-voice-load" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:99999; align-items:center; justify-content:center; flex-direction:column; color:#fff; border-radius:14px;">
+        <div class="spin" style="width:40px; height:40px; border:4px solid rgba(255,255,255,0.3); border-top-color:#f4b41a; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <div style="margin-top:16px; font-weight:bold;">AI सुन रहा है...</div>
+      </div>
+    `);
 
     let kind = kind0, last = 'lit';
     const q = id => $('#' + id, m);
@@ -122,6 +133,102 @@
     
     if (e && e.kind === 'jama') { q('e-mode').value = e.mode; q('e-amtJ').value = e.amount; }
     showKind();
+
+    /* ================= VOICE ENTRY LOGIC ================= */
+    q('e-voice').onclick = () => {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return toast('❌ इस ब्राउज़र में Voice support नहीं है (Chrome use karein)');
+      
+      const rec = new SR();
+      rec.lang = 'hi-IN';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+
+      const btn = q('e-voice');
+      btn.textContent = '🔴 सुन रहा है...';
+      btn.disabled = true;
+
+      rec.onresult = async (ev) => {
+        const transcript = ev.results[0][0].transcript;
+        btn.textContent = '⏳ AI समझ रहा है...';
+        q('e-voice-load').style.display = 'flex';
+        
+        try {
+          // Get Gemini Key
+          const key = localStorage.getItem('mazda_gemini_key');
+          if (!key) {
+            q('e-voice-load').style.display = 'none';
+            btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
+            return alert('Voice AI ke liye pehle Gemini API key chahiye. Settings me jao aur key save karo.');
+          }
+
+          const partyNames = parties.map(p => p.name).join(', ');
+          const prompt = `You are a petrol pump app assistant. Extract data from this voice input: "${transcript}".
+Available parties: [${partyNames}].
+Return ONLY a JSON object (no markdown, no code fences) with these keys: 
+"kind" (either "udhar" or "jama"), 
+"partyName" (exact match from available parties if possible), 
+"vehicle" (string), 
+"fuel" ("petrol" or "diesel"), 
+"litre" (number), 
+"amount" (number),
+"mode" (if kind is jama, one of "cash", "paytm", "swipe", "bank").
+If a value is not mentioned, set it to null.`;
+
+          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + encodeURIComponent(key), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } })
+          });
+          
+          const j = await res.json();
+          let txt = (((j.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || '';
+          txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const a = txt.indexOf('{'), b = txt.lastIndexOf('}');
+          if (a < 0 || b <= a) throw new Error('AI understand nahi kar paya. Dobara bolein.');
+          
+          const data = JSON.parse(txt.slice(a, b + 1));
+          
+          // Autofill Form
+          if (data.kind) { kind = data.kind; showKind(); }
+          
+          if (data.partyName) {
+            const pObj = parties.find(p => p.name.toLowerCase().includes(data.partyName.toLowerCase()) || data.partyName.toLowerCase().includes(p.name.toLowerCase()));
+            if (pObj) { q('e-party').value = pObj.id; fillVeh(); }
+          }
+          
+          if (data.vehicle) {
+            const opt = Array.from(q('e-veh').options).find(o => o.value.toLowerCase().includes(data.vehicle.toLowerCase()));
+            if (opt) q('e-veh').value = opt.value;
+            else { q('e-veh').value = '__x'; q('e-vehx').value = data.vehicle; q('e-vehx').style.display = ''; }
+          }
+          
+          if (data.fuel) { q('e-fuel').value = data.fuel; setRate(); }
+          
+          if (data.litre) { q('e-lit').value = data.litre; }
+          if (data.amount) {
+            if (kind === 'udhar') { q('e-amtU').value = data.amount; if(!data.litre) calcL(); }
+            else { q('e-amtJ').value = data.amount; }
+          }
+          if (data.mode && kind === 'jama') { q('e-mode').value = data.mode; syncNote(); }
+
+          toast('✅ AI ne form bhar diya');
+        } catch (err) {
+          toast('❌ ' + err.message);
+        } finally {
+          q('e-voice-load').style.display = 'none';
+          btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
+        }
+      };
+
+      rec.onerror = (e) => {
+        btn.textContent = '🎤 बोलकर भरें'; btn.disabled = false;
+        if (e.error === 'not-allowed') toast('माइक की अनुमति दें');
+        else toast('आवाज़ नहीं आई, दोबारा बोलें');
+      };
+
+      rec.start();
+    };
 
     q('e-slip-btn').onclick = () => {
       const party = APP.partyById(priv, q('e-party').value) || {};
@@ -596,5 +703,5 @@
     };
   }
 
-  console.log('[Mazda app_ledger.js] loaded ✓');
+  console.log('[Mazda app_ledger.js] Voice AI loaded ✓');
 })();
