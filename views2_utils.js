@@ -66,37 +66,7 @@
   };
 
   /* ======================= STRICT AI REGISTER SCANNER ======================= */
-  async function askGemini(key, payload) {
-    // 🔥 FIX: Added gemini-3.8-flash
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash'];
-    let lastErr = new Error('AI connect नहीं हो पाया (API Key या Net चेक करें)');
-
-    for (const model of modelsToTry) {
-      try {
-        const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 15000);
-        
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
-        });
-        clearTimeout(tId);
-        
-        const data = await res.json();
-        if (!res.ok) {
-          lastErr = new Error(data.error?.message || 'HTTP ' + res.status);
-          continue; 
-        }
-        
-        const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (txt && txt.trim()) return txt;
-        else lastErr = new Error('AI ne khaali jawab diya');
-      } catch(e) { 
-        lastErr = e;
-        if (e.name === 'AbortError') lastErr = new Error('Net Timeout (15 sec)');
-      }
-    }
-    throw lastErr;
-  }
+  const askGemini = (key, payload) => APP.AI.ask(payload, { timeout: 45000 });
 
   APP.scanRegister = async function (st) {
     const esc = APP.esc;
@@ -110,16 +80,8 @@
       return isNaN(n) ? null : n;
     };
 
-    const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
-    const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
-    const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { } };
-    const getKey = () => lsGet(KEY_LS);
-    const askKey = () => {
-      const k = prompt('Gemini API key paste karein (aistudio.google.com/app/apikey se):', getKey());
-      if (k === null) return false;
-      lsSet(KEY_LS, k.trim()); lsSet(MODEL_LS, '');
-      return !!k.trim();
-    };
+    const getKey = () => (APP.AI.getKeys()[0] || '');
+    const askKey = () => { APP.AI.manageKeys(); return false; };
     
     const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY a raw JSON object (no markdown, no backticks):
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
@@ -168,7 +130,7 @@ Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as 
       const ta = $('#scan-ta', m);
       $('#scan-clip', m).onclick = async () => { try { ta.value = await navigator.clipboard.readText(); } catch (e) { toast('बॉक्स में पेस्ट करें'); } };
       const fileEl = $('#scan-file', m), autoBtn = $('#scan-auto', m);
-      autoBtn.onclick = () => { if (!getKey() && !askKey()) return; fileEl.value = ''; fileEl.click(); };
+      autoBtn.onclick = () => { if (!APP.AI.hasKey()) { APP.AI.manageKeys(); return; } fileEl.value = ''; fileEl.click(); };
       $('#scan-key', m).onclick = () => { askKey(); };
       fileEl.onchange = async () => {
         const f0 = fileEl.files && fileEl.files[0]; if (!f0) return;
