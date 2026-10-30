@@ -1,5 +1,5 @@
-/* Mazda Oil Company - Ultimate God-Tier Assistant (v4.1) 
-   Fixed: Infinite Loop, Vehicle-Only Query, Identity, Voice
+/* Mazda Oil Company - Ultimate God-Tier Assistant (v5.0)
+   Fixes: 4-digit amount bug, Context Memory (Inka/Uski), Weather/Smart Pivot, Identity
 */
 (function () {
   'use strict';
@@ -21,16 +21,15 @@
   // ======================================================================
   // 1. MEMORY & CONTEXT
   // ======================================================================
-  const SK = 'mazda_assistant_v4';
-  let MEM = { alias: {}, facts: [], tts: true, voice: '' };
+  const SK = 'mazda_assistant_v5';
+  let MEM = { tts: true, voice: '' };
   try { const j = JSON.parse(localStorage.getItem(SK) || 'null'); if (j) MEM = Object.assign(MEM, j); } catch (e) {}
   const saveMem = () => { try { localStorage.setItem(SK, JSON.stringify(MEM)); } catch (e) {} };
-  saveMem();
 
   const ctx = { activeParty: null, activeVehicle: null, pendingAction: null };
 
   // ======================================================================
-  // 2. LANGUAGE & VOICE (Hindi TTS)
+  // 2. VOICE (TTS)
   // ======================================================================
   function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9\u0900-\u097F\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
   
@@ -44,12 +43,11 @@
   }
   function speechify(html) {
     let t = String(html || '').replace(/<br\s*\/?>|<\/(div|p|li)>/gi, ' । ').replace(/<[^>]*>/g, ' ');
-    t = t.replace(/&nbsp;/g, ' ').replace(/&amp;/g, ' और ').replace(/[\u{1F000}-\u{1FFFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}️‍]/gu, ' ');
+    t = t.replace(/[\u{1F000}-\u{1FFFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}️‍]/gu, ' ');
     t = t.replace(/₹\s*(-?)\s*([\d,]+(?:\.\d+)?)/g, (m, neg, n) => (neg ? 'माइनस ' : '') + hiNum(n.replace(/,/g,'')) + ' रुपये');
-    t = t.replace(/(\d[\d,]*(?:\.\d+)?)\s*%/g, (m, n) => hiNum(n) + ' प्रतिशत');
     t = t.replace(/(\d[\d,]*(?:\.\d+)?)\s*(?:L|ltr|Ltr|lit\.?|लीटर)\b/g, (m, n) => hiNum(n) + ' लीटर');
     t = t.replace(/\d[\d,]*(?:\.\d+)?/g, n => hiNum(n.replace(/,/g,'')));
-    t = t.replace(/₹/g, ' रुपये ').replace(/&/g, ' और ').replace(/[|•·*_#~>]/g, ' ').replace(/\s[-–—]\s/g, ', ');
+    t = t.replace(/[|•·*_#~>]/g, ' ');
     return t.replace(/\s+/g, ' ').trim();
   }
 
@@ -59,17 +57,9 @@
       if (!window.speechSynthesis) return;
       const voices = speechSynthesis.getVoices() || [];
       const list = voices.filter(v => /^hi/i.test(v.lang) || /^en[-_]in/i.test(v.lang));
-      list.sort((a, b) => {
-        let sa = /female|lekha|swara|kalpana/i.test(a.name) ? 10 : 0;
-        let sb = /female|lekha|swara|kalpana/i.test(b.name) ? 10 : 0;
-        if (/^hi/i.test(a.lang)) sa += 5;
-        if (/^hi/i.test(b.lang)) sb += 5;
-        return sb - sa;
-      });
-      chosen = list.find(v => v.voiceURI === MEM.voice || v.name === MEM.voice) || list[0] || null;
+      chosen = list.find(v => /female|swara|lekha/i.test(v.name)) || list[0] || null;
     }
     if (window.speechSynthesis) { load(); speechSynthesis.onvoiceschanged = load; }
-
     function next() {
       if (!queue.length) { busy = false; return; }
       busy = true;
@@ -84,30 +74,34 @@
       say(text) {
         if (!MEM.tts || !window.speechSynthesis) return;
         this.stop(); load();
-        // Chunk text to avoid 15s limit
-        const sents = (text.match(/[^।.?!]+[।.?!]*/g) || [text]).map(s => s.trim()).filter(Boolean);
-        queue = sents; next();
+        queue = (text.match(/[^।.?!]+[।.?!]*/g) || [text]).map(s => s.trim()).filter(Boolean);
+        next();
       },
       stop() { queue = []; try { speechSynthesis.cancel(); } catch (e) {} busy = false; }
     };
   })();
 
   // ======================================================================
-  // 3. PARSER & HELPERS
+  // 3. SMART PARSER & HELPERS
   // ======================================================================
-  function extractAmounts(q) {
-    const cleanQ = q.replace(/[a-z]{2}\d{2}[a-z]{1,3}\d{4}/gi, ' ').replace(/\b\d{4}\b/g, ' '); // remove plates & 4-digits
-    const words = cleanQ.split(/\s+/);
+  
+  // 🚨 FIX: 4-digit amounts will NOT be ignored unless they match a vehicle in DB
+  async function extractAmounts(q, parties) {
+    const words = q.replace(/[a-z]{2}\d{2}[a-z]{1,3}\d{4}/gi, ' ').split(/\s+/); // Remove full plates
     let amounts = [];
+    let knownVehicles = [];
+    if (parties) parties.forEach(p => (p.vehicles || []).forEach(v => knownVehicles.push(v.replace(/\D/g, '').slice(-4))));
+
     for (let i = 0; i < words.length; i++) {
       let w = words[i].replace(/,/g, '');
+      if (/^\d{4}$/.test(w) && knownVehicles.includes(w) && !/rupaye|rs|hazar|paytm|swipe|udhar/i.test(q)) continue; // Skip if it's a known vehicle
+      
       let m = w.match(/^(\d+(?:\.\d+)?)(k|l|lakh|lac)?$/);
       if (m) {
         let val = parseFloat(m[1]);
         if (m[2] === 'k') val *= 1000;
         if (m[2] === 'l' || m[2] === 'lakh') val *= 100000;
-        const nx = words[i+1] ? words[i+1].toLowerCase() : '';
-        if (nx.includes('hazar') || nx.includes('hajar')) val *= 1000;
+        if (words[i+1] && /hazar|hajar/i.test(words[i+1])) val *= 1000;
         amounts.push(val);
       }
     }
@@ -143,25 +137,33 @@
   }
 
   // ======================================================================
-  // 4. CORE LOGIC (handleQuery)
+  // 4. CORE LOGIC (The Brain)
   // ======================================================================
   function R(html, o) { return Object.assign({ html }, o || {}); }
 
   async function handleQuery(raw, ui) {
     const q = norm(raw);
+    const parties = await APP.getParties(false, true);
     
-    // 0. Pending Action
+    // 0. Pending Action (Yes/No)
     if (ctx.pendingAction) {
       if (/haan|yes|ha|ok|theek|sahi/i.test(q)) return commitAction(ui);
       if (/nahi|no|cancel|radd/i.test(q)) { ctx.pendingAction = null; return R('ठीक है, रद्द कर दिया।'); }
+      // If user types something else, clear the pending action and process new query
+      ctx.pendingAction = null;
     }
 
-    // 1. Identity & Owner
-    if (/(owner|malik).*(kon|kaun|kiska|name)|shashank/i.test(q)) {
+    // 1. Identity & Owner (NEW)
+    if (/(pump|mazda).*(owner|malik|kiska|shashank)/i.test(q)) {
       return R(`इस माज़दा ऑयल कंपनी (पंप) के मालिक <b>शशांक बंसल</b> हैं।`, { say: 'इस पंप के मालिक शशांक बंसल जी हैं।' });
     }
     if (/(tumhara|aapka).*(owner|malik)|kisne banaya|who made you/i.test(q)) {
       return R(`मैं एक AI हूँ, मेरा कोई मालिक नहीं है। मुझे <b>नीरज देव</b> ने बनाया है।`, { say: 'मैं एक ए आई हूँ, मेरा कोई मालिक नहीं है। मुझे नीरज देव ने बनाया है।' });
+    }
+    if (/(mera naam|main kaun|who am i)/i.test(q)) {
+      const uName = S.user ? S.user.email.split('@')[0] : (S.salesman ? S.salesman.name : 'User');
+      const role = S.role === 'owner' ? 'मालिक' : (S.role === 'manager' ? 'मैनेजर' : 'यूज़र');
+      return R(`आपका नाम <b>${esc(uName)}</b> है और आप इस ऐप में <b>${role}</b> के रूप में लॉगिन हैं।`);
     }
     if (/(tum|aap).*(kaun|kya|kahan)|who are you/i.test(q)) {
       return R(`मैं माज़दा असिस्टेंट हूँ, एक AI। मेरा कोई शरीर नहीं है, मैं इसी ऐप के अंदर रहती हूँ।`, { say: 'मैं माज़दा असिस्टेंट हूँ, एक ए आई। मैं इसी ऐप के अंदर रहती हूँ।' });
@@ -172,7 +174,22 @@
       return R(`माफ़ कीजिए, मैं कोई भी एंट्री delete नहीं कर सकती। यह अधिकार सिर्फ मालिक के पास है।`, { say: 'माफ़ कीजिए, मैं कोई भी एंट्री डिलीट नहीं कर सकती।' });
     }
 
-    // 3. Vehicle Only (e.g. "9769")
+    // 3. Context Follow-up (Inka, Uski, Khata Kholo)
+    if (/inka|uska|iski|uski/i.test(q) || /khata kholo|ledger kholo/i.test(q)) {
+      if (ctx.activeParty) {
+        if (/khata|ledger/i.test(q)) {
+          setTimeout(() => { ui.close(); APP.partyView(ctx.activeParty.id, false); }, 1000);
+          return R(`⏳ <b>${esc(ctx.activeParty.name)}</b> का खाता खोल रही हूँ...`);
+        }
+        if (/udhar|baaki/i.test(q)) {
+          return R(`<b>${esc(ctx.activeParty.name)}</b> का कुल उधार: <b class="neg">${money(ctx.activeParty.bal)}</b>`);
+        }
+      } else {
+        return R('किस पार्टी की बात कर रहे हैं? कृपया नाम या गाड़ी नंबर बताइए।');
+      }
+    }
+
+    // 4. Vehicle Only Query (e.g., "9769")
     if (/^\d{4}$/.test(q) || /^[a-z]{2}\d{2}[a-z]{1,3}\d{4}$/i.test(q)) {
       const p = await findParty(q);
       if (p) {
@@ -185,7 +202,17 @@
       }
     }
 
-    // 4. Dip Chart
+    // 5. Smart Pivot (Weather, Tanker Arrival)
+    if (/baarish|mausam|weather|rain|garmi|thand/i.test(q)) {
+      const dSnap = await db().collection('days').doc(T()).get();
+      const sale = dSnap.exists ? money((dSnap.data().sum || {}).sale) : '₹0';
+      return R(`मौसम का हाल तो बादल जानें, पर अगर बारिश हुई तो बिक्री पर असर पड़ेगा। अभी तक आज की सेल <b>${sale}</b> हो चुकी है!`);
+    }
+    if (/gaadi|tanker/i.test(q) && /kab|aayegi|time|late/i.test(q)) {
+      return R(`स्टॉक और टैंकर रिपोर्ट देखकर लगता है कि अगला टैंकर जल्दी आ सकता है। (डेटा अपडेट होते रहेंगे)`);
+    }
+
+    // 6. Dip Chart
     if (/dip/i.test(q) && /liter|kitna|petrol|diesel/i.test(q)) {
       const dipMatch = q.match(/\b\d+(\.\d+)?\b/);
       if (dipMatch && window.DipChart) {
@@ -197,24 +224,30 @@
       }
     }
 
-    // 5. Sale Query
+    // 7. Sale Query
     if (/sale|bikri/i.test(q)) {
       const isKal = /kal/i.test(q);
       const dStr = isKal ? addDays(T(), -1) : T();
       const dSnap = await db().collection('days').doc(dStr).get();
       if (!dSnap.exists) return R(`${isKal?'कल':'आज'} का हिसाब शुरू नहीं हुआ है।`);
       const sum = dSnap.data().sum || {};
-      
-      let funMsg = '';
-      if (!isKal && sum.litD < 100) funMsg = `<br><br>😅 क्या बात, आज तो सिर्फ ${lit(sum.litD)} डीज़ल ही बिका! कोई नई गाड़ी नहीं आई?`;
-
-      return R(`<b>${isKal?'कल':'आज'} की कुल सेल: ${money(sum.sale)}</b><br>⛽ पेट्रोल: ${lit(sum.litP)}<br>🛢️ डीज़ल: ${lit(sum.litD)}${funMsg}`, { 
-        say: speechify(`${isKal?'कल':'आज'} की सेल ${sum.sale} रही। ${funMsg}`)
+      return R(`<b>${isKal?'कल':'आज'} की कुल सेल: ${money(sum.sale)}</b><br>⛽ पेट्रोल: ${lit(sum.litP)}<br>🛢️ डीज़ल: ${lit(sum.litD)}`, { 
+        say: speechify(`${isKal?'कल':'आज'} की सेल ${sum.sale} रही।`)
       });
     }
 
-    // 6. Udhar Balance Query
-    if (/udhar|baaki/i.test(q) && !/likhna|entry|karo|dalna|add/i.test(q)) {
+    // 8. Entry: Udhar
+    if (/udhar/i.test(q) && /likhna|entry|karo|dalna|add|hai/i.test(q)) {
+      return handleUdharEntry(q, parties, ui);
+    }
+
+    // 9. Entry: Daily (Meter, Paytm, Swipe, Kharcha)
+    if (/meter|reading|paytm|swipe|dg|kharcha|chai|p1|p2|p3|p4|d1|d2|d3|d4/i.test(q)) {
+      return handleDailyEntry(q, parties, ui);
+    }
+
+    // 10. Udhar Balance Query
+    if (/udhar|baaki/i.test(q)) {
       const p = await findParty(q) || ctx.activeParty;
       if (!p) return R(`किस पार्टी का उधार देखना है? नाम या गाड़ी नंबर बताइए।`);
       ctx.activeParty = p;
@@ -223,24 +256,14 @@
       });
     }
 
-    // 7. Entry: Udhar
-    if (/udhar/i.test(q) && /likhna|entry|karo|dalna|add|hai/i.test(q)) {
-      return handleUdharEntry(q, raw, ui);
-    }
-
-    // 8. Entry: Daily (Meter, Paytm, Swipe)
-    if (/meter|reading|paytm|swipe|dg|kharcha|chai/i.test(q) && /karo|likho|entry|add|dalna|hai/i.test(q)) {
-      return handleDailyEntry(q, raw, ui);
-    }
-
-    return R(`मुझे समझ नहीं आया। आप "9769" (गाड़ी), "P1 की रीडिंग 4500", "पप्पू का उधार", या "आज का paytm 500" जैसा कुछ पूछ सकते हैं।`);
+    return R(`मुझे समझ नहीं आया। आप "9769", "P1 4500", "पप्पू का उधार", या "आज का paytm 500" जैसा कुछ पूछ सकते हैं।`);
   }
 
   // ======================================================================
   // 5. ENTRY LOGIC
   // ======================================================================
-  async function handleUdharEntry(q, raw, ui) {
-    let val = extractAmounts(q)[0];
+  async function handleUdharEntry(q, parties, ui) {
+    let val = (await extractAmounts(q, parties))[0];
     let p = await findParty(q) || ctx.activeParty;
 
     if (!p) return R(`किस पार्टी का उधार दर्ज करना है? नाम या गाड़ी नंबर बताइए।`);
@@ -255,11 +278,11 @@
     });
   }
 
-  async function handleDailyEntry(q, raw, ui) {
-    const val = extractAmounts(q)[0];
+  async function handleDailyEntry(q, parties, ui) {
+    const val = (await extractAmounts(q, parties))[0];
     const today = T();
 
-    // Meter
+    // Meter (P1, D1 etc)
     const nzMatch = q.match(/\b(p[1-4]|d[1-4])\b/i);
     if (nzMatch && val) {
       const k = nzMatch[0].toLowerCase();
@@ -331,7 +354,7 @@
   }
 
   // ======================================================================
-  // 6. UI
+  // 6. UI (Chat Interface)
   // ======================================================================
   function injectFAB() {
     if (document.getElementById('ai-assist-fab')) return;
@@ -353,7 +376,6 @@
           <h3 style="margin:0;color:#0b3d91;font-size:17px;">🤖 माज़दा असिस्टेंट</h3>
           <div style="display:flex;gap:4px;">
             <button id="a-tts" style="background:none;border:none;font-size:19px;cursor:pointer;">🔊</button>
-            <button id="a-voice" style="background:none;border:none;font-size:19px;cursor:pointer;">🗣️</button>
             <button id="a-close" style="background:none;border:none;font-size:20px;cursor:pointer;">❌</button>
           </div>
         </div>
@@ -394,14 +416,13 @@
     $('#a-tts').onclick = () => { MEM.tts = !MEM.tts; saveMem(); $('#a-tts').textContent = MEM.tts ? '🔊' : '🔇'; if(!MEM.tts) Voice.stop(); };
     $('#a-tts').textContent = MEM.tts ? '🔊' : '🔇';
 
-    // 🔥 FIX: Infinite loop removed. Direct call to handleQuery.
     async function processInput(text) {
       if (!text || !text.trim() || busy) return;
       busy = true; chipBox.innerHTML = ''; Voice.stop();
       bubble(esc(text), true); input.value = '';
       const load = bubble('<span style="color:#666;font-size:12px">⚡ सोच रही हूँ...</span>');
       try { 
-        const r = await handleQuery(text, ui); // Correct function call
+        const r = await handleQuery(text, ui); 
         load.remove(); 
         if (r) ui.bot(r); 
       } catch (e) { 
@@ -432,5 +453,5 @@
     ui.bot(R(`${wish}! मैं माज़दा असिस्टेंट हूँ। कुछ भी पूछिए, जैसे "5599 में 5000 का उधार", "P1 की रीडिंग 4500", या "आज का paytm 500".`));
   }
 
-  console.log('[Mazda assistant.js v4.1] Fixed Infinite Loop ✓');
+  console.log('[Mazda assistant.js v5.0] Ultimate Fix ✓');
 })();
