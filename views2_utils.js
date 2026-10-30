@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Views Utils (Thermal Slip & AI Scanner) */
+/* Mazda Oil Company - Views Utils (Thermal Slip & Fast AI Scanner) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -65,13 +65,11 @@
     };
   };
 
-  /* ======================= AI REGISTER SCANNER (v2) ======================= */
+  /* ======================= FAST AI REGISTER SCANNER ======================= */
   APP.scanRegister = async function (st) {
     const esc = APP.esc;
     const NZ = K.NZ;
     const clean = s => String(s == null ? '' : s).replace(/[\u200b-\u200d\ufeff]/g, '').trim();
-    const nrm = s => clean(s).toLowerCase().replace(/[\s.\-_(),]+/g, '');
-    const nrmVeh = s => clean(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const numOrNull = v => {
       if (v === undefined || v === null) return null;
       const t = String(v).replace(/[,₹\s]/g, '');
@@ -80,77 +78,28 @@
       return isNaN(n) ? null : n;
     };
 
-    const AL_KEY = 'mazda_scan_alias';
-    const alias = (() => { try { const a = JSON.parse(localStorage.getItem(AL_KEY) || '{}'); return { n: a.n || {}, v: a.v || {} }; } catch (e) { return { n: {}, v: {} }; } })();
-    const saveAlias = () => { try { localStorage.setItem(AL_KEY, JSON.stringify(alias)); } catch (e) { } };
-    const nrmHi = s => clean(s).toLowerCase().replace(/[\u093c\u200d\u200c]/g, '').replace(/\u0901/g, '\u0902').replace(/[\s.\-_(),]+/g, '');
-    const sim = (a, b) => {
-      if (!a || !b) return 0;
-      if (a === b) return 1;
-      const m = a.length, n = b.length;
-      let prev = Array.from({ length: n + 1 }, (_, j) => j);
-      for (let i = 1; i <= m; i++) {
-        const cur = [i];
-        for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-        prev = cur;
-      }
-      return 1 - prev[n] / Math.max(m, n);
+    const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
+    const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+    const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { } };
+    const getKey = () => lsGet(KEY_LS);
+    const askKey = () => {
+      const k = prompt('Gemini API key paste karein (aistudio.google.com/app/apikey se):', getKey());
+      if (k === null) return false;
+      lsSet(KEY_LS, k.trim()); lsSet(MODEL_LS, '');
+      return !!k.trim();
     };
-    const digitsOf = s => String(s || '').replace(/\D/g, '');
-    const BASE_PROMPT = `Ye petrol pump ke daily hisab register ki photo hai. Photo padhkar SIRF ek JSON do (koi explanation, koi code-fence, koi extra text nahi). Format:
+    const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
+    
+    // 🔥 OPTIMIZED: Prompt kam kiya, model direct use kiya
+    const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY JSON (no markdown):
 {"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
 "nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
 "openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"kharchaItems":[{"label":"","amount":0}],"malikDiya":0,
 "openStockP":0,"openStockD":0,"tankerP":0,"tankerD":0,"dipP":0,"dipD":0,"note":"",
 "udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
 "jama":[{"party":"","mode":"cash","amount":0}]}
-Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.
-Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath.`;
-    const buildPrompt = parties => BASE_PROMPT +
-      '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano):\n' +
-      parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
+Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as written.`;
 
-    const KEY_LS = 'mazda_gemini_key', MODEL_LS = 'mazda_gemini_model';
-    const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
-    const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { } };
-    const getKey = () => lsGet(KEY_LS);
-    const askKey = () => {
-      const k = prompt('Gemini API key paste karein (aistudio.google.com/app/apikey se). Ye sirf is phone mein save hogi:', getKey());
-      if (k === null) return false;
-      lsSet(KEY_LS, k.trim()); lsSet(MODEL_LS, '');
-      return !!k.trim();
-    };
-    const GBASE = 'https://generativelanguage.googleapis.com/v1beta';
-    const gErr = (code, j) => {
-      const m = (j && j.error && j.error.message) || ('HTTP ' + code);
-      const hint = code === 400 && /api key/i.test(m) ? 'Key galat hai.'
-        : code === 403 ? 'Key ko permission nahi.'
-        : code === 429 ? 'Free limit poori — thodi der baad.'
-        : code === 503 ? 'Gemini busy — dobara try.' : '';
-      return 'Gemini error (' + code + '): ' + m + (hint ? ' ' + hint : '');
-    };
-    const gfetch = async (path, init, key) => {
-      const tries = [
-        () => fetch(GBASE + path, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, { 'x-goog-api-key': key }) })),
-        () => fetch(GBASE + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(key), init)
-      ];
-      let last;
-      for (const t of tries) { try { return await t(); } catch (e) { last = e; } }
-      throw new Error('नेट ब्लॉक: ' + ((last && last.message) || '') + ' — VPN/Private Relay बंद करें');
-    };
-    const listModels = async key => {
-      const r = await gfetch('/models?pageSize=200', {}, key);
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(gErr(r.status, j));
-      const all = (j.models || []).filter(x => (x.supportedGenerationMethods || []).includes('generateContent')).map(x => x.name.replace(/^models\//, ''));
-      const ver = n => { const m = /^gemini-(\d+(?:\.\d+)?)-flash/.exec(n); return m ? parseFloat(m[1]) : 0; };
-      const flash = all.filter(n => ver(n) > 0 && !/image|tts|live|audio|embed|thinking|robotics|computer|exp|8b/.test(n));
-      const rank = n => (/preview/.test(n) ? 0 : /lite/.test(n) ? 1 : 2);
-      flash.sort((a, b) => rank(b) - rank(a) || ver(b) - ver(a));
-      const out = flash.slice(0, 3);
-      if (all.includes('gemini-flash-latest')) out.push('gemini-flash-latest');
-      return out;
-    };
     const toJpegB64 = (file, maxPx, q) => new Promise((res, rej) => {
       const url = URL.createObjectURL(file), img = new Image();
       img.onload = () => {
@@ -163,34 +112,31 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई')); };
       img.src = url;
     });
-    const geminiReadOnce = async (file, maxPx, q) => {
+
+    const geminiRead = async (file) => {
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
-      const b64 = await toJpegB64(file, maxPx, q);
-      let ps = []; try { ps = await APP.getParties(false, true); } catch (e) { }
-      const ask = buildPrompt(ps) + '\n\nAaj ki tareekh ' + ((st && st.date) || APP.todayISO()) + ' hai.';
-      const body = JSON.stringify({ contents: [{ parts: [{ text: ask }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
-      let models = lsGet(MODEL_LS) ? [lsGet(MODEL_LS)] : [], lastErr;
-      const tryModel = async model => {
-        const r = await gfetch('/models/' + model + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, key);
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) { const e = new Error(gErr(r.status, j)); e.status = r.status; throw e; }
-        const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
-        const txt = parts.map(x => x.text || '').join('');
-        if (!txt.trim()) throw new Error('Gemini khaali jawab');
-        return txt;
-      };
-      for (let round = 0; round < 2; round++) {
-        for (const mdl of models) {
-          try { const out = await tryModel(mdl); lsSet(MODEL_LS, mdl); return out; }
-          catch (e) { lastErr = e; if (![404, 429, 500, 503].includes(e.status)) throw e; }
-        }
-        if (round === 0) { lsSet(MODEL_LS, ''); models = await listModels(key); if (!models.length) throw new Error('Model nahi mila'); }
-      }
-      throw lastErr;
-    };
-    const geminiRead = async file => {
-      try { return await geminiReadOnce(file, 1600, 0.88); }
-      catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }
+      // 🔥 Image chhoti kar di (800px) taaki fast upload ho
+      const b64 = await toJpegB64(file, 800, 0.7);
+      
+      const body = JSON.stringify({ contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
+      
+      // 🔥 15 Second Timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const r = await fetch(GBASE + '/models/gemini-1.5-flash:generateContent?key=' + encodeURIComponent(key), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error('Gemini Error: ' + (j.error?.message || 'HTTP ' + r.status));
+      
+      const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+      const txt = parts.map(x => x.text || '').join('');
+      if (!txt.trim()) throw new Error('Gemini khaali jawab');
+      return txt;
     };
 
     const text = await new Promise(resolve => {
@@ -215,7 +161,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
         const f0 = fileEl.files && fileEl.files[0]; if (!f0) return;
         autoBtn.disabled = true; autoBtn.textContent = '⏳ AI पढ़ रहा…';
         try { ta.value = await geminiRead(f0); $('#scan-ok', m).click(); }
-        catch (e) { autoBtn.disabled = false; autoBtn.textContent = '📷 फोटो से भरें'; alert(e.message); }
+        catch (e) { autoBtn.disabled = false; autoBtn.textContent = '📷 फोटो से भरें'; alert(e.name === 'AbortError' ? 'AI Timeout! (Net slow hai)' : e.message); }
       };
       $('#scan-ok', m).onclick = () => { const v = ta.value; m.close(); resolve(v); };
       $('#scan-no', m).onclick = () => { m.close(); resolve(null); };
@@ -277,5 +223,5 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     toast('बॉक्स भर गए ✔ — जाँचकर 💾 सेव करें');
   };
 
-  console.log('[Mazda views2_utils.js] loaded ✓');
+  console.log('[Mazda views2_utils.js] Fast AI loaded ✓');
 })();
