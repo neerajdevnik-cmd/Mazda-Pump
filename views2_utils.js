@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const APP = window.APP;
-  if (!APP || !APP.C || !APP.db) return;
+  if (!APP || !APP.C) return;   // APP.db बाद में बनता है, इसलिए यहाँ जाँचना ग़लत था
   const $ = APP.$, esc = APP.esc, toast = APP.toast;
   const COLS = ['days', 'ledger', 'parties', 'priv_ledger', 'priv_parties', 'gaadi_cash', 'bank_deposits', 'audit', 'workers', 'attendance', 'salary_payments', 'rate_history', 'day_costs', 'day_photos', 'runsheets', 'sm_shifts', 'cash_submissions', 'shop'];
 
@@ -85,22 +85,25 @@
     };
   };
 
-  /* "और" पेज के नीचे बटन — ग़लती हुई तो भी असली पेज नहीं रुकेगा */
+  /* "और" पेज के नीचे बटन — कितनी भी फाइलें "और" पेज बदलें, बटन हर बार लग जाएगा */
   function addBtn() {
-    const main = $('#main'); if (!main || $('#restore-bk-btn') || (APP.isViewer && APP.isViewer())) return;
+    const main = $('#main');
+    if (!main || !APP.S || APP.S.tab !== 'more' || $('#restore-bk-btn')) return;
+    if ((APP.isViewer && APP.isViewer()) || (APP.isSalesman && APP.isSalesman())) return;
     const b = document.createElement('button');
-    b.id = 'restore-bk-btn'; b.type = 'button'; b.className = 'btn o full'; b.style.marginTop = '12px';
+    b.id = 'restore-bk-btn'; b.type = 'button'; b.className = 'btn o full'; b.style.cssText = 'margin-top:12px;width:100%';
     b.textContent = '📤 पुराना बैकअप अपलोड करें';
     b.onclick = () => APP.restoreFromJSON();
     main.appendChild(b);
   }
-  function wrap() {
-    const orig = APP.views.more;
-    APP.views.more = async function () {
-      try { if (orig) await orig.apply(this, arguments); } finally { try { addBtn(); } catch (e) { console.error(e); } }
-    };
+  let tmr = null;
+  function watch() {
+    const main = $('#main');
+    if (!main) return setTimeout(watch, 500);
+    new MutationObserver(() => { clearTimeout(tmr); tmr = setTimeout(() => { try { addBtn(); } catch (e) { console.error(e); } }, 250); }).observe(main, { childList: true });
+    try { addBtn(); } catch (e) { }
   }
-  if (document.readyState === 'complete') wrap(); else window.addEventListener('load', () => setTimeout(wrap, 50));
+  if (document.readyState === 'complete') setTimeout(watch, 300); else window.addEventListener('load', () => setTimeout(watch, 600));
   APP.restoreTools = { revive, plan };
   console.log('[Mazda views2_utils.js] restore ✓');
 })();
