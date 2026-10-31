@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Features Utils (Thermal Slip & Strict Cross-Check AI Scanner) */
+/* Mazda Oil Company - Features Utils (AI Scanner with Photo, API Key & Strict Validation) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -64,24 +64,29 @@
     };
   };
 
-  /* ======================= STRICT CROSS-CHECK AI SCANNER ======================= */
+  /* ======================= STRICT AI SCANNER (Photo & API Key Restored) ======================= */
   const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY a raw JSON object (no markdown, no backticks).
-DO NOT extract these (they are LOCKED): "rateP", "rateD", "openCash", "openStockP", "openStockD", and "nz.*.o" (opening meters).
-ONLY extract: "date" (YYYY-MM-DD), "testing" (default 5), "nz.*.c" (closing meters), "paytm", "swipe", "kharcha", "driverInaam", "chaiKhana", "kharchaItems", "tankerP", "tankerD", "dipP", "dipD", "udhar", "jama".
-Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0,"kharcha":0,"kharchaItems":[],"udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],"jama":[{"party":"","mode":"cash","amount":0}]}`;
+Rules:
+1. "dipP", "dipD" are physical dip readings in CM. They are small numbers (between 0 and 200). DO NOT confuse them with meter readings or sales.
+2. "udhar" and "jama" MUST be extracted from the ledger section. Extract party name, vehicle number (if any), and amount exactly as written.
+3. DO NOT extract "rateP", "rateD", "openCash", "openStockP", "openStockD".
+Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0,"kharcha":0,"kharchaItems":[],"tankerP":0,"tankerD":0,"dipP":0,"dipD":0,"udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],"jama":[{"party":"","mode":"cash","amount":0}]}`;
 
   APP.scanRegister = async function (st) {
     if (!st || st.locked) return toast('यह दिन लॉक है, एंट्री नहीं हो सकती।');
 
     const m = modal(`
       <h3>📷 AI स्कैन (Cross-Check)</h3>
-      <p class="mut" style="font-size:12px;margin-bottom:8px;">नीचे दिए गए प्रॉम्प्ट को कॉपी करके AI (Gemini/ChatGPT) में डालें, फोटो अपलोड करें, और उसका दिया हुआ JSON यहाँ पेस्ट करें।</p>
+      <p class="mut" style="font-size:12px;margin-bottom:8px;">फोटो अपलोड करें या AI (Gemini) से बना JSON यहाँ पेस्ट करें।</p>
       
       <div style="display:flex; gap:6px; margin-bottom:10px;">
-        <button class="btn sm g" id="copy-prompt" style="flex:1; font-weight:bold;">📋 Copy Prompt</button>
+        <button class="btn sm o" id="btn-photo" style="flex:1;">📷 फोटो से स्कैन करें</button>
+        <input type="file" id="scan-file" accept="image/*" style="display:none">
+        <button class="btn sm g" id="copy-prompt" style="flex:1;">📋 Copy Prompt</button>
+        <button class="btn sm w" id="btn-key">🔑 Key</button>
       </div>
 
-      <textarea id="scan-json" rows="7" style="width:100%; font-size:13px; font-family:monospace; border:1px solid #ccc; border-radius:8px; padding:10px;" placeholder='{"date":"2026-10-20","nz":{"p1":{"c":4500}}, "udhar":[{"party":"Pappu", "amount":2000}]}'></textarea>
+      <textarea id="scan-json" rows="6" style="width:100%; font-size:12px; font-family:monospace; border:1px solid #ccc; border-radius:8px; padding:10px;" placeholder='{"date":"2026-10-20","nz":{"p1":{"c":4500}}}'></textarea>
       
       <div class="btns" style="margin-top:12px;">
         <button class="btn o" id="btn-verify" style="width:100%; font-weight:bold;">🔍 Cross-Check & Verify</button>
@@ -89,19 +94,64 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
       </div>
     `);
 
-    // 1. Copy Prompt Button Logic
+    // 1. Copy Prompt
     m.querySelector('#copy-prompt').onclick = async () => {
       try {
         await navigator.clipboard.writeText(BASE_PROMPT);
-        toast('✅ प्रॉम्प्ट कॉपी हो गया! अब AI में पेस्ट करें।');
+        toast('✅ प्रॉम्प्ट कॉपी हो गया!');
+      } catch (e) { toast('❌ कॉपी नहीं हुआ'); }
+    };
+
+    // 2. API Key Manager
+    m.querySelector('#btn-key').onclick = () => {
+      if (APP.AI && APP.AI.manageKeys) APP.AI.manageKeys();
+      else toast('AI मॉड्यूल लोड नहीं है।');
+    };
+
+    // 3. Photo Upload Logic
+    const fileEl = m.querySelector('#scan-file');
+    m.querySelector('#btn-photo').onclick = () => {
+      if (!APP.AI || !APP.AI.hasKey()) { 
+        toast('पहले 🔑 Gemini key जोड़ें'); 
+        return APP.AI.manageKeys(); 
+      }
+      fileEl.click();
+    };
+
+    fileEl.onchange = async () => {
+      const f = fileEl.files && fileEl.files[0]; if (!f) return;
+      const btn = m.querySelector('#btn-photo');
+      btn.disabled = true; btn.textContent = '⏳ AI पढ़ रहा...';
+      
+      try {
+        const b64 = await new Promise((res, rej) => {
+          const url = URL.createObjectURL(f), img = new Image();
+          img.onload = () => {
+            const sc = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight));
+            const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+            res(cv.toDataURL('image/jpeg', 0.7).split(',')[1]);
+          };
+          img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई')); };
+          img.src = url;
+        });
+
+        const payload = { contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0 } };
+        const txt = await APP.AI.ask(payload, { timeout: 45000 });
+        
+        m.querySelector('#scan-json').value = txt;
+        btn.disabled = false; btn.textContent = '📷 फोटो से स्कैन करें';
+        toast('✅ AI ने डेटा पढ़ लिया, अब Verify दबाएं');
       } catch (e) {
-        toast('❌ कॉपी नहीं हुआ, टेक्स्ट को सेलेक्ट करके कॉपी करें');
+        btn.disabled = false; btn.textContent = '📷 फोटो से स्कैन करें';
+        toast('❌ AI नहीं पढ़ पाया: ' + e.message);
       }
     };
 
     m.querySelector('#btn-cancel').onclick = () => m.close();
 
-    // 2. Verify Button Logic
+    // 4. Verify Button Logic
     m.querySelector('#btn-verify').onclick = async () => {
       const raw = m.querySelector('#scan-json').value.trim();
       if (!raw) return toast('पहले JSON पेस्ट करें');
@@ -116,9 +166,8 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
         return toast('❌ गलत JSON फॉर्मेट! कृपया सही JSON पेस्ट करें।');
       }
 
-      m.close(); // Close paste modal
+      m.close();
       
-      // Start Verification Process
       const date = json.date || st.date;
       if (date !== st.date) return toast('⚠️ AI ने दूसरी तारीख का डेटा दिया है। कृपया जांचें।');
 
@@ -126,11 +175,29 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
       const toSave = { nz: {}, kharchaItems: [], udhar: [], jama: [] };
       let hasError = false;
 
-      // A. Check Paytm / Swipe
+      // A. Check DIP (Validation)
+      if (json.dipP != null) {
+         if (num(json.dipP) > 250) {
+            html.push(`❌ <b>पेट्रोल DIP गलत है:</b> ${json.dipP} (यह 250 से कम होना चाहिए)`);
+            hasError = true;
+         } else {
+            toSave.dipP = num(json.dipP); html.push(`✅ <b>पेट्रोल DIP:</b> ${toSave.dipP}`);
+         }
+      }
+      if (json.dipD != null) {
+         if (num(json.dipD) > 250) {
+            html.push(`❌ <b>डीज़ल DIP गलत है:</b> ${json.dipD} (यह 250 से कम होना चाहिए)`);
+            hasError = true;
+         } else {
+            toSave.dipD = num(json.dipD); html.push(`✅ <b>डीज़ल DIP:</b> ${toSave.dipD}`);
+         }
+      }
+
+      // B. Check Paytm / Swipe
       if (json.paytm != null) { toSave.paytm = num(json.paytm); html.push(`✅ <b>Paytm:</b> ${money(toSave.paytm)}`); }
       if (json.swipe != null) { toSave.swipe = num(json.swipe); html.push(`✅ <b>Swipe:</b> ${money(toSave.swipe)}`); }
 
-      // B. Check Nozzles (Locked: Opening)
+      // C. Check Nozzles
       if (json.nz) {
         Object.keys(json.nz).forEach(k => {
           if (!['p1','p2','p3','p4','d1','d2','d3','d4'].includes(k)) return;
@@ -148,10 +215,10 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
         });
       }
 
-      // C. Check Expenses
+      // D. Check Expenses
       if (json.kharcha) { toSave.kharcha = num(json.kharcha); html.push(`✅ <b>DG खर्चा:</b> ${money(toSave.kharcha)}`); }
       if (json.driverInaam) { toSave.driverInaam = num(json.driverInaam); html.push(`✅ <b>ड्राइवर इनाम:</b> ${money(toSave.driverInaam)}`); }
-      if (json.chaiKhana) { toSave.chaiKhana = num(json.chaiKhana); html.push(`✅ <b>चाय-खाना:</b> ${money(toSave.chaiKhana)}`); }
+      if (json.chaiKhana) { toSave.chaiKhana = num(json.chaiKhana); html.push(`✅ <b>चाय-खाना:</b> ${money(json.chaiKhana)}`); }
       
       if (json.kharchaItems && Array.isArray(json.kharchaItems)) {
         json.kharchaItems.forEach(x => {
@@ -162,8 +229,8 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
         });
       }
 
-      // D. Check Udhar / Jama (Double Entry & Party ID Resolution)
-      const parties = await APP.getParties(false, true); // Load current parties
+      // E. Check Udhar / Jama
+      const parties = await APP.getParties(false, true); 
       const ledgerSnap = await db().collection('ledger').where('date', '==', date).get();
       const existingL = ledgerSnap.docs.map(d => d.data());
 
@@ -189,13 +256,13 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
           
           u.partyId = resolveParty(u.party);
           if (!u.partyId) {
-             html.push(`❌ <b>पार्टी नहीं मिली:</b> ${esc(u.party)} (कृपया डेटाबेस में चेक करें)`);
+             html.push(`❌ <b>पार्टी नहीं मिली:</b> ${esc(u.party)} (डेटाबेस में नहीं है)`);
              hasError = true;
              return;
           }
 
           if (isDuplicate(u, 'udhar')) {
-            html.push(`⚠️ <b>डबल एंट्री स्किप:</b> ${esc(u.party)} - ₹${amt} (पहले से है)`);
+            html.push(`⚠️ <b>डबल एंट्री स्किप:</b> ${esc(u.party)} - ₹${amt}`);
           } else {
             toSave.udhar.push(u);
             html.push(`✅ <b>उधार:</b> ${esc(u.party)} - ₹${amt}`);
@@ -210,13 +277,13 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
           
           j.partyId = resolveParty(j.party);
           if (!j.partyId) {
-             html.push(`❌ <b>पार्टी नहीं मिली:</b> ${esc(j.party)} (कृपया डेटाबेस में चेक करें)`);
+             html.push(`❌ <b>पार्टी नहीं मिली:</b> ${esc(j.party)} (डेटाबेस में नहीं है)`);
              hasError = true;
              return;
           }
 
           if (isDuplicate(j, 'jama')) {
-            html.push(`⚠️ <b>डबल एंट्री स्किप:</b> ${esc(j.party)} - ₹${amt} (पहले से है)`);
+            html.push(`⚠️ <b>डबल एंट्री स्किप:</b> ${esc(j.party)} - ₹${amt}`);
           } else {
             toSave.jama.push(j);
             html.push(`✅ <b>जमा:</b> ${esc(j.party)} - ₹${amt}`);
@@ -232,7 +299,7 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
         </div>
         ${hasError ? '<div class="err" style="margin-bottom:10px;">❌ ऊपर कुछ गलतियां हैं, कृपया जांचें।</div>' : ''}
         <div class="btns">
-          <button class="btn g" id="final-save" style="width:100%; font-weight:bold;" ${hasError ? 'disabled style="opacity:0.5"' : ''}>✅ सही है, डेटाबेस में सेव करें</button>
+          <button class="btn g" id="final-save" style="width:100%; font-weight:bold;" ${hasError ? 'disabled style="opacity:0.5"' : ''}>✅ सही है, सेव करें</button>
           <button class="btn w" id="prev-cancel" style="width:100%; margin-top:8px;">रद्द करें</button>
         </div>
       `);
@@ -248,11 +315,9 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
             const b = db().batch();
             const dayRef = db().collection('days').doc(date);
             
-            // 1. Update Day fields safely
             const dayUpdate = { ...toSave };
             delete dayUpdate.udhar; delete dayUpdate.jama; delete dayUpdate.kharchaItems;
             
-            // Handle Kharcha Items append
             if (toSave.kharchaItems.length) {
               const currentItems = st.d.kharchaItems || [];
               dayUpdate.kharchaItems = currentItems.concat(toSave.kharchaItems);
@@ -260,7 +325,6 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
             
             b.update(dayRef, dayUpdate);
 
-            // 2. Add Ledger Entries
             const addLedger = (entry, type) => {
               const amt = num(entry.amount);
               const lRef = db().collection('ledger').doc();
@@ -290,19 +354,19 @@ Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0
             await b.commit();
             toast('✅ डेटा सफलतापूर्वक सेव हो गया!');
             preview.close();
-            APP.S.parties.pub = null; // Clear cache
+            APP.S.parties.pub = null; 
             if (APP.recalc) APP.recalc();
-            APP.dayView(date); // Reload day
+            APP.dayView(date); 
 
           } catch (e) {
             toast('❌ सेव नहीं हो पाया: ' + e.message);
             preview.querySelector('#final-save').disabled = false;
-            preview.querySelector('#final-save').textContent = '✅ सही है, डेटाबेस में सेव करें';
+            preview.querySelector('#final-save').textContent = '✅ सही है, सेव करें';
           }
         };
       }
     };
   };
 
-  console.log('[Mazda views2_utils.js] Strict Cross-Check + Syntax Fixed ✓');
+  console.log('[Mazda views2_utils.js] Restored AI Photo Scan + Strict DIP Check ✓');
 })();
