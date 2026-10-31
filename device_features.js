@@ -1,8 +1,9 @@
 /* Mazda Oil Company - Hardware & Permissions (Camera, GPS, Notifications) */
 (function () {
   'use strict';
+  /* index.html में ये फाइल app_core.js से पहले लोड होती है, तब window.APP बना ही नहीं होता — इसलिए पूरी फाइल बेकार चली जाती थी। अब APP बनने तक रुकती है। */
+  function start() {
   const APP = window.APP;
-  if (!APP) return;
 
   // 1. NOTIFICATIONS SETUP
   APP.initNotifications = async function () {
@@ -45,6 +46,18 @@
     const dp = (lat2-lat1) * Math.PI/180, dl = (lon2-lon1) * Math.PI/180;
     const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  // 3b. सेल्समैन की लोकेशन जाँच (पहले ये function कहीं बना ही नहीं था, इसलिए सेल्समैन की दोनों स्क्रीन खुलते ही टूट जाती थीं)
+  // पंप की जगह रोकने के लिए config.js के pump में lat, lng (और radius मीटर में) डालें। न डालें तो कोई रोक नहीं।
+  APP.checkSalesmanLocation = async function () {
+    const p = (APP.C && APP.C.pump) || {};
+    const lat = Number(p.lat), lng = Number(p.lng), radius = Number(p.radius) || 300;
+    if (!lat || !lng) return { ok: true };
+    const loc = await APP.getLocation();
+    if (!loc) return { ok: false, err: 'लोकेशन नहीं मिली। फ़ोन की सेटिंग में इस ऐप के लिए Location चालू करें और दोबारा खोलें।' };
+    const dist = Math.round(APP.getDistance(lat, lng, loc.lat, loc.lng));
+    return { ok: dist <= radius, dist, radius };
   };
 
   // 4. VIBRATION
@@ -106,4 +119,6 @@
       APP.initNotifications();
     }
   });
+  }
+  if (window.APP) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
