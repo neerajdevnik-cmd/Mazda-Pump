@@ -1,7 +1,7 @@
-const V = 'mazda-v86';
+const V = 'mazda-v88';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
-  'device_features.js', 'features2.js', 'assistant.js',
+  'device_features.js', 'features2.js', 'assistant.js', 'assistant_brain.js',
   'salesman.js', 'shop.js', 'runsheet.js', 'monthly.js',
   'shifts.js', 'extras.js', 'dayreport.js',
   'tanker_report.js', 'analytics.js', 'margins.js',
