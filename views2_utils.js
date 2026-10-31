@@ -1,4 +1,4 @@
-/* Mazda Oil Company - Features Utils (Ultimate AI Scanner + Strict Cross-Check) */
+/* Mazda Oil Company - Features Utils (Safe Backup Restore + AI Scanner Fix) */
 (function () {
   'use strict';
   const APP = window.APP || {};
@@ -64,48 +64,104 @@
     };
   };
 
-  /* ======================= 2. AI REGISTER SCANNER (Ultimate) ======================= */
+  /* ======================= 2. SAFE BACKUP RESTORE ======================= */
+  APP.restoreFromJSON = function () {
+    const m = modal(`
+      <h3>📤 पुराना बैकअप अपलोड करें</h3>
+      <p class="mut" style="font-size:12px;margin-bottom:10px;">अगर आपका डेटा गलती से खराब हो गया है, तो अपनी पुरानी JSON बैकअप फाइल यहाँ अपलोड करें। यह सुरक्षित तरीके से डेटा वापस जोड़ देगा।</p>
+      
+      <div style="text-align:center; margin: 20px 0;">
+        <input type="file" id="bk-file" accept=".json" style="display:none;">
+        <button class="btn o full" id="bk-btn" style="padding:15px;font-size:16px;">📁 JSON बैकअप फाइल चुनें</button>
+      </div>
 
-  // Helper to format prompt with party names
+      <div id="bk-progress" class="mut" style="text-align:center;font-weight:bold;color:#0b3d91;display:none;">⏳ रिस्टोर हो रहा है, कृपया प्रतीक्षा करें...</div>
+
+      <div class="btns" style="margin-top:12px;">
+        <button class="btn w full" id="bk-cancel">रद्द करें</button>
+      </div>
+    `);
+
+    const fileEl = m.querySelector('#bk-file');
+    m.querySelector('#bk-cancel').onclick = () => m.close();
+    m.querySelector('#bk-btn').onclick = () => fileEl.click();
+
+    fileEl.onchange = async () => {
+      const f = fileEl.files[0]; if (!f) return;
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data || typeof data !== 'object') throw new Error("गलत फाइल फॉर्मेट");
+          
+          m.querySelector('#bk-btn').style.display = 'none';
+          m.querySelector('#bk-progress').style.display = 'block';
+          m.querySelector('#bk-cancel').disabled = true;
+
+          // Firestore se timestamp convert karne ka function
+          const convertTS = (obj) => {
+            for (let k in obj) {
+              if (obj[k] && typeof obj[k] === 'object' && obj[k].seconds !== undefined && obj[k].nanoseconds !== undefined) {
+                obj[k] = new firebase.firestore.Timestamp(obj[k].seconds, obj[k].nanoseconds);
+              }
+            }
+            return obj;
+          };
+
+          const db = APP.db;
+          const cols = Object.keys(data).filter(k => Array.isArray(data[k]) && k !== '_meta');
+          
+          for (const col of cols) {
+            const items = data[col];
+            if (!items.length) continue;
+            
+            // 400 items per batch
+            for (let i = 0; i < items.length; i += 400) {
+              const batch = db.batch();
+              const chunk = items.slice(i, i + 400);
+              chunk.forEach(item => {
+                const docId = item.id || db.collection(col).doc().id;
+                const docData = convertTS({ ...item });
+                delete docData.id;
+                // merge: true ka matlab purana data nahi udega
+                batch.set(db.collection(col).doc(docId), docData, { merge: true });
+              });
+              await batch.commit();
+            }
+          }
+
+          m.querySelector('#bk-progress').textContent = "✅ डेटा सफलतापूर्वक रिस्टोर हो गया!";
+          setTimeout(() => { m.close(); window.location.reload(); }, 1500);
+
+        } catch (err) {
+          toast('❌ रिस्टोर फेल: ' + err.message);
+          m.querySelector('#bk-btn').style.display = 'block';
+          m.querySelector('#bk-progress').style.display = 'none';
+          m.querySelector('#bk-cancel').disabled = false;
+        }
+      };
+      reader.readAsText(f);
+    };
+  };
+
+  /* ======================= 3. AI SCANNER (SAFE FIX) ======================= */
   function buildAIPrompt(parties) {
     const partyList = parties.map(p => p.name).join(', ');
     return `You are an expert data extractor for an Indian Petrol Pump. Read this register photo carefully.
-    
-    STRICT RULES:
-    1. "dipP" (Petrol Dip) and "dipD" (Diesel Dip) are in CM (centimeters). They are ALWAYS between 0 and 250. If you see a number like 7605 next to DIP, DO NOT extract it as dip, it is probably liters or sales. Find the actual dip (0-200).
-    2. DO NOT extract locked fields: "rateP", "rateD", "openCash", "openStockP", "openStockD". They are already in the system.
-    3. For "udhar" (Credit) and "jama" (Cash Received), extract the party name exactly as written. Try to match it with this list of existing parties: [${partyList}]. If exact match not found, write the name as is.
-    4. Extract vehicle numbers exactly (e.g., UK01TA1234 or 4 digits like 4488).
-    5. Extract kharcha (expenses) items correctly.
-    6. Return ONLY a JSON object. No markdown, no extra text.
+STRICT RULES:
+1. "dipP" and "dipD" are in CM (0 to 250). If you see 7605, it is NOT a dip. Find the actual dip (0-200).
+2. DO NOT extract locked fields: "rateP", "rateD", "openCash", "openStockP", "openStockD".
+3. For "udhar" and "jama", match party names with this list: [${partyList}].
+4. Return ONLY JSON.
 
-    JSON FORMAT:
-    {
-      "date": "YYYY-MM-DD",
-      "testing": 5,
-      "nz": { "p1": {"c": 0}, "p2": {"c": 0} },
-      "paytm": 0, "swipe": 0, "kharcha": 0, "driverInaam": 0, "chaiKhana": 0,
-      "kharchaItems": [{"label":"", "amount":0}],
-      "tankerP": 0, "tankerD": 0, "dipP": 0, "dipD": 0,
-      "udhar": [{"party":"", "vehicle":"", "fuel":"diesel", "litre":0, "amount":0}],
-      "jama": [{"party":"", "mode":"cash", "amount":0}]
-    }`;
+FORMAT:
+{"date": "YYYY-MM-DD", "testing": 5, "nz": {"p1": {"c": 0}}, "paytm": 0, "swipe": 0, "kharcha": 0, "dipP": 0, "dipD": 0, "udhar": [{"party":"", "vehicle":"", "amount":0}], "jama": [{"party":"", "amount":0}]}`;
   }
 
-  // UI to Review and Fix AI Data
   function showReviewScreen(st, parties, json) {
     const date = st.date;
-    const html = [];
     
-    // Normalize Data
-    const toSave = {
-      nz: {}, kharchaItems: [], udhar: [], jama: [],
-      paytm: num(json.paytm), swipe: num(json.swipe), kharcha: num(json.kharcha), 
-      driverInaam: num(json.driverInaam), chaiKhana: num(json.chaiKhana),
-      dipP: num(json.dipP), dipD: num(json.dipD), tankerP: num(json.tankerP), tankerD: num(json.tankerD)
-    };
-
-    // Meter Validation
     let nzHtml = '';
     if (json.nz) {
       Object.keys(json.nz).forEach(k => {
@@ -113,51 +169,32 @@
         const c = num(json.nz[k].c);
         const o = num(st.d.nz && st.d.nz[k] ? st.d.nz[k].o : 0);
         if (c > 0) {
-          let err = '';
-          if (c < o) { err = `<span style="color:red;font-size:11px;">⚠️ क्लोजिंग ओपनिंग (${o}) से कम है</span>`; }
+          let err = (c < o) ? `<span style="color:red;font-size:11px;">⚠️ क्लोजिंग कम है</span>` : '';
           nzHtml += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;">
             <b>${k.toUpperCase()}</b> 
-            <input type="number" id="rv-nz-${k}" value="${c}" style="width:100px;padding:4px;text-align:right;">
+            <input type="number" id="rv-nz-${k}" value="${c}" style="width:80px;padding:4px;text-align:right;">
             ${err}
           </div>`;
-          toSave.nz[k] = { c: c };
         }
       });
     }
 
-    // Dip Validation
-    let dipErrP = (toSave.dipP > 250) ? `<span style="color:red;font-size:11px;">⚠️ गलत DIP (250 से बड़ा)</span>` : '';
-    let dipErrD = (toSave.dipD > 250) ? `<span style="color:red;font-size:11px;">⚠️ गलत DIP (250 से बड़ा)</span>` : '';
-    const dipHtml = `
-      <div style="display:flex;justify-content:space-between;padding:4px 0;">
-        <b>पेट्रोल DIP (cm)</b> <input type="number" id="rv-dipP" value="${toSave.dipP || ''}" style="width:80px;padding:4px;text-align:right;"> ${dipErrP}
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:4px 0;">
-        <b>डीज़ल DIP (cm)</b> <input type="number" id="rv-dipD" value="${toSave.dipD || ''}" style="width:80px;padding:4px;text-align:right;"> ${dipErrD}
-      </div>`;
-
-    // Ledger (Udhar/Jama) Fix UI
     const renderLedgerItem = (item, type, idx) => {
-      // Find closest party match
       let matchedId = '';
       if (item.party) {
         const found = parties.find(p => p.name.toLowerCase().includes(item.party.toLowerCase()) || item.party.toLowerCase().includes(p.name.toLowerCase()));
         if (found) matchedId = found.id;
       }
-
       const options = `<option value="">-- चुनें --</option>` + parties.map(p => `<option value="${p.id}" ${p.id === matchedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
       
       return `
-        <div style="border:1px solid #dde2ec;border-radius:8px;padding:8px;margin-bottom:6px;background:#fbfcff;" id="rv-ldg-${type}-${idx}">
+        <div style="border:1px solid #dde2ec;border-radius:8px;padding:8px;margin-bottom:6px;background:#fbfcff;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-weight:bold;color:${type === 'udhar' ? '#b91c1c' : '#15803d'};">${type === 'udhar' ? '🔴 उधार' : '🟢 जमा'}</span>
             <input type="number" id="rv-amt-${type}-${idx}" value="${item.amount}" style="width:80px;padding:4px;font-weight:bold;text-align:right;">
           </div>
           <select id="rv-party-${type}-${idx}" style="width:100%;padding:4px;margin-bottom:4px;font-size:12px;">${options}</select>
-          <div style="display:flex;gap:4px;">
-            <input type="text" id="rv-veh-${type}-${idx}" value="${item.vehicle || ''}" placeholder="गाड़ी नंबर" style="flex:1;padding:4px;font-size:12px;text-transform:uppercase;">
-            ${type === 'udhar' ? `<input type="number" id="rv-lit-${type}-${idx}" value="${item.litre || ''}" placeholder="लीटर" style="width:60px;padding:4px;font-size:12px;">` : ''}
-          </div>
+          <input type="text" id="rv-veh-${type}-${idx}" value="${item.vehicle || ''}" placeholder="गाड़ी नंबर" style="width:100%;padding:4px;font-size:12px;text-transform:uppercase;">
         </div>
       `;
     };
@@ -165,69 +202,62 @@
     let udharHtml = (json.udhar || []).map((u, i) => renderLedgerItem(u, 'udhar', i)).join('');
     let jamaHtml = (json.jama || []).map((j, i) => renderLedgerItem(j, 'jama', i)).join('');
 
-    // Build Modal
     const m = modal(`
       <h3>🔍 क्रॉस-चेक और सुधार</h3>
-      <div class="mut" style="font-size:12px;margin-bottom:8px;">AI ने जो पढ़ा है, उसे यहाँ सुधारें। सब सही होने पर ही 'सेव' दबाएं।</div>
-      
       <div style="max-height:60vh;overflow-y:auto;padding-right:4px;">
-        
         <div class="card" style="padding:10px;margin-bottom:10px;">
-          <h4 style="margin:0 0 6px;font-size:14px;color:#0b3d91;">⛽ मीटर रीडिंग (क्लोजिंग)</h4>
+          <h4 style="margin:0 0 6px;font-size:14px;color:#0b3d91;">⛽ मीटर रीडिंग</h4>
           ${nzHtml || '<div class="mut">कोई मीटर रीडिंग नहीं मिली</div>'}
         </div>
-
         <div class="card" style="padding:10px;margin-bottom:10px;">
-          <h4 style="margin:0 0 6px;font-size:14px;color:#0b3d91;">🛢️ टैंक DIP (cm)</h4>
-          ${dipHtml}
-        </div>
-
-        <div class="card" style="padding:10px;margin-bottom:10px;">
-          <h4 style="margin:0 0 6px;font-size:14px;color:#0b3d91;">💸 पेमेंट और खर्चे</h4>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <div><label style="font-size:11px;">Paytm</label><input type="number" id="rv-paytm" value="${toSave.paytm || ''}" style="width:100%;padding:4px;"></div>
-            <div><label style="font-size:11px;">Swipe</label><input type="number" id="rv-swipe" value="${toSave.swipe || ''}" style="width:100%;padding:4px;"></div>
-            <div><label style="font-size:11px;">DG खर्चा</label><input type="number" id="rv-kharcha" value="${toSave.kharcha || ''}" style="width:100%;padding:4px;"></div>
-            <div><label style="font-size:11px;">चाय-खाना</label><input type="number" id="rv-chai" value="${toSave.chaiKhana || ''}" style="width:100%;padding:4px;"></div>
+          <h4 style="margin:0 0 6px;font-size:14px;color:#0b3d91;">🛢️ टैंक DIP</h4>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;">
+            <b>पेट्रोल DIP</b> <input type="number" id="rv-dipP" value="${json.dipP || ''}" style="width:80px;padding:4px;">
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;">
+            <b>डीज़ल DIP</b> <input type="number" id="rv-dipD" value="${json.dipD || ''}" style="width:80px;padding:4px;">
           </div>
         </div>
-
         <div class="card" style="padding:10px;margin-bottom:10px;">
-          <h4 style="margin:0 0 6px;font-size:14px;color:#b91c1c;">📒 उधार एंट्री</h4>
-          ${udharHtml || '<div class="mut">कोई उधार नहीं मिला</div>'}
+          <h4 style="margin:0 0 6px;font-size:14px;color:#b91c1c;">📒 उधार</h4>
+          ${udharHtml || '<div class="mut">कोई उधार नहीं</div>'}
         </div>
-
         <div class="card" style="padding:10px;margin-bottom:10px;">
-          <h4 style="margin:0 0 6px;font-size:14px;color:#15803d;">📒 जमा एंट्री</h4>
-          ${jamaHtml || '<div class="mut">कोई जमा नहीं मिला</div>'}
+          <h4 style="margin:0 0 6px;font-size:14px;color:#15803d;">📒 जमा</h4>
+          ${jamaHtml || '<div class="mut">कोई जमा नहीं</div>'}
         </div>
-
       </div>
-
       <div class="btns" style="margin-top:12px;position:sticky;bottom:0;background:#fff;padding-top:10px;border-top:1px solid #eee;">
-        <button class="btn g full" id="rv-save" style="font-size:16px;">✅ सही है, सेव करें</button>
-        <button class="btn w full" id="rv-cancel" style="margin-top:6px;">रद्द करें</button>
+        <button class="btn g full" id="rv-save">✅ सही है, सेव करें</button>
+        <button class="btn w full" id="rv-cancel">रद्द करें</button>
       </div>
     `);
 
     $('#rv-cancel', m).onclick = () => m.close();
 
     $('#rv-save', m).onclick = async () => {
-      // 1. Collect all edited values
-      const finalNz = {};
-      Object.keys(toSave.nz).forEach(k => { finalNz[k] = { c: num($(`#rv-nz-${k}`, m).value) }; });
+      // 🚨 IMPORTANT: Dot Notation use karo, object spread mat karo.
+      const dayUpdate = {};
       
-      const finalPaytm = num($('#rv-paytm', m).value);
-      const finalSwipe = num($('#rv-swipe', m).value);
-      const finalKharcha = num($('#rv-kharcha', m).value);
-      const finalChai = num($('#rv-chai', m).value);
+      // 1. Safe Nozzle Update (Never touch 'o' / opening)
+      Object.keys(json.nz || {}).forEach(k => {
+        if (!['p1','p2','p3','p4','d1','d2','d3','d4'].includes(k)) return;
+        const val = num($(`#rv-nz-${k}`, m).value);
+        if (val > 0) dayUpdate[`nz.${k}.c`] = val;
+      });
 
+      // 2. Safe DIP Update
+      const dp = num($('#rv-dipP', m).value);
+      const dd = num($('#rv-dipD', m).value);
+      if (dp > 0) dayUpdate['dipP'] = dp;
+      if (dd > 0) dayUpdate['dipD'] = dd;
+
+      // 3. Collect Ledger
       const finalUdhar = (json.udhar || []).map((u, i) => ({
         partyId: $(`#rv-party-udhar-${i}`, m).value,
         party: $(`#rv-party-udhar-${i}`, m).options[$(`#rv-party-udhar-${i}`, m).selectedIndex].text,
         amount: num($(`#rv-amt-udhar-${i}`, m).value),
-        vehicle: $(`#rv-veh-udhar-${i}`, m).value.trim().toUpperCase(),
-        litre: num($(`#rv-lit-udhar-${i}`, m).value)
+        vehicle: $(`#rv-veh-udhar-${i}`, m).value.trim().toUpperCase()
       })).filter(u => u.partyId && u.amount > 0);
 
       const finalJama = (json.jama || []).map((j, i) => ({
@@ -236,52 +266,34 @@
         amount: num($(`#rv-amt-jama-${i}`, m).value)
       })).filter(j => j.partyId && j.amount > 0);
 
-      // 2. Validation
-      if (Object.values(finalNz).some(n => n.c <= 0)) return toast('कृपया सभी मीटर क्लोजिंग सही भरें');
-      if (finalUdhar.some(u => !u.partyId)) return toast('कृपया सभी उधार की पार्टी चुनें');
-
       $('#rv-save', m).disabled = true;
       $('#rv-save', m).textContent = '⏳ सेव हो रहा है...';
 
       try {
         const b = db().batch();
-        const dayRef = db().collection('days').doc(date);
         
-        // Save Day fields
-        b.update(dayRef, {
-          ...finalNz, // Object spread for nz.p1.c etc.
-          'nz.p1.c': finalNz.p1 ? finalNz.p1.c : 0,
-          'nz.p2.c': finalNz.p2 ? finalNz.p2.c : 0,
-          'nz.p3.c': finalNz.p3 ? finalNz.p3.c : 0,
-          'nz.p4.c': finalNz.p4 ? finalNz.p4.c : 0,
-          'nz.d1.c': finalNz.d1 ? finalNz.d1.c : 0,
-          'nz.d2.c': finalNz.d2 ? finalNz.d2.c : 0,
-          'nz.d3.c': finalNz.d3 ? finalNz.d3.c : 0,
-          'nz.d4.c': finalNz.d4 ? finalNz.d4.c : 0,
-          dipP: num($('#rv-dipP', m).value), dipD: num($('#rv-dipD', m).value),
-          paytm: finalPaytm, swipe: finalSwipe, kharcha: finalKharcha, chaiKhana: finalChai
-        });
+        // Update Day (Safe)
+        if (Object.keys(dayUpdate).length > 0) {
+          b.update(db().collection('days').doc(date), dayUpdate);
+        }
 
-        // Save Ledger Entries
+        // Add Ledger Entries
         const addLedger = (entry, type) => {
-          const amt = entry.amount;
           const lRef = db().collection('ledger').doc();
           b.set(lRef, {
-            partyId: entry.partyId,
-            partyName: entry.party,
-            date: date, time: APP.nowTime ? APP.nowTime() : '12:00',
-            kind: type, amount: amt, vehicle: entry.vehicle || '', fuel: entry.fuel || '',
-            rate: 0, litre: entry.litre || 0, note: 'AI Scan Entry',
+            partyId: entry.partyId, partyName: entry.party, date: date, time: APP.nowTime ? APP.nowTime() : '12:00',
+            kind: type, amount: entry.amount, vehicle: entry.vehicle || '', fuel: '',
+            rate: 0, litre: 0, note: 'AI Scan Entry',
             by: APP.S.user ? APP.S.user.email : 'AI', at: APP.FV.serverTimestamp()
           });
-          b.update(db().collection('parties').doc(entry.partyId), { bal: APP.FV.increment(type === 'udhar' ? amt : -amt) });
+          b.update(db().collection('parties').doc(entry.partyId), { bal: APP.FV.increment(type === 'udhar' ? entry.amount : -entry.amount) });
         };
 
         finalUdhar.forEach(u => addLedger(u, 'udhar'));
         finalJama.forEach(j => addLedger(j, 'jama'));
 
         await b.commit();
-        toast('✅ डेटा सफलतापूर्वक सेव हो गया!');
+        toast('✅ डेटा सेव हो गया!');
         m.close();
         APP.S.parties.pub = null; if (APP.recalc) APP.recalc();
         APP.dayView(date); 
@@ -289,53 +301,47 @@
       } catch (e) {
         toast('❌ सेव नहीं हो पाया: ' + e.message);
         $('#rv-save', m).disabled = false;
+        $('#rv-save', m).textContent = '✅ सही है, सेव करें';
       }
     };
   }
 
   APP.scanRegister = async function (st) {
-    if (!st || st.locked) return toast('यह दिन लॉक है, एंट्री नहीं हो सकती।');
+    if (!st || st.locked) return toast('यह दिन लॉक है');
     let parties = []; try { parties = await APP.getParties(false, true); } catch (e) {}
     
-    const BASE_PROMPT = buildAIPrompt(parties);
     const m = modal(`
       <h3>📷 AI रजिस्टर स्कैन</h3>
-      <p class="mut" style="font-size:12px;margin-bottom:8px;">फोटो अपलोड करें या AI (Gemini) से बना JSON यहाँ पेस्ट करें।</p>
-      
       <div style="display:flex; gap:6px; margin-bottom:10px;">
-        <button class="btn sm o" id="btn-photo" style="flex:1;">📷 फोटो से स्कैन</button>
+        <button class="btn sm o" id="btn-photo" style="flex:1;">📷 फोटो स्कैन</button>
         <input type="file" id="scan-file" accept="image/*" style="display:none">
         <button class="btn sm g" id="copy-prompt" style="flex:1;">📋 Copy Prompt</button>
         <button class="btn sm w" id="btn-key">🔑 Key</button>
       </div>
-
       <textarea id="scan-json" rows="6" style="width:100%; font-size:12px; font-family:monospace; border:1px solid #ccc; border-radius:8px; padding:10px;" placeholder='{"date":"2026-10-20","nz":{"p1":{"c":4500}}}'></textarea>
-      
       <div class="btns" style="margin-top:12px;">
-        <button class="btn o" id="btn-verify" style="width:100%; font-weight:bold;">🔍 Cross-Check & Verify</button>
+        <button class="btn o" id="btn-verify" style="width:100%; font-weight:bold;">🔍 Cross-Check</button>
         <button class="btn w" id="btn-cancel" style="width:100%; margin-top:8px;">रद्द करें</button>
       </div>
     `);
 
     m.querySelector('#copy-prompt').onclick = async () => {
-      try { await navigator.clipboard.writeText(BASE_PROMPT); toast('✅ प्रॉम्प्ट कॉपी हो गया!'); } 
+      try { await navigator.clipboard.writeText(buildAIPrompt(parties)); toast('✅ कॉपी हो गया!'); } 
       catch (e) { toast('❌ कॉपी नहीं हुआ'); }
     };
 
-    m.querySelector('#btn-key').onclick = () => {
-      if (APP.AI && APP.AI.manageKeys) APP.AI.manageKeys();
-    };
+    m.querySelector('#btn-key').onclick = () => { if (APP.AI && APP.AI.manageKeys) APP.AI.manageKeys(); };
 
     const fileEl = m.querySelector('#scan-file');
     m.querySelector('#btn-photo').onclick = () => {
-      if (!APP.AI || !APP.AI.hasKey()) { toast('पहले 🔑 Gemini key जोड़ें'); return APP.AI.manageKeys(); }
+      if (!APP.AI || !APP.AI.hasKey()) { toast('पहले 🔑 Key जोड़ें'); return APP.AI.manageKeys(); }
       fileEl.click();
     };
 
     fileEl.onchange = async () => {
       const f = fileEl.files && fileEl.files[0]; if (!f) return;
       const btn = m.querySelector('#btn-photo');
-      btn.disabled = true; btn.textContent = '⏳ AI पढ़ रहा है (कृपया 20-30 सेकंड रुकें)...';
+      btn.disabled = true; btn.textContent = '⏳ AI पढ़ रहा है...';
       
       try {
         const b64 = await new Promise((res, rej) => {
@@ -351,14 +357,14 @@
           img.src = url;
         });
 
-        const payload = { contents: [{ parts: [{ text: BASE_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0 } };
+        const payload = { contents: [{ parts: [{ text: buildAIPrompt(parties) }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { temperature: 0 } };
         const txt = await APP.AI.ask(payload, { timeout: 60000 });
         
         m.querySelector('#scan-json').value = txt;
-        btn.disabled = false; btn.textContent = '📷 फोटो से स्कैन';
-        toast('✅ AI ने डेटा पढ़ लिया, अब Cross-Check दबाएं');
+        btn.disabled = false; btn.textContent = '📷 फोटो स्कैन';
+        toast('✅ AI ने डेटा पढ़ लिया');
       } catch (e) {
-        btn.disabled = false; btn.textContent = '📷 फोटो से स्कैन';
+        btn.disabled = false; btn.textContent = '📷 फोटो स्कैन';
         toast('❌ AI नहीं पढ़ पाया: ' + e.message);
       }
     };
@@ -368,21 +374,17 @@
     m.querySelector('#btn-verify').onclick = async () => {
       const raw = m.querySelector('#scan-json').value.trim();
       if (!raw) return toast('पहले JSON पेस्ट करें');
-
       let json;
       try {
         const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
         const a = clean.indexOf('{'), b = clean.lastIndexOf('}');
-        if (a < 0 || b <= a) throw new Error('JSON format galat hai');
+        if (a < 0 || b <= a) throw new Error('JSON galat hai');
         json = JSON.parse(clean.slice(a, b + 1));
-      } catch (e) {
-        return toast('❌ गलत JSON फॉर्मेट! कृपया सही JSON पेस्ट करें।');
-      }
-
+      } catch (e) { return toast('❌ गलत JSON फॉर्मेट!'); }
       m.close();
       showReviewScreen(st, parties, json);
     };
   };
 
-  console.log('[Mazda views2_utils.js] Ultimate Scanner with Review UI Loaded ✓');
+  console.log('[Mazda views2_utils.js] Safe Backup Restore + AI Scan Fix Loaded ✓');
 })();
