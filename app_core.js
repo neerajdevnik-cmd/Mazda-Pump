@@ -73,7 +73,7 @@
     return m;
   }
   
-  Object.assign(APP, { toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer, isTrueOwner });
+  Object.assign(APP, { AUTO_LBL, AUTO_NOTES, toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer, isTrueOwner });
 
   /* ================= खर्चा: अलग-अलग चीज़ों में बाँटने / एडिट करने वाला एडिटर ================= */
   const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
