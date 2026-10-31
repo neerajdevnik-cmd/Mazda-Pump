@@ -139,7 +139,8 @@
       else applyChain(d, ch);
     }
 
-    const locked = (d.status === 'submitted' && !APP.isOwner()) || APP.isViewer();
+    const oldLock = !APP.isOwner() && !APP.isViewer() && date < shiftDate(todayISO(), -2);   // मैनेजर: पुराने दिन देख सकता है, बदल नहीं सकता
+    const locked = (d.status === 'submitted' && !APP.isOwner()) || oldLock || APP.isViewer();
     const dis = locked ? 'disabled' : '';
     const chainLock = !!(ch && d.opening_locked !== false);
     const stkRO = () => (!locked && chainLock) ? 'readonly style="background:#f0f0f0;font-weight:bold"' : '';
@@ -154,7 +155,7 @@
         <input class="nzi" data-k="${k}" data-f="c" inputmode="decimal" value="${esc(n.c == null ? '' : n.c)}" ${dis}>
         <span id="net-${k}">–</span></div>`; 
     };
-    const minDate = APP.isOwner() ? '' : shiftDate(todayISO(), -2);
+    const minDate = '';   // कैलेंडर में कोई भी पुरानी तारीख खुल सकती है (जमा/पुराने दिन सिर्फ़ देखने के लिए)
     const splitBtn = f => locked ? '' : `<button class="btn sm w" type="button" data-do="splitF" data-f="${f}" style="padding:2px 8px;font-size:12px">✂️ बाँटें</button>`;
 
     let chainHtml = '';
@@ -172,7 +173,7 @@
     main.innerHTML = `
     ${chainHtml}<div class="card"><div class="row"><div><label style="margin-top:0">तारीख</label>
       <input type="date" id="f-date" value="${date}" max="${todayISO()}" ${minDate ? 'min="' + minDate + '"' : ''}></div>
-      <div style="flex:0 0 auto;align-self:end">${locked ? '<span class="chip g">जमा ✔ लॉक</span>' : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
+      <div style="flex:0 0 auto;align-self:end">${locked ? (d.status === 'submitted' ? '<span class="chip g">जमा ✔ लॉक</span>' : '<span class="chip o">पुराना दिन · सिर्फ़ देखें</span>') : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
 
     <div class="card"><h3>आज का रेट (₹/लीटर)</h3><div class="row">
       <div><label>पेट्रोल 🔒</label><input id="f-rateP" inputmode="decimal" value="${esc(d.rateP)}" readonly style="background:#f0f0f0;color:#555;font-weight:bold" ${dis}></div>
