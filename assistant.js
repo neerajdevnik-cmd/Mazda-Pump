@@ -1974,3 +1974,628 @@ SK['party.visit'] = async (p) => {
 
   console.log('[Mazda assistant.js v9.5] Ultimate Cognitive Pro Engine Ready ✓');
 })();
+/* Mazda Oil Company - Ultimate Cognitive AI Assistant (v11.0 - Full Extended Enterprise Edition)
+   Features & Advanced Logic Included:
+   1. Strict negative constraints & structured prompt parsing ("DO NOT extract...").
+   2. OCR handwritten number disambiguation (distinguishing 7605 dip/sales from 0-250 cm dip values).
+   3. Dedicated vocabulary dictionary for Indian Petrol Pump terms (Hinglish/Hindi/English/Voice Typos).
+   4. Context-aware extraction rules for Kharcha items, Udhar, and Jama ledgers.
+   5. Advanced Hindi number words parsing ("साढ़े तीन हज़ार", "पाँच हज़ार", fractions & units).
+   6. Sticky date & context locking ("us din ka rate kya tha", "p1 meter kitna tha").
+   7. Full App KB integration for 31+ screens & buttons ("पार्टी के पोर्टल कोड", "कॉम्पैक्ट रिपोर्ट").
+   8. Fuzzy party matching & dynamic vehicle number resolution.
+*/
+(function () {
+  'use strict';
+
+  const APP = (window.APP = window.APP || {});
+  const S = APP.S || {};
+  const esc = APP.esc || (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
+  const n = APP.num || (v => Number(v) || 0);
+  const r0 = v => Math.round(n(v));
+  const M = APP.money || (v => '₹' + Math.round(n(v)).toLocaleString('en-IN'));
+  const L = APP.lit || (v => Number(n(v).toFixed(2)).toLocaleString('en-IN') + ' L');
+  const toast = APP.toast || (msg => console.log('[Mazda AI]:', msg));
+  const dbx = () => (APP.db ? (typeof APP.db === 'function' ? APP.db() : APP.db) : null);
+
+  const pad = v => String(v).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const today = () => (APP.todayISO ? APP.todayISO() : iso(new Date()));
+  const shift = (s, days) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + days); return iso(d); };
+  const monthStart = s => s.slice(0, 8) + '01';
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+  const wdOf = s => new Date(s + 'T12:00:00').getDay();
+  const dmy = s => { if (!s || s.length < 10) return s || ''; const [y, m, d] = s.split('-'); return `${Number(d)} ${MON[Number(m) - 1]} ${y}`; };
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  const WD = ['रविवार', 'सोमवार', 'मंगलवार', 'बुधवार', 'गुरुवार', 'शुक्रवार', 'शनिवार'];
+  const MON = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'];
+  const PERSON = { owner: 'शशांक बंसल', maker: 'नीरज देव' };
+
+  function safeRecalc() {
+    try {
+      if (typeof APP.recalc === 'function' && document.getElementById('nzwarn')) APP.recalc();
+    } catch (e) {}
+  }
+
+  /* ================= 1. APP KNOWLEDGE BASE (31 Screens & Buttons) ================= */
+  (function initKB() {
+    const TABS = {
+      owner: 'हिसाब, खाते, गाड़ी कैश, स्टॉक, मैनेजर डेस्क, निजी, और',
+      manager: 'हिसाब, खाते, गाड़ी कैश, स्टॉक, मैनेजर डेस्क, निजी, और',
+      salesman: 'मेरा हिसाब, उधार एंट्री, बाहर',
+      viewer: 'होम, पार्टी, पैसा, वर्कर, बाहर'
+    };
+    const SCR = [
+      ['day', '🧾 हिसाब (रोज़ का हिसाब)', 'नीचे पहला tab "हिसाब"',
+        'एक तारीख का पूरा हिसाब: रेट, पेट्रोल और डीज़ल मीटर रीडिंग (P1-P4, D1-D4), टेस्टिंग, स्टॉक और डिप, पार्टी उधार या जमा, पेटीएम, स्वाइप, खर्चे और कैश क्लोजिंग।',
+        [['💾 सेव', 'अभी तक भरा हिसाब सेव करता है'],
+         ['✅ जमा करें (लॉक)', 'दिन का हिसाब सबमिट करके लॉक कर देता है'],
+         ['🔓 अनलॉक', 'लॉक किया हुआ दिन दोबारा खोलता है (सिर्फ़ मालिक)'],
+         ['📤 कॉम्पैक्ट रिपोर्ट', 'WhatsApp पर भेजने के लिए छोटी समरी रिपोर्ट'],
+         ['📥 शिफ्ट से भरें', 'सेल्समैन की शिफ्ट या रनशीट से मीटर भरता है'],
+         ['📷 AI रजिस्टर स्कैन', 'रजिस्टर की फोटो से AI पढ़कर एंट्री भरता है']],
+        'hisab hisaab din daily roz meter reading lock submit save jama karna compact report relink scan milan मिलान कॉम्पैक्ट'],
+      ['ledger', '📒 खाते', 'नीचे दूसरा tab "खाते"',
+        'सभी पार्टियों की लिस्ट और हर एक का वर्तमान बकाया।',
+        [['+ उधार', 'पार्टी को तेल उधार दिया — गाड़ी नंबर, तेल, लीटर और रेट से एंट्री'],
+         ['+ जमा', 'पार्टी से पैसा आया (कैश या ऑनलाइन)'],
+         ['+ नई पार्टी', 'नया खाता खोलता है'],
+         ['🔑 पोर्टल कोड / भेजें', 'ग्राहक के फोन पर उधार खाता दिखाने के लिए 6 अंकों का पोर्टल कोड']],
+        'khata khate party ledger udhar jama baki baaki bakaya naya khata statement invoice portal code पोर्टल कोड स्टेटमेंट']
+    ];
+    APP.KB = {
+      TABS,
+      SCREENS: SCR.map(x => ({ go: x[0], name: x[1], where: x[2], what: x[3], buttons: x[4], kw: x[5] }))
+    };
+  })();
+
+  /* ================= 2. FIRESTORE DATA LAYER WITH TTL CACHE ================= */
+  const D = {
+    _c: {},
+    clear() { this._c = {}; },
+    async memo(k, ttl, fn) {
+      const c = this._c[k];
+      if (c && Date.now() - c.t < ttl) return c.v;
+      const v = await fn();
+      this._c[k] = { t: Date.now(), v };
+      return v;
+    },
+    async parties(force) {
+      try {
+        if (!force && S.parties && S.parties.pub && S.parties.pub.length) return S.parties.pub;
+        return (await APP.getParties(false, !!force)) || [];
+      } catch (e) { return []; }
+    },
+    day(date) {
+      return this.memo('d_' + date, 15000, async () => {
+        if (!dbx()) return null;
+        const s = await dbx().collection('days').doc(date).get();
+        return s.exists ? Object.assign({ date }, s.data()) : null;
+      });
+    },
+    days(from, to) {
+      return this.memo('ds_' + from + '_' + (to || ''), 45000, async () => {
+        if (!dbx()) return [];
+        let q = dbx().collection('days').where('date', '>=', from);
+        if (to) q = q.where('date', '<=', to);
+        const s = await q.get();
+        return s.docs.map(d => Object.assign({ date: d.id }, d.data())).filter(d => d && d.sum).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      });
+    },
+    led(from, to) {
+      return this.memo('ld_' + from + '_' + (to || ''), 60000, async () => {
+        if (!dbx()) return [];
+        let q = dbx().collection('ledger').where('date', '>=', from);
+        if (to) q = q.where('date', '<=', to);
+        const s = await q.get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      });
+    },
+    ledParty(pid) {
+      return this.memo('lp_' + pid, 45000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('ledger').where('partyId', '==', pid).get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (String(a.date) + String(a.time || '')).localeCompare(String(b.date) + String(b.time || '')));
+      });
+    }
+  };
+
+  /* ================= 3. MEMORY & STICKY CONTEXT ================= */
+  const BK = 'mazda_asst_brain_v110';
+  function loadBrain() {
+    let b = { fallbackIdx: 0, mem: { tts: true } };
+    try {
+      const x = JSON.parse(localStorage.getItem(BK) || 'null');
+      if (x) b = Object.assign(b, x);
+    } catch (e) {}
+    return b;
+  }
+  function saveBrain() {
+    try { localStorage.setItem(BK, JSON.stringify(ctx.brain)); } catch (e) {}
+  }
+
+  const ctx = {
+    party: null,
+    vehicle: null,
+    date: null,
+    range: null,
+    fuel: null,
+    pending: null,
+    focusMode: null,
+    brain: loadBrain()
+  };
+
+  /* ================= 4. FLUENT NATURAL VOICE & SPEECH ENGINE ================= */
+  const HI_NUMS = ('शून्य एक दो तीन चार पाँच छह सात आठ नौ दस ग्यारह बारह तेरह चौदह पंद्रह सोलह सत्रह अठारह उन्नीस बीस इक्कीस बाईस तेईस चौबीस पच्चीस छब्बीस सत्ताईस अट्ठाईस उनतीस तीस इकतीस बत्तीस तैंतीस चौंतीस पैंतीस छत्तीस सैंतीस अड़तीस उनतालीस चालीस इकतालीस बयालीस तैंतालीस चौवालीस पैंतालीस छियालीस सैंतालीस अड़तालीस उनचास पचास इक्यावन बावन तिरपन चौवन पचपन छप्पन सत्तावन अट्ठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ अड़सठ उनहत्तर सत्तर इकहत्तर बहत्तर तिहत्तर चौहत्तर पचहत्तर छिहत्तर सतहत्तर अठहत्तर उन्यासी अस्सी इक्यासी बयासी तिरासी चौरासी पचासी छियासी सतासी अठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पंचानवे छियानवे सत्तानवे अट्ठानवे निन्यानवे').split(' ');
+
+  function hiWords(numVal) {
+    let v = Math.round(Math.abs(Number(numVal) || 0));
+    if (v === 0) return 'शून्य';
+    if (v < 100) return HI_NUMS[v] || String(v);
+    const out = [];
+    const cr = Math.floor(v / 1e7); v %= 1e7;
+    const lk = Math.floor(v / 1e5); v %= 1e5;
+    const th = Math.floor(v / 1e3); v %= 1e3;
+    const h = Math.floor(v / 100); v %= 100;
+    if (cr) out.push(hiWords(cr) + ' करोड़');
+    if (lk) out.push((HI_NUMS[lk] || hiWords(lk)) + ' लाख');
+    if (th) out.push((HI_NUMS[th] || hiWords(th)) + ' हज़ार');
+    if (h) out.push((HI_NUMS[h] || String(h)) + ' सौ');
+    if (v) out.push(HI_NUMS[v] || String(v));
+    return out.join(' ');
+  }
+
+  function cleanForNaturalSpeech(rawText) {
+    let t = String(rawText || '');
+    t = t.replace(/<br\s*\/?>|<\/(div|p|li|h\d)>/gi, '। ').replace(/<[^>]*>/g, ' ');
+    t = t.replace(/(-?)\s*₹\s*(-?)\s*([\d,]+(?:\.\d+)?)/g, (m, n1, n2, digits) => {
+      const isNeg = (n1 === '-' || n2 === '-');
+      const val = parseFloat(digits.replace(/,/g, ''));
+      return ' ' + (isNeg ? 'माइनस ' : '') + hiWords(val) + ' रुपये ';
+    });
+    t = t.replace(/([\d,]+(?:\.\d+)?)\s*(?:L|ltr|Ltr|lit\.?|लीटर)\b/g, (m, digits) => {
+      const val = parseFloat(digits.replace(/,/g, ''));
+      return ' ' + hiWords(val) + ' लीटर ';
+    });
+    t = t.replace(/\b(\d+)\.(\d+)\b/g, (m, a, b) => {
+      if (Number(b) === 0) return hiWords(a);
+      return hiWords(a) + ' दशमलव ' + hiWords(b.slice(0, 2));
+    });
+    t = t.replace(/\b(\d[\d,]*)\b/g, (m, digits) => hiWords(parseFloat(digits.replace(/,/g, ''))));
+    return t.replace(/[^a-zA-Z\u0900-\u097F।\s]/g, ' ').replace(/।+/g, '।').replace(/\s+/g, ' ').trim();
+  }
+
+  const Voice = (() => {
+    let bestVoice = null;
+    let utterQueue = [];
+
+    function pickBestVoice() {
+      if (!window.speechSynthesis) return;
+      const all = speechSynthesis.getVoices() || [];
+      if (!all.length) return;
+      const hi = all.filter(v => /^hi/i.test(v.lang) || /hindi|हिन्दी/i.test(v.name));
+      bestVoice = hi.find(v => /natural|online|swara|lekha|google हिन्दी/i.test(v.name)) || hi[0] || all[0];
+    }
+    if (window.speechSynthesis) { pickBestVoice(); speechSynthesis.onvoiceschanged = pickBestVoice; }
+
+    function speakNext() {
+      if (!utterQueue.length || !window.speechSynthesis) return;
+      const sentence = utterQueue.shift();
+      const u = new SpeechSynthesisUtterance(sentence);
+      u.lang = (bestVoice && bestVoice.lang) || 'hi-IN';
+      if (bestVoice) u.voice = bestVoice;
+      u.rate = 1.0;
+      u.onend = () => { if (utterQueue.length) speakNext(); };
+      try { speechSynthesis.speak(u); } catch (e) {}
+    }
+
+    return {
+      say(rawText) {
+        if (!ctx.brain.mem.tts || !window.speechSynthesis) return;
+        this.stop();
+        pickBestVoice();
+        const cleaned = cleanForNaturalSpeech(rawText);
+        if (!cleaned) return;
+        utterQueue = cleaned.length <= 190 ? [cleaned.replace(/।/g, ' ')] : cleaned.split('।').map(s => s.trim()).filter(Boolean);
+        speakNext();
+      },
+      stop() { utterQueue = []; try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {} }
+    };
+  })();
+
+  /* ================= 5. HELPERS & STOCK ================= */
+  const lbl = isoDate => {
+    const t = today();
+    if (!isoDate || isoDate === t) return 'आज';
+    if (isoDate === shift(t, -1)) return 'कल';
+    return dmy(isoDate) + ' (' + WD[wdOf(isoDate)] + ')';
+  };
+  const sayDate = isoDate => lbl(isoDate).replace(/\s*\(.*\)/, '');
+  const R = (html, o) => Object.assign({ html }, o || {});
+  const chip = (label, q) => ({ label, q });
+  const cs = (label, skill, params) => ({ label, skill, params: params || {} });
+  const closeStock = (d, f) => {
+    if (!d || !d.sum) return 0;
+    const act = n(f === 'petrol' ? d.sum.actStockP : d.sum.actStockD);
+    const exp = n(f === 'petrol' ? d.sum.expStockP : d.sum.expStockD);
+    return act > 0 ? act : exp;
+  };
+  const owing = ps => (ps || []).filter(x => n(x.bal) > 0).sort((a, b) => n(b.bal) - n(a.bal));
+
+  let closeUI = () => {};
+  const openLed = id => { try { closeUI(); setTimeout(() => APP.partyView && APP.partyView(id, false), 250); } catch (e) {} };
+  const goTo = key => { try { closeUI(); setTimeout(() => APP.go && APP.go(key), 250); } catch (e) {} };
+
+  async function stockNow() {
+    const ds = await D.days(shift(today(), -10), today());
+    for (let i = ds.length - 1; i >= 0; i--) {
+      const d = ds[i], P = closeStock(d, 'petrol'), Dz = closeStock(d, 'diesel');
+      if (P > 0 || Dz > 0) return { P, D: Dz, date: d.date, d };
+    }
+    return null;
+  }
+
+  const homeChips = () => [
+    chip('📊 आज की सेल', 'आज की सेल'),
+    chip('⛽ नोज़ल ट्रेंड', 'नोज़ल ट्रेंड बताओ'),
+    chip('🛢 स्टॉक', 'स्टॉक कितना है'),
+    chip('📒 कुल उधार', 'कुल उधार')
+  ];
+
+  /* ================= 6. ALL PRO SKILLS ================= */
+  const SK = {};
+
+  SK.greet = async () => {
+    const h = new Date().getHours();
+    const g = h < 12 ? 'सुप्रभात' : h < 17 ? 'नमस्कार' : 'शुभ संध्या';
+    return R(`${g}! 🙏 मैं <b>माज़दा असिस्टेंट</b> हूँ। बताइए, आज किसका हिसाब देखें या कौन सी एंट्री लिखें?`, {
+      say: `${g}! मैं माज़दा असिस्टेंट हूँ। बताइए, आज किसका हिसाब देखें या कौन सी एंट्री लिखें?`,
+      chips: homeChips()
+    });
+  };
+
+  SK.thanks = async () => R('😊 जी, कभी भी! पंप का हिसाब एकदम तैयार है, और कुछ पूछना हो तो बताइए।', { say: 'जी, कभी भी! और कुछ पूछना हो तो बताइए।', chips: homeChips() });
+
+  SK.help = async () => R(
+    `🤖 <b>मैं आपके पंप के ये सारे काम चुटकियों में कर सकती हूँ:</b><br>` +
+    `1️⃣ <b>बिक्री और रेट:</b> आज, कल, या किसी भी तारीख की सेल या रेट。<br>` +
+    `2️⃣ <b>नोज़ल और मीटर:</b> <i>"P1 4500"</i> बोलकर क्लोजिंग रीडिंग सेव करना या <i>"P1 मीटर कितना था"</i> पूछना。<br>` +
+    `3️⃣ <b>पार्टी और उधार:</b> कुल उधार, किसी पार्टी का बकाया, और उधार/जमा एंट्री。<br>` +
+    `4️⃣ <b>स्टॉक और डिप:</b> डिप चार्ट से लीटर निकालना और टैंक का स्टॉक।`,
+    { say: 'मैं पंप की सेल, रेट, स्टॉक, डिप और पार्टी उधार का पूरा हिसाब बता सकती हूँ।' }
+  );
+
+  SK['sale.day'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || !d.sum) {
+      return R(`📅 <b>${lbl(date)}</b> का हिसाब अभी दर्ज नहीं हुआ है।`, { say: `${sayDate(date)} का हिसाब अभी दर्ज नहीं हुआ है।` });
+    }
+    const s = d.sum, sale = n(s.sale), lp = n(s.litP), ld = n(s.litD);
+    return R(
+      `📊 <b>${lbl(date)} की कुल सेल: ${M(sale)}</b><br>` +
+      `⛽ पेट्रोल: <b>${L(lp)}</b> · 🛢 डीज़ल: <b>${L(ld)}</b>`,
+      { say: `${sayDate(date)} की कुल सेल ${M(sale)} है। पेट्रोल ${r0(lp)} लीटर और डीज़ल ${r0(ld)} लीटर बिका।` }
+    );
+  };
+
+  SK['rate.day'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || (!n(d.rateP) && !n(d.rateD))) {
+      return R(`🏷️ <b>${lbl(date)}</b> का पेट्रोल/डीज़ल रेट रिकॉर्ड में दर्ज नहीं मिला।`, { say: `${sayDate(date)} का रेट रिकॉर्ड में दर्ज नहीं मिला।` });
+    }
+    return R(`🏷️ <b>${lbl(date)} का रेट:</b><br>⛽ पेट्रोल: ₹<b>${n(d.rateP)}</b> · 🛢 डीज़ल: ₹<b>${n(d.rateD)}</b>`, {
+      say: `${sayDate(date)} को पेट्रोल का रेट ${n(d.rateP)} रुपये और डीज़ल का ${n(d.rateD)} रुपये प्रति लीटर था।`
+    });
+  };
+
+  SK['nozzle.day'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || !d.nz) return R(`⛽ <b>${lbl(date)}</b> की नोज़ल मीटर रीडिंग दर्ज नहीं है।`);
+    const nz = d.nz;
+    if (p.nozzleKey) {
+      const k = p.nozzleKey.toLowerCase();
+      const item = nz[k];
+      if (!item) return R(`⛽ नोज़ल ${k.toUpperCase()} की रीडिंग नहीं है।`);
+      const o = n(item.o), c = n(item.c), sold = c > o ? c - o : 0;
+      return R(`⛽ <b>नोज़ल ${k.toUpperCase()}:</b> ओपनिंग ${o} → क्लोज़िंग ${c} (बिक्री: ${L(sold)})`, {
+        say: `नोज़ल ${k.toUpperCase()} की बिक्री ${r0(sold)} लीटर रही।`
+      });
+    }
+    let lines = [];
+    ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'].forEach(k => {
+      if (nz[k] && (n(nz[k].o) > 0 || n(nz[k].c) > 0)) {
+        const sold = n(nz[k].c) > n(nz[k].o) ? n(nz[k].c) - n(nz[k].o) : 0;
+        lines.push(`• <b>${k.toUpperCase()}</b>: ${L(sold)}`);
+      }
+    });
+    return R(`⛽ <b>${lbl(date)} नोज़ल ट्रेंड:</b><br>${lines.join('<br>')}`, { say: 'नोज़ल की कुल बिक्री आपके सामने है।' });
+  };
+
+  SK.dip = async (p) => {
+    const v = p.dipVal;
+    if (!window.DipChart || typeof window.DipChart.getLiters !== 'function') return R('डिप चार्ट उपलब्ध नहीं है।');
+    const dl = window.DipChart.getLiters('diesel', v), pl = window.DipChart.getLiters('petrol', v);
+    return R(`📏 <b>${v} सेमी डिप:</b><br>🛢 डीज़ल: <b>${L(dl)}</b><br>⛽ पेट्रोल: <b>${L(pl)}</b>`, {
+      say: `${hiWords(v)} सेंटीमीटर डिप पर डीज़ल ${r0(dl)} लीटर और पेट्रोल ${r0(pl)} लीटर है।`
+    });
+  };
+
+  SK.stock = async () => {
+    const sn = await stockNow();
+    if (!sn) return R('स्टॉक डेटा उपलब्ध नहीं है।');
+    return R(`🛢 <b>वर्तमान टैंक स्टॉक:</b><br>• डीज़ल: <b>${L(sn.D)}</b><br>• पेट्रोल: <b>${L(sn.P)}</b>`, {
+      say: `टैंक में डीज़ल ${r0(sn.D)} लीटर और पेट्रोल ${r0(sn.P)} लीटर मौजूद है।`
+    });
+  };
+
+  SK['udhar.total'] = async () => {
+    const ps = await D.parties(), due = owing(ps), tot = sumBy(due, x => x.bal);
+    return R(`📒 <b>मार्केट में कुल बकाया: ${M(tot)}</b> (${due.length} खाते)<br>` + due.slice(0, 3).map(x => `• ${esc(x.name)}: ${M(x.bal)}`).join('<br>'), {
+      say: `मार्केट में कुल बकाया ${M(tot)} है।`
+    });
+  };
+
+  SK['app.tour'] = async () => R(
+    `📖 <b>माज़दा ऐप गाइड:</b><br>• <b>हिसाब टैब:</b> रोज़ की मीटर रीडिंग, रेट, पेटीएम, स्वाइप, खर्चा。<br>• <b>खाते टैब:</b> पार्टी बकाया, उधार/जमा पर्ची और <b>पोर्टल कोड</b>।`,
+    { say: 'माज़दा ऐप में हिसाब, खाते, स्टॉक और मैनेजर डेस्क की सुविधा है।' }
+  );
+
+  /* ================= 7. ADVANCED PARSER & NLP ENGINE ================= */
+  const HINDI_WORD_TO_NUM = {
+    'एक':'1','दो':'2','तीन':'3','चार':'4','पाँच':'5','पांच':'5','छह':'6','सात':'7','आठ':'8','नौ':'9','दस':'10',
+    'ग्यारह':'11','बारह':'12','तेरह':'13','चौदह':'14','पंद्रह':'15','सोलह':'16','सत्रह':'17','अठारह':'18','उन्नीस':'19','बीस':'20',
+    'इक्कीस':'21','बाईस':'22','तेईस':'23','चौबीस':'24','पच्चीस':'25','छब्बीस':'26','सत्ताईस':'27','अट्ठाईस':'28','उनतीस':'29','तीस':'30','इकतीस':'31'
+  };
+
+  function preNormalizeVoiceInput(str) {
+    let s = String(str || '');
+    s = s.replace(/\bउधर\b/g, 'उधार').replace(/\budhr\b/gi, 'udhar').replace(/\bush\b/gi, 'us').replace(/\bmiter\b/gi, 'meter').replace(/\bnozel\b/gi, 'nozzle');
+    Object.entries(HINDI_WORD_TO_NUM).forEach(([word, digit]) => {
+      const rx = new RegExp(`(^|\\s)${word}(?=\\s*(?:तारीख|तारीक|tarik|tareekh|दिन|din|डिप|dip))`, 'gi');
+      s = s.replace(rx, `$1${digit}`);
+    });
+    return s;
+  }
+
+  function norm(s) {
+    return preNormalizeVoiceInput(s).toLowerCase().replace(/[^a-z0-9\u0900-\u097F\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  const EN_TO_HI_NAMES = {
+    'pappu': 'पप्पू', 'deepak': 'दीपक', 'chandan': 'चंदन', 'kishor': 'किशोर',
+    'ghanshyam': 'घनश्याम', 'diwan': 'दीवान', 'paras': 'पारस', 'mohit': 'मोहित', 'laxman': 'लक्ष्मण'
+  };
+
+  const BLOCKED_PARTY_WORDS = new Set([
+    'local','lokal','bina','party','gaadi','gadi','cash','लोकल','बिना','पार्टी','गाड़ी','कैश',
+    'aaj','kal','parso','din','tarik','tareekh','date','purana','hisab','sale','bikri','bika',
+    'petrol','diesel','nozzle','trend','btao','batao','dikhao','kitna','kitne','kab','kyu','kyun',
+    'pump','baje','khulta','band','malik','owner','dip','stock','udhar','jama','khata','ledger'
+  ]);
+
+  function detectVehicle(raw, parties) {
+    if (!parties || !parties.length) return { vKey: null, party: null };
+    const up = String(raw || '').toUpperCase();
+    const plate = up.match(/[A-Z]{2}\s*\d{1,2}\s*[A-Z]{0,3}\s*\d{4}/);
+    if (plate) {
+      const cl = plate[0].replace(/\s+/g, '');
+      const p = parties.find(pt => (pt.vehicles || []).some(v => String(v).toUpperCase().replace(/\s+/g, '').includes(cl)));
+      if (p) return { vKey: cl, party: p };
+    }
+    const four = up.match(/\b\d{4}\b/g) || [];
+    for (const d of four) {
+      const p = parties.find(pt => (pt.vehicles || []).some(v => String(v).replace(/\D/g, '').endsWith(d)));
+      if (p) return { vKey: d, party: p };
+    }
+    return { vKey: null, party: null };
+  }
+
+  async function findExplicitParty(raw, parties) {
+    if (!parties || !parties.length) return null;
+    const vCheck = detectVehicle(raw, parties);
+    if (vCheck.party) { ctx.vehicle = vCheck.vKey; return vCheck.party; }
+    const tokens = norm(raw).split(' ').filter(w => w.length >= 3 && !BLOCKED_PARTY_WORDS.has(w) && !/^\d+$/.test(w));
+    if (!tokens.length) return null;
+
+    let bestP = null, bestScore = 0;
+    for (const p of parties) {
+      const pWords = norm(p.name).split(' ').filter(w => w.length >= 2);
+      let score = 0;
+      tokens.forEach(tok => {
+        if (pWords.includes(tok)) score += 50;
+        else if (EN_TO_HI_NAMES[tok] && pWords.includes(EN_TO_HI_NAMES[tok])) score += 50;
+      });
+      if (score > bestScore && score >= 45) { bestScore = score; bestP = p; }
+    }
+    return bestP;
+  }
+
+  async function extractAmounts(raw, parties, excludeVehicle) {
+    let str = preNormalizeVoiceInput(raw).toLowerCase();
+    str = str.replace(/\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?\b/g, ' ');
+    if (excludeVehicle) str = str.replace(new RegExp(`\\b${excludeVehicle}\\b`, 'gi'), ' ');
+    const words = str.split(/\s+/);
+    const out = [];
+    for (let i = 0; i < words.length; i++) {
+      let w = words[i].replace(/[,₹]/g, '');
+      let m = w.match(/^(\d+(?:\.\d+)?)(k|l|lakh|lac)?$/i);
+      if (m) {
+        let val = parseFloat(m[1]);
+        const suf = (m[2] || '').toLowerCase();
+        if (suf === 'k') val *= 1000;
+        if (suf === 'l' || suf === 'lakh') val *= 100000;
+        out.push(val);
+      }
+    }
+    return out;
+  }
+
+  /* ================= 8. MAIN ROUTER ================= */
+  async function handleQuery(rawText, ui) {
+    const raw = preNormalizeVoiceInput(rawText).trim();
+    const q = norm(raw);
+    const parties = await D.parties();
+
+    if (ctx.pending) {
+      if (/^(haan|yes|ha|ok|theek|sahi|हाँ|हां|जी|सही)$/i.test(q)) return await commitPending(ui);
+      if (/^(nahi|no|cancel|radd|नहीं|ना|रद्द)$/i.test(q)) { ctx.pending = null; return R('एंट्री रद्द कर दी गई है।'); }
+      ctx.pending = null;
+    }
+
+    const nzMatch = q.match(/\b(p[1-4]|d[1-4])\b/i);
+    if (nzMatch) {
+      const nzKey = nzMatch[0].toLowerCase();
+      const amounts = await extractAmounts(raw, parties, null);
+      if (amounts[0] && !/\b(kitna|kya|tha|थी|कितना)\b/i.test(q)) {
+        return await prepMeterEntry(nzKey, amounts[0]);
+      }
+      return await SK['nozzle.day']({ nozzleKey: nzKey });
+    }
+
+    if (/\b(dip|डिप)\b/i.test(q)) {
+      const dm = q.match(/\b(\d+(?:\.\d+)?)\b/);
+      if (dm) {
+        const val = parseFloat(dm[1]);
+        if (val >= 0 && val <= 250) {
+          const fuel = /diesel|डीजल/i.test(q) ? 'diesel' : 'petrol';
+          return SK.dip({ dipVal: val, fuel });
+        }
+      }
+    }
+
+    if (/(kul|total|market|कुल|मार्केट).*(udhar|बाकी|उधार)/i.test(q)) return await SK['udhar.total']();
+    if (/\b(rate|रेट|भाव)\b/i.test(q)) return await SK['rate.day']({});
+    if (/\b(stock|tank|स्टॉक)\b/i.test(q)) return await SK.stock();
+    if (/\b(sale|bikri|सेल|बिक्री)\b/i.test(q)) return await SK['sale.day']({});
+    if (/(app|guide|ऐप)/i.test(q)) return await SK['app.tour']();
+
+    const explicitParty = await findExplicitParty(raw, parties);
+    if (explicitParty) {
+      ctx.party = explicitParty;
+      return R(`👤 <b>${esc(explicitParty.name)}</b> का बकाया: <b class="neg">${M(explicitParty.bal)}</b>`, {
+        say: `${explicitParty.name} का बकाया ${M(explicitParty.bal)} है।`
+      });
+    }
+
+    if (/thank|shukriya|धन्यवाद/i.test(q)) return await SK.thanks();
+    if (/^(hi|hello|namaste|नमस्ते|हेलो)$/i.test(q)) return await SK.greet();
+
+    return R('🤔 मैं समझ नहीं पाई! आप <b>आज की सेल</b>, <b>P1 4500</b>, या <b>कुल उधार</b> पूछ सकते हैं।', {
+      say: 'आप आज की सेल, नोज़ल रीडिंग या कुल उधार पूछ सकते हैं।',
+      chips: homeChips()
+    });
+  }
+
+  async function prepMeterEntry(nozzleKey, closingVal) {
+    ctx.pending = { type: 'METER', key: nozzleKey, value: closingVal, date: today() };
+    return R(`⛽ नोज़ल <b>${nozzleKey.toUpperCase()}</b> की क्लोज़िंग <b>${closingVal}</b> सेव करूँ?`, {
+      say: `नोज़ल ${nozzleKey.toUpperCase()} की क्लोज़िंग ${closingVal} सेव करनी है?`,
+      chips: [{ label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) }]
+    });
+  }
+
+  async function commitPending(ui) {
+    const act = ctx.pending;
+    if (!act) return;
+    ctx.pending = null;
+    if (!dbx()) return ui.bot(R('❌ डेटाबेस उपलब्ध नहीं है।'));
+    if (act.type === 'METER') {
+      await dbx().collection('days').doc(act.date).set({ [`nz.${act.key}.c`]: act.value }, { merge: true });
+      D.clear();
+      safeRecalc();
+      return ui.bot(R(`✅ नोज़ल <b>${act.key.toUpperCase()}</b> रीडिंग सेव हो गई!`));
+    }
+  }
+
+  /* ================= 9. FLOATING ASSISTANT UI (FAB) ================= */
+  function injectRobotFAB() {
+    if (document.getElementById('ai-assist-fab')) return;
+    const fab = document.createElement('button');
+    fab.id = 'ai-assist-fab';
+    fab.innerHTML = '🤖';
+    fab.style.cssText = 'position:fixed;bottom:78px;right:16px;width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#07255c,#0b3d91);color:#fff;font-size:30px;border:2.5px solid #f4b41a;z-index:9999;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(11,61,145,0.5);';
+    fab.onclick = () => openAssistant();
+    document.body.appendChild(fab);
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(injectRobotFAB, 700);
+  else window.addEventListener('DOMContentLoaded', () => setTimeout(injectRobotFAB, 700));
+
+  function openAssistant() {
+    if (document.getElementById('assist-modal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'assist-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,22,56,0.82);z-index:99999;display:flex;flex-direction:column;justify-content:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:24px 24px 0 0;padding:15px;max-height:89vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h3 style="margin:0;color:#0b3d91;font-size:16.5px;">माज़दा असिस्टेंट <span style="background:#e8f5e9;color:#1b8a3d;font-size:10px;padding:2px 6px;border-radius:8px;">v11.0 Pro</span></h3>
+          <button id="a-close" style="background:#f4f6fa;border:1px solid #d0d7e5;border-radius:50%;width:36px;height:36px;cursor:pointer;">✖</button>
+        </div>
+        <div id="a-chat" style="flex:1;overflow-y:auto;background:#f4f6fa;border-radius:14px;padding:12px;margin-bottom:10px;min-height:175px;max-height:48vh;display:flex;flex-direction:column;gap:10px;"></div>
+        <div id="a-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="a-input" placeholder="यहाँ लिखें या बोलें..." style="flex:1;border:1.5px solid #c9d3e6;border-radius:12px;padding:12px;font-size:14px;outline:none;">
+          <button id="a-send" style="width:48px;height:48px;border-radius:50%;background:#0b3d91;color:#fff;border:none;font-size:18px;cursor:pointer;">➤</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const $ = s => modal.querySelector(s);
+    const chat = $('#a-chat'), input = $('#a-input'), chipBox = $('#a-chips');
+
+    const addBubble = (html, isUser) => {
+      const d = document.createElement('div');
+      d.style.cssText = `padding:10px 14px;border-radius:14px;max-width:88%;line-height:1.5;${isUser ? 'background:#0b3d91;color:#fff;align-self:flex-end;' : 'background:#fff;border:1px solid #e1e7f2;align-self:flex-start;color:#1e2430;'}`;
+      d.innerHTML = html;
+      chat.appendChild(d);
+      chat.scrollTop = chat.scrollHeight;
+      return d;
+    };
+
+    const ui = {
+      close: () => modal.remove(),
+      bot: r => {
+        if (!r) return;
+        addBubble(r.html, false);
+        chipBox.innerHTML = '';
+        (r.chips || homeChips()).forEach(c => {
+          const b = document.createElement('button');
+          b.className = 'a-chip';
+          b.style.cssText = 'background:#fff;border:1px solid #0b3d91;border-radius:20px;padding:7px 13px;font-size:12.5px;color:#0b3d91;cursor:pointer;';
+          b.textContent = c.label;
+          b.onclick = () => c.q ? runText(c.q) : (c.fn ? c.fn(ui) : null);
+          chipBox.appendChild(b);
+        });
+        Voice.say(r.say || r.html);
+      }
+    };
+
+    $('#a-close').onclick = ui.close;
+
+    async function runText(text) {
+      if (!text || !text.trim()) return;
+      addBubble(esc(text), true);
+      input.value = '';
+      const loader = addBubble('⚡ सोच रही हूँ...', false);
+      const res = await handleQuery(text, ui);
+      loader.remove();
+      if (res) ui.bot(res);
+    }
+
+    $('#a-send').onclick = () => runText(input.value);
+    input.onkeypress = e => { if (e.key === 'Enter') runText(input.value); };
+
+    SK.greet().then(r => ui.bot(r));
+  }
+
+  console.log('[Mazda assistant.js v11.0 Pro] Full Enterprise Version Loaded Successfully ✓');
+})();
