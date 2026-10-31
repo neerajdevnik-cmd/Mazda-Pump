@@ -176,10 +176,9 @@
       <div style="flex:0 0 auto;align-self:end">${locked ? (d.status === 'submitted' ? '<span class="chip g">जमा ✔ लॉक</span>' : '<span class="chip o">पुराना दिन · सिर्फ़ देखें</span>') : d.status === 'submitted' ? '<span class="chip o">जमा (खुला)</span>' : '<span class="chip">चालू</span>'}</div></div></div>
 
     <div class="card"><h3>आज का रेट (₹/लीटर)</h3><div class="row">
-      <div><label>पेट्रोल 🔒</label><input id="f-rateP" inputmode="decimal" value="${esc(d.rateP)}" readonly style="background:#f0f0f0;color:#555;font-weight:bold" ${dis}></div>
-      <div><label>डीज़ल 🔒</label><input id="f-rateD" inputmode="decimal" value="${esc(d.rateD)}" readonly style="background:#f0f0f0;color:#555;font-weight:bold" ${dis}></div>
+      <div><label>पेट्रोल ${ (APP.isOwner() && !locked) ? '✏️' : '🔒'}</label><input id="f-rateP" inputmode="decimal" value="${esc(d.rateP)}" ${ (APP.isOwner() && !locked) ? '' : 'readonly style="background:#f0f0f0;color:#555;font-weight:bold"' } ${dis}></div>
+      <div><label>डीज़ल ${ (APP.isOwner() && !locked) ? '✏️' : '🔒'}</label><input id="f-rateD" inputmode="decimal" value="${esc(d.rateD)}" ${ (APP.isOwner() && !locked) ? '' : 'readonly style="background:#f0f0f0;color:#555;font-weight:bold"' } ${dis}></div>
       <div><label>टेस्टिंग (L)</label>${inp('f-testing', d.testing)}</div></div></div>
-
     <div class="card"><h3>मीटर रीडिंग</h3>
       <div class="nz h"><span></span><span>ओपनिंग</span><span>क्लोज़िंग</span><span style="text-align:right">नेट L</span></div>
       <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
