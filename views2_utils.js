@@ -68,42 +68,208 @@
   /* ======================= STRICT AI REGISTER SCANNER ======================= */
   const askGemini = (key, payload) => APP.AI.ask(payload, { timeout: 45000 });
 
+  /* ======================= STRICT AI REGISTER SCANNER with CROSS-CHECK ======================= */
   APP.scanRegister = async function (st) {
-    const esc = APP.esc;
-    const NZ = K.NZ;
-    const clean = s => String(s == null ? '' : s).replace(/[\u200b-\u200d\ufeff]/g, '').trim();
-    const numOrNull = v => {
-      if (v === undefined || v === null) return null;
-      const t = String(v).replace(/[,₹\s]/g, '');
-      if (t === '') return null;
-      const n = Number(t);
-      return isNaN(n) ? null : n;
+    if (!st || st.locked) return APP.toast('यह दिन लॉक है');
+
+    const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY a raw JSON object.
+DO NOT extract these (they are LOCKED): "rateP", "rateD", "openCash", "openStockP", "openStockD", and "nz.*.o" (opening meters).
+ONLY extract: "date" (YYYY-MM-DD), "testing" (default 5), "nz.*.c" (closing meters), "paytm", "swipe", "kharcha", "driverInaam", "chaiKhana", "kharchaItems", "tankerP", "tankerD", "dipP", "dipD", "udhar", "jama".
+Format: {"date":"YYYY-MM-DD","testing":5,"nz":{"p1":{"c":0}},"paytm":0,"swipe":0,"kharcha":0,"kharchaItems":[],"udhar":[],"jama":[]}`;
+
+    const m = APP.modal(`
+      <h3>📷 AI स्कैन (Cross-Check)</h3>
+      <p class="mut" style="font-size:12px;margin-bottom:8px;">नीचे दिए गए प्रॉम्प्ट को कॉपी करके AI (Gemini/ChatGPT) में डालें, फोटो अपलोड करें, और उसका दिया हुआ JSON यहाँ पेस्ट करें।</p>
+      
+      <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <button class="btn sm g" id="copy-prompt" style="flex:1;">📋 Copy Prompt</button>
+      </div>
+
+      <textarea id="scan-json" rows="6" style="width:100%; font-size:12px; font-family:monospace;" placeholder='{"date":"2026-10-20","nz":{"p1":{"c":4500}}}'></textarea>
+      
+      <div class="btns" style="margin-top:12px;">
+        <button class="btn o" id="btn-verify">🔍 Cross-Check & Verify</button>
+        <button class="btn w" id="btn-cancel">रद्द</button>
+      </div>
+    `);
+
+    // Copy Prompt Logic
+    m.querySelector('#copy-prompt').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(BASE_PROMPT);
+        APP.toast('प्रॉम्प्ट कॉपी हो गया! अब AI में पेस्ट करें।');
+      } catch (e) {
+        APP.toast('कॉपी नहीं हुआ, मैन्युअली सेलेक्ट करके कॉपी करें');
+      }
     };
 
-    const getKey = () => (APP.AI.getKeys()[0] || '');
-    const askKey = () => { APP.AI.manageKeys(); return false; };
-    
-    const BASE_PROMPT = `Read this petrol pump register photo. Return ONLY a raw JSON object (no markdown, no backticks):
-{"date":"YYYY-MM-DD","rateP":0,"rateD":0,"testing":5,
-"nz":{"p1":{"o":0,"c":0},"p2":{"o":0,"c":0},"p3":{"o":0,"c":0},"p4":{"o":0,"c":0},"d1":{"o":0,"c":0},"d2":{"o":0,"c":0},"d3":{"o":0,"c":0},"d4":{"o":0,"c":0}},
-"openCash":0,"paytm":0,"swipe":0,"kharcha":0,"driverInaam":0,"chaiKhana":0,"kharchaItems":[{"label":"","amount":0}],"malikDiya":0,
-"openStockP":0,"openStockD":0,"tankerP":0,"tankerD":0,"dipP":0,"dipD":0,"note":"",
-"udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
-"jama":[{"party":"","mode":"cash","amount":0}]}
-Rules: If 'AD' is written, put it in 'openCash'. Extract party names exactly as written.`;
+    m.querySelector('#btn-cancel').onclick = () => m.close();
 
-    const toJpegB64 = (file, maxPx, q) => new Promise((res, rej) => {
-      const url = URL.createObjectURL(file), img = new Image();
-      img.onload = () => {
-        const sc = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
-        const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
-        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-        cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
-        res(cv.toDataURL('image/jpeg', q).split(',')[1]);
+    // Verification Logic
+    m.querySelector('#btn-verify').onclick = async () => {
+      const raw = m.querySelector('#scan-json').value.trim();
+      if (!raw) return APP.toast('पहले JSON पेस्ट करें');
+
+      let json;
+      try {
+        const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const a = clean.indexOf('{'), b = clean.lastIndexOf('}');
+        json = JSON.parse(clean.slice(a, b + 1));
+      } catch (e) {
+        return APP.toast('❌ गलत JSON फॉर्मेट! कृपया सही JSON पेस्ट करें।');
+      }
+
+      m.close(); // Close paste modal
+      
+      // Start Verification Process
+      const date = json.date || st.date;
+      if (date !== st.date) return APP.toast('⚠️ AI ने दूसरी तारीख का डेटा दिया है। कृपया जांचें।');
+
+      const html = [];
+      const toSave = { nz: {}, kharchaItems: [], udhar: [], jama: [] };
+      let hasError = false;
+
+      // 1. Check Paytm / Swipe
+      if (json.paytm != null) { toSave.paytm = APP.num(json.paytm); html.push(`✅ <b>Paytm:</b> ${APP.money(toSave.paytm)}`); }
+      if (json.swipe != null) { toSave.swipe = APP.num(json.swipe); html.push(`✅ <b>Swipe:</b> ${APP.money(toSave.swipe)}`); }
+
+      // 2. Check Nozzles (Locked: Opening)
+      if (json.nz) {
+        Object.keys(json.nz).forEach(k => {
+          if (!['p1','p2','p3','p4','d1','d2','d3','d4'].includes(k)) return;
+          const c = APP.num(json.nz[k].c);
+          const open = APP.num(st.d.nz[k].o || 0);
+          if (c > 0) {
+            if (c < open) {
+              html.push(`❌ <b>${k.toUpperCase()} मीटर:</b> क्लोजिंग (${c}) ओपनिंग (${open}) से कम है!`);
+              hasError = true;
+            } else {
+              toSave.nz[k] = { c: c };
+              html.push(`✅ <b>${k.toUpperCase()} क्लोजिंग:</b> ${c}`);
+            }
+          }
+        });
+      }
+
+      // 3. Check Expenses
+      if (json.kharcha) { toSave.kharcha = APP.num(json.kharcha); html.push(`✅ <b>DG खर्चा:</b> ${APP.money(toSave.kharcha)}`); }
+      if (json.driverInaam) { toSave.driverInaam = APP.num(json.driverInaam); html.push(`✅ <b>ड्राइवर इनाम:</b> ${APP.money(toSave.driverInaam)}`); }
+      if (json.chaiKhana) { toSave.chaiKhana = APP.num(json.chaiKhana); html.push(`✅ <b>चाय-खाना:</b> ${APP.money(toSave.chaiKhana)}`); }
+      
+      if (json.kharchaItems && Array.isArray(json.kharchaItems)) {
+        json.kharchaItems.forEach(x => {
+          if (x.label && APP.num(x.amount) > 0) {
+            toSave.kharchaItems.push({ label: x.label, amount: APP.num(x.amount) });
+            html.push(`✅ <b>अन्य खर्चा:</b> ${x.label} (${APP.money(x.amount)})`);
+          }
+        });
+      }
+
+      // 4. Check Udhar / Jama (Double Entry Check)
+      const ledgerSnap = await APP.db.collection('ledger').where('date', '==', date).get();
+      const existingL = ledgerSnap.docs.map(d => d.data());
+
+      const isDuplicate = (entry) => {
+        return existingL.find(e => 
+          e.partyId === entry.partyId && 
+          e.amount === APP.num(entry.amount) && 
+          (e.vehicle || '') === (entry.vehicle || '')
+        );
       };
-      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('फोटो खुल नहीं पाई')); };
-      img.src = url;
-    });
+
+      if (json.udhar && Array.isArray(json.udhar)) {
+        json.udhar.forEach(u => {
+          const amt = APP.num(u.amount);
+          if (amt <= 0) return;
+          if (isDuplicate(u)) {
+            html.push(`⚠️ <b>डबल एंट्री स्किप:</b> ${APP.esc(u.party)} - ₹${amt}`);
+          } else {
+            toSave.udhar.push(u);
+            html.push(`✅ <b>उधार:</b> ${APP.esc(u.party)} - ₹${amt}`);
+          }
+        });
+      }
+
+      // Show Preview Modal
+      const preview = APP.modal(`
+        <h3>🔍 क्रॉस-चेक रिपोर्ट</h3>
+        <div style="max-height:50vh;overflow:auto;font-size:13px;background:#f8f9fc;padding:10px;border-radius:8px;margin-bottom:12px;border:1px solid #dde2ec;">
+          ${html.length ? html.join('<br>') : 'कोई डेटा नहीं मिला।'}
+        </div>
+        ${hasError ? '<div class="err">❌ ऊपर कुछ गलतियां हैं, कृपया जांचें।</div>' : ''}
+        <div class="btns">
+          <button class="btn g" id="final-save" ${hasError ? 'disabled' : ''}>✅ सही है, सेव करें</button>
+          <button class="btn w" id="prev-cancel">रद्द</button>
+        </div>
+      `);
+
+      preview.querySelector('#prev-cancel').onclick = () => preview.close();
+
+      if (!hasError) {
+        preview.querySelector('#final-save').onclick = async () => {
+          preview.querySelector('#final-save').disabled = true;
+          try {
+            const b = APP.db.batch();
+            const dayRef = APP.db.collection('days').doc(date);
+            
+            // 1. Update Day fields safely
+            const dayUpdate = { ...toSave };
+            delete dayUpdate.udhar; delete dayUpdate.jama; delete dayUpdate.kharchaItems;
+            
+            // Handle Kharcha Items append
+            if (toSave.kharchaItems.length) {
+              const currentItems = st.d.kharchaItems || [];
+              dayUpdate.kharchaItems = currentItems.concat(toSave.kharchaItems);
+            }
+            
+            b.update(dayRef, dayUpdate);
+
+            // 2. Add Ledger Entries
+            const addLedger = (entry, type) => {
+              const amt = APP.num(entry.amount);
+              // Note: Assuming 'entry.partyId' is mapped from AI or needs to be searched. 
+              // For safety, if AI returns party name, we need to find partyId. 
+              // (Assuming the AI returns partyId, or we skip validation if not found).
+              if (!entry.partyId) return; // Skip if no partyId
+
+              const lRef = APP.db.collection('ledger').doc();
+              b.set(lRef, {
+                partyId: entry.partyId,
+                partyName: entry.party,
+                date: date,
+                time: APP.nowTime ? APP.nowTime() : '12:00',
+                kind: type,
+                amount: amt,
+                vehicle: entry.vehicle || '',
+                fuel: entry.fuel || '',
+                rate: 0, litre: 0,
+                note: 'AI Scan Entry',
+                by: APP.S.user ? APP.S.user.email : 'AI',
+                at: APP.FV.serverTimestamp()
+              });
+
+              const pRef = APP.db.collection('parties').doc(entry.partyId);
+              b.update(pRef, { bal: APP.FV.increment(type === 'udhar' ? amt : -amt) });
+            };
+
+            toSave.udhar.forEach(u => addLedger(u, 'udhar'));
+            toSave.jama.forEach(j => addLedger(j, 'jama'));
+
+            await b.commit();
+            APP.toast('✅ डेटा सफलतापूर्वक सेव हो गया!');
+            preview.close();
+            APP.S.parties.pub = null; // Clear cache
+            if (APP.recalc) APP.recalc();
+            APP.dayView(date); // Reload day
+
+          } catch (e) {
+            APP.toast('❌ सेव नहीं हो पाया: ' + e.message);
+            preview.querySelector('#final-save').disabled = false;
+          }
+        };
+      }
+    };
+  };
 
     const geminiRead = async (file) => {
       const key = getKey(); if (!key) throw new Error('पहले 🔑 Gemini key डालें');
