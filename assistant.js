@@ -1,176 +1,1000 @@
-/* ======================================================================
-   Mazda Oil Company - Ultimate Mega Assistant (v10.0)
-   ----------------------------------------------------------------------
-   Features:
-   1. Fluent TTS (Chunking, No Punctuation, Hindi Number Mapping)
-   2. Exhaustive Date Parser (Aaj, Kal, Parso, 10 Tarikh, 10 Din Pehle, 20/10/2026)
-   3. Full App Knowledge Base (100+ Buttons and Tabs explained)
-   4. Deep Context Memory (Remembers active Party, Vehicle, Date)
-   5. Strict Entry Validation (No closing < opening, no delete)
-   6. Multi-lingual Transliteration (Hinglish to Devanagari matching)
-   7. Smart Pivot (Handles weather, cricket, etc. with Pump Data)
-   8. Bulletproof Error Handling (Zero crashes)
-   ====================================================================== */
+/* Mazda Oil Company - Ultimate Cognitive AI Assistant (v9.0 - Pro Complete Edition)
+   Includes:
+   - Full App Knowledge Base (APP.KB - 31 Screens & Every Button)
+   - Firestore TTL Caching Layer (D) + Self-Learning Brain Sync
+   - Fluent, Natural, Zero-Stutter Hindi Voice Engine (No symbol/danda reading)
+   - Deep Sticky Context ('us din', 'unka', 'iski gaadi', date/party/fuel memory)
+   - Strict Focus Lock Mode ('abhi sirf hisab likhna' / 'only udhar entry')
+   - Rich Creator & Owner Lore (Neeraj Dev & Shashank Bansal)
+   - Proactive Owner/Manager Automated Briefing & Glowing 🤖 FAB
+*/
 (function () {
   'use strict';
 
-  const APP = window.APP;
-  if (!APP) return;
-
-  // ==========================================
-  // SECTION 1: GLOBAL VARIABLES & CONSTANTS
-  // ==========================================
+  const APP = (window.APP = window.APP || {});
   const S = APP.S || {};
   const esc = APP.esc || (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
-  const num = APP.num || (v => Number(v) || 0);
-  const money = APP.money || (v => '₹' + Math.round(num(v)).toLocaleString('en-IN'));
-  const lit = APP.lit || (v => Number(num(v).toFixed(2)).toLocaleString('en-IN') + ' L');
-  const toast = APP.toast || (msg => console.log('[Toast]:', msg));
-  const db = () => (APP.db ? (typeof APP.db === 'function' ? APP.db() : APP.db) : null);
-  const pad = n => String(n).padStart(2, '0');
-  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  const T = () => (APP.todayISO ? APP.todayISO() : iso(new Date()));
-  const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+  const n = APP.num || (v => Number(v) || 0);
+  const r0 = v => Math.round(n(v));
+  const M = APP.money || (v => '₹' + Math.round(n(v)).toLocaleString('en-IN'));
+  const L = APP.lit || (v => Number(n(v).toFixed(2)).toLocaleString('en-IN') + ' L');
+  const toast = APP.toast || (msg => console.log('[Mazda AI]:', msg));
+  const dbx = () => (APP.db ? (typeof APP.db === 'function' ? APP.db() : APP.db) : null);
 
-  // Owner Details
+  const pad = v => String(v).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const today = () => (APP.todayISO ? APP.todayISO() : iso(new Date()));
+  const shift = (s, days) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + days); return iso(d); };
+  const monthStart = s => s.slice(0, 8) + '01';
+  const lastDayOf = (y, m) => new Date(y, m, 0).getDate();
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+  const wdOf = s => new Date(s + 'T12:00:00').getDay();
+  const dmy = s => { if (!s || s.length < 10) return s || ''; const [y, m, d] = s.split('-'); return `${Number(d)} ${MON[Number(m) - 1]} ${y}`; };
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  const WD = ['रविवार', 'सोमवार', 'मंगलवार', 'बुधवार', 'गुरुवार', 'शुक्रवार', 'शनिवार'];
+  const MON = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'];
   const PERSON = { owner: 'शशांक बंसल', maker: 'नीरज देव' };
 
-  // Storage Keys
-  const SK = 'mazda_assistant_v10';
-
-  // Assistant State
-  let MEM = { tts: true, fallbackIdx: 0 };
-  try {
-    const saved = JSON.parse(localStorage.getItem(SK) || 'null');
-    if (saved) MEM = Object.assign(MEM, saved);
-  } catch (e) {}
-
-  const saveMem = () => {
-    try { localStorage.setItem(SK, JSON.stringify(MEM)); } catch (e) {}
-  };
-
-  // Context Memory
-  const ctx = {
-    activeParty: null,
-    activeVehicle: null,
-    activeDate: null,
-    pendingAction: null,
-    lastTopic: null,
-    lastQuery: null
-  };
-
-  // ======================================================================
-  // SECTION 2: VOICE ENGINE & HINDI TTS
-  // ======================================================================
-  const HI_WORDS = ('शून्य एक दो तीन चार पाँच छह सात आठ नौ दस ग्यारह बारह तेरह चौदह पंद्रह सोलह सत्रह अठारह उन्नीस बीस इक्कीस बाईस तेईस चौबीस पच्चीस छब्बीस सत्ताईस अट्ठाईस उनतीस तीस इकतीस बत्तीस तैंतीस चौंतीस पैंतीस छत्तीस सैंतीस अड़तीस उनतालीस चालीस इकतालीस बयालीस तैंतालीस चौवालीस पैंतालीस छियालीस सैंतालीस अड़तालीस उनचास पचास इक्यावन बावन तिरपन चौवन पचपन छप्पन सत्तावन अट्ठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ अड़सठ उनहत्तर सत्तर इकहत्तर बहत्तर तिहत्तर चौहत्तर पचहत्तर छिहत्तर सतहत्तर अठहत्तर उन्यासी अस्सी इक्यासी बयासी तिरासी चौरासी पचासी छियासी सतासी अठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पंचानवे छियानवे सत्तानवे अट्ठानवे निन्यानवे').split(' ');
-
-  function hiNum(n) {
-    let val = Math.round(Math.abs(Number(n) || 0));
-    if (val === 0) return 'शून्य';
-    if (val < 100) return HI_WORDS[val] || String(val);
-    const parts = [];
-    const cr = Math.floor(val / 1e7); val %= 1e7;
-    const lk = Math.floor(val / 1e5); val %= 1e5;
-    const th = Math.floor(val / 1e3); val %= 1e3;
-    const h = Math.floor(val / 100); val %= 100;
-    if (cr) parts.push(hiNum(cr) + ' करोड़');
-    if (lk) parts.push((HI_WORDS[lk] || hiNum(lk)) + ' लाख');
-    if (th) parts.push((HI_WORDS[th] || hiNum(th)) + ' हज़ार');
-    if (h) parts.push((HI_WORDS[h] || String(h)) + ' सौ');
-    if (val) parts.push(HI_WORDS[val] || String(val));
-    return parts.join(' ');
+  function safeRecalc() {
+    try {
+      if (typeof APP.recalc === 'function' && document.getElementById('nzwarn')) APP.recalc();
+    } catch (e) {}
   }
 
-  // Converts HTML text to pure spoken text (No punctuation, only words)
-  function toPureSpeech(input) {
-    let t = String(input || '');
-    
-    // Replace HTML breaks with pause
-    t = t.replace(/<br\s*\/?>|<\/(div|p|li|h\d)>/gi, ' , ');
-    t = t.replace(/<[^>]*>/g, ' ');
+  /* ================= 1. APP KNOWLEDGE BASE (APP.KB - 31 Screens & Buttons) ================= */
+  (function initKB() {
+    if (APP.KB && APP.KB.SCREENS && APP.KB.SCREENS.length >= 25) return;
+    const TABS = {
+      owner: 'हिसाब, खाते, गाड़ी कैश, स्टॉक, मैनेजर डेस्क, निजी, और',
+      manager: 'हिसाब, खाते, गाड़ी कैश, स्टॉक, मैनेजर डेस्क, निजी, और',
+      salesman: 'मेरा हिसाब, उधार एंट्री, बाहर',
+      viewer: 'होम, पार्टी, पैसा, वर्कर, बाहर'
+    };
+    const SCR = [
+      ['day', '🧾 हिसाब (रोज़ का हिसाब)', 'नीचे पहला tab "हिसाब"',
+        'एक तारीख का पूरा हिसाब: रेट, पेट्रोल और डीज़ल मीटर रीडिंग (P1-P4, D1-D4 की ओपनिंग और क्लोजिंग), टेस्टिंग, स्टॉक और डिप, पार्टी उधार या जमा, पेटीएम और स्वाइप, खर्चे और कैश क्लोजिंग। नीचे आज का अनुमानित मार्जिन भी दिखता है।',
+        [['💾 सेव', 'अभी तक भरा हिसाब सेव करता है (ऐप खुद भी ऑटो-सेव करता है)'],
+         ['✅ जमा करें (लॉक)', 'दिन का हिसाब सबमिट करके लॉक कर देता है; लॉक के बाद मैनेजर बदलाव नहीं कर सकता'],
+         ['🔓 अनलॉक', 'लॉक किया हुआ दिन दोबारा खोलता है (सिर्फ़ मालिक)'],
+         ['📤 कॉम्पैक्ट रिपोर्ट', 'दिन की छोटी समरी रिपोर्ट बनाकर WhatsApp पर भेजने या कॉपी करने के लिए'],
+         ['📥 शिफ्ट से भरें', 'सेल्समैन की शिफ्ट या रनशीट से मीटर और हिसाब इस दिन में अपने-आप भर देता है'],
+         ['📷 AI रजिस्टर स्कैन', 'कागज़ के रजिस्टर की फोटो से AI पढ़कर एंट्री भरता है'],
+         ['🔗 कल से दोबारा जोड़ें', 'आज की ओपनिंग को कल की क्लोजिंग से फिर से जोड़ता है (सिर्फ़ मालिक)'],
+         ['+ उधार / + जमा', 'आज की पार्टी एंट्री जोड़ता है (तेल उधार दिया या पैसा जमा आया)'],
+         ['+ और खर्चा जोड़ें', 'खर्चे की नई लाइन जोड़ता है; ✂ बाँटें से एक रकम को हिस्सों में बाँट सकते हैं'],
+         ['✔ मिलान', 'सेल्समैन की डाली उधार एंट्री को वेरीफाई करता है (सिर्फ़ मालिक)']],
+        'hisab hisaab din daily roz meter reading lock submit save jama karna compact report relink scan'],
+      ['ledger', '📒 खाते', 'नीचे दूसरा tab "खाते"',
+        'सभी पार्टियों की लिस्ट और हर एक का वर्तमान बकाया। किसी भी पार्टी पर दबाकर उसका पूरा खाता और लेन-देन खुलता है।',
+        [['+ उधार', 'पार्टी को तेल उधार दिया — गाड़ी नंबर, तेल, लीटर और रेट से एंट्री; बोलकर भरें और थर्मल पर्ची भी यहीं है'],
+         ['+ जमा', 'पार्टी से पैसा आया (कैश या ऑनलाइन) — इससे बकाया घटता है'],
+         ['+ नई पार्टी', 'नया खाता खोलता है (नाम, मोबाइल, गाड़ियाँ और उधार सीमा)'],
+         ['📥 लिस्ट से जोड़ें', 'कई पार्टियाँ एक साथ जोड़ने के लिए लिस्ट पेस्ट करने का बटन'],
+         ['⚖ पिछला बैलेंस', 'ऐप शुरू करने से पहले का पुराना बकाया या एडवांस दर्ज करता है'],
+         ['✅ Paid / वसूली', 'पूरा हिसाब चुकता मानकर वसूली दर्ज करता है'],
+         ['✅ खाता बंद', 'पार्टी का खाता बंद करता है'],
+         ['🔑 पोर्टल कोड / भेजें', 'पार्टी को उसके अपने पोर्टल पर हिसाब देखने और ऑर्डर देने का 6 अंकों का कोड देता है'],
+         ['📄 प्रोफेशनल स्टेटमेंट', 'तारीख चुनकर पीडीएफ या प्रिंट स्टेटमेंट बनाता है और WhatsApp पर भेजता है'],
+         ['🧾 Professional Invoice (UPI QR)', 'UPI QR कोड वाला पक्का बिल बनाता है'],
+         ['✏ पार्टी बदलें', 'पार्टी का नाम, मोबाइल, गाड़ी या उधार सीमा बदलता है'],
+         ['🔧 ठीक करें', 'खाते के बैलेंस की गड़बड़ी को शुरू से दोबारा जोड़कर ठीक करता है']],
+        'khata khate party ledger udhar jama baki baaki bakaya naya khata statement invoice portal code'],
+      ['gaadicash', '🚚 गाड़ी कैश', 'नीचे तीसरा tab "गाड़ी कैश"',
+        'ड्राइवर को गाड़ी के नाम पर दिया गया नकद पैसा। यह पार्टी के खाते में उधार जुड़ता है और बाद में वापस मिलने पर Paid मार्क होता है।',
+        [['+ नया गाड़ी कैश दें', 'पार्टी, गाड़ी नंबर और रकम डालकर ड्राइवर कैश दर्ज करता है'],
+         ['✔ Paid', 'यह पैसा वापस मिल गया — इसे चुकता मार्क करता है'],
+         ['🔄 रिफ्रेश', 'गाड़ी कैश की लिस्ट दोबारा लोड करता है']],
+        'gaadi cash driver cash gadicash chalak nakad diya'],
+      ['stock', '🛢 स्टॉक', 'नीचे चौथा tab "स्टॉक"',
+        'पेट्रोल और डीज़ल का स्टॉक हिसाब, नोज़ल-वाइज़ बिक्री और महीने का दिन-वार स्टॉक रजिस्टर।',
+        [['महीना चुनें', 'किस महीने का स्टॉक रजिस्टर देखना है वह चुनता है']],
+        'stock tanki dip register nozzle wise'],
+      ['manager_desk', '💼 मैनेजर डेस्क', 'नीचे पाँचवाँ tab "मैनेजर डेस्क"',
+        'मैनेजर का ऑल-इन-वन काउंटर: गल्ले का मिलान, मीटर रीडिंग अपडेट और नकद आना-जाना।',
+        [['💵 गल्ला गिनें / अपडेट करें', 'दराज़ में रखे असली नोट गिनकर सिस्टम के कैश से मिलाता है'],
+         ['💾 सेल अपडेट करें', 'मौजूदा मीटर रीडिंग से तुरंत सेल कैलकुलेट करता है'],
+         ['+ खर्चा', 'गल्ले से खर्चा जोड़ता है'],
+         ['+ निजी उधार', 'मालिक या निजी खाते का उधार लिखता है'],
+         ['+ बैंक जमा', 'बैंक में जमा किया गया कैश दर्ज करता है'],
+         ['+ पार्टी जमा', 'पार्टी से आया नकद पैसा दर्ज करता है']],
+        'manager desk galla gulla counter meter cash out cash in'],
+      ['priv', '🔒 निजी', 'नीचे छठा tab "निजी"',
+        'मालिक के निजी उधार और निजी पार्टियाँ, जो पंप के आम खातों से अलग रहते हैं।',
+        [['+ नया निजी उधार', 'निजी उधार दर्ज करता है'],
+         ['+ नई निजी पार्टी', 'नई निजी पार्टी जोड़ता है']],
+        'niji private priv'],
+      ['more', '⚙ और (मेनू)', 'नीचे आख़िरी tab "और"',
+        'बाकी सारी एडवांस स्क्रीन यहाँ हैं: विश्लेषण, वित्त, पार्टी/वर्कर, संचालन, सहायता, सेटिंग और पूरा डेटा बैकअप।',
+        [['💾 JSON / CSV', 'पूरे पंप का डेटा एक फ़ाइल में डाउनलोड और बैकअप करता है'],
+         ['🌙 डार्क मोड', 'ऐप की थीम को रात के हिसाब से डार्क करता है']],
+        'aur more menu backup dark mode'],
+      ['analytics', '📊 आंकड़ों का विश्लेषण', 'और → विश्लेषण',
+        'स्टॉक कब खत्म होगा, दिन-वार बिक्री पैटर्न, इस महीने बनाम पिछले महीने की तुलना, और कौन सी पार्टी वापस आ रही है।',
+        [['पूरा विश्लेषण देखें →', 'पूरा चार्ट और ग्राफ खोलता है']],
+        'analytics vishleshan pattern weekday retention aankde'],
+      ['rate_history', '📈 रेट इतिहास', 'और → विश्लेषण', 'पेट्रोल और डीज़ल के रेट कब-कब बदले, उसका पूरा रिकॉर्ड।', [], 'rate history bhav rate itihas'],
+      ['dashboard', '📊 डैशबोर्ड', 'और → विश्लेषण', 'एक नज़र में: आज की सेल, कुल उधार और स्टॉक कितने दिन चलेगा।',
+        [['💬 WhatsApp', 'डैशबोर्ड समरी WhatsApp पर भेजता है'], ['⏰ सबको याद दिलाएँ', 'बकाया रिमाइंडर पेज खोलता है']],
+        'dashboard ek nazar summary'],
+      ['monthreport', '📅 मासिक रिपोर्ट', 'और → विश्लेषण', 'महीना चुनकर पूरे महीने का दिन-वार हिसाब, एक्सेल और पीडीएफ डाउनलोड।',
+        [['📊 Excel', 'एक्सेल फ़ाइल डाउनलोड करता है'], ['📄 PDF / Print', 'प्रिंट या पीडीएफ निकालता है']],
+        'monthly report masik mahine ki report'],
+      ['nozzle', '⛽ नोज़ल ट्रेंड', 'और → विश्लेषण', 'हर नोज़ल (P1-P4, D1-D4) की 30 दिन की बिक्री और ट्रेंड दिखाता है।',
+        [['📷 रजिस्टर फोटो', 'रजिस्टर की फोटो देखने या जोड़ने के लिए']],
+        'nozzle nozel trend machine'],
+      ['requests', '📩 रिक्वेस्ट्स', 'और → वित्त', 'पार्टी की रेट-बदलाव और उधार मोहलत की रिक्वेस्ट मंजूर या रद्द करने का पेज।',
+        [['Approve / Reject', 'रिक्वेस्ट को मंजूर या रद्द करता है']],
+        'request rate mohlat approve manzoor'],
+      ['bank', '🏦 बैंक जमा', 'और → वित्त', 'मालिक को दिया या SBI बैंक में जमा किया गया पैसा दर्ज करता है।',
+        [['+ नई जमा', 'नई बैंक डिपॉजिट एंट्री जोड़ता है']],
+        'bank jama sbi deposit'],
+      ['invoices', '📄 खरीद बिल / मार्जिन', 'और → वित्त', 'डिपो से आए टैंकर के खरीद बिल और उनसे पंप का असली मुनाफा (मार्जिन) निकालता है।',
+        [['+ नया बिल', 'नया टैंकर खरीद बिल जोड़ता है'], ['📥 टैंकर रिपोर्ट से लीटर भरें', 'टैंकर रिपोर्ट से लीटर अपने आप लेता है']],
+        'invoice bill kharid margin munafa purchase'],
+      ['reminders', '⏰ उधार रिमाइंडर', 'और → वित्त', 'बकाया वाली पार्टियों को एक क्लिक में WhatsApp तगादा भेजने की लिस्ट।',
+        [['💬 WhatsApp', 'उस पार्टी को तगादे का मैसेज भेजता है']],
+        'reminder yaad tagada tagaada udhar remind'],
+      ['recovery', '🚨 वसूली (Recovery)', 'और → वित्त', 'वसूली डैशबोर्ड: किस पार्टी से कितना और कितने दिनों से पैसा लेना बाकी है।', [], 'recovery wasooli vasooli dues'],
+      ['customers', '👥 ग्राहक कार्ड', 'और → पार्टी/वर्कर', 'हर पार्टी का प्रोफाइल कार्ड, फोन नंबर, गाड़ियाँ और उधार सीमा।', [], 'customer card grahak'],
+      ['workers', '👷 वर्कर हाज़िरी', 'और → पार्टी/वर्कर', 'स्टाफ की रोज़ की हाज़िरी (P = आया, A = छुट्टी, H = आधा दिन) और सैलरी का हिसाब।',
+        [['P / A / H', 'हाज़िरी मार्क करता है'], ['+ नया वर्कर', 'नया स्टाफ जोड़ता है']],
+        'worker hajri haziri attendance salesman chutti staff'],
+      ['vehicle_search', '🚗 गाड़ी प्रोफाइल', 'और → पार्टी/वर्कर', 'गाड़ी नंबर डालकर उसकी पूरी कुंडली: किस पार्टी की है और कब-कब तेल डलवाया।', [], 'vehicle gaadi profile number search history'],
+      ['cibil', '⭐ पार्टी CIBIL', 'और → पार्टी/वर्कर', 'हर पार्टी का पेमेंट स्कोर: कौन समय पर पैसा देता है और कौन लेट करता है।', [], 'cibil score credit rating limit'],
+      ['runsheet', '📋 रनशीट', 'और → संचालन', 'सेल्समैन की शिफ्ट शीट: ओपनिंग और क्लोजिंग रीडिंग से शिफ्ट का हिसाब।',
+        [['+ नई रनशीट बनाएं', 'शिफ्ट शुरू करता है'], ['✔ अप्रूव करें', 'सेल्समैन का हिसाब मंजूर करता है']],
+        'runsheet shift salesman sheet'],
+      ['tanker_report', '🚛 टैंकर रिपोर्ट', 'और → संचालन', 'टैंकर खाली करने (Decantation) की पूरी रिपोर्ट, डिप और शॉर्टेज का हिसाब।',
+        [['+ नई रिपोर्ट', 'नया टैंकर अनलोड रिकॉर्ड करता है']],
+        'tanker report khali unload driver'],
+      ['shop', '🛍 दुकान (माज़दा शॉप)', 'और → संचालन', 'इंजन ऑयल, लुब्रिकेंट और 2T पाउच का स्टॉक और रेट।', [], 'shop dukan lubes oil engine stock saman'],
+      ['shop_orders', '📦 शॉप ऑर्डर', 'और → संचालन', 'पार्टी पोर्टल से आए लुब्रिकेंट और सामान के ऑर्डर।', [], 'shop order orders'],
+      ['vendors', '🏢 कंपनी सपोर्ट', 'और → सहायता', 'डिपो या तेल कंपनी को शिकायत या मेल लिखने का टूल।', [], 'vendor company support samasya complaint'],
+      ['audit', '🔍 ऑडिट लॉग', 'और → सहायता', 'ऐप में किसने कब कौन सी एंट्री बदली या हटाई, उसका पूरा सुरक्षा रिकॉर्ड।', [], 'audit log badlav record kisne'],
+      ['applock_settings', '🔒 ऐप लॉक', 'और → सेटिंग', 'ऐप खोलने पर PIN लॉक लगाने या बदलने की सेटिंग।', [], 'applock pin lock password'],
+      ['holidays', '📅 डिपो छुट्टियाँ', 'और → सेटिंग', 'डिपो बंद रहने की छुट्टियाँ ताकि स्टॉक अलर्ट सही समय पर मिले।', [], 'holiday chutti depot'],
+      ['salesman', '⛽ मेरा हिसाब (सेल्समैन)', 'सेल्समैन लॉगिन का पहला tab', 'सेल्समैन अपनी शिफ्ट की रीडिंग, पेटीएम और कैश यहाँ भरता है।', [], 'salesman mera hisab shift'],
+      ['sm_udhar', '🚚 उधार एंट्री (सेल्समैन)', 'सेल्समैन लॉगिन का दूसरा tab', 'सेल्समैन अपनी शिफ्ट में दिया गया उधार यहाँ चढ़ाता है जिसे मालिक बाद में मिलान करता है।', [], 'sm udhar salesman udhar entry']
+    ];
+    const ROLES = {
+      owner: 'मालिक (शशांक बंसल): पूरे ऐप में सब कुछ देख और बदल सकते हैं, लॉक दिन को अनलॉक कर सकते हैं और सेल्समैन की एंट्री का मिलान करते हैं।',
+      manager: 'मैनेजर: रोज़ का हिसाब भरते हैं और जमा (लॉक) करते हैं; लॉक होने के बाद बदलाव सिर्फ़ मालिक कर सकते हैं।',
+      salesman: 'सेल्समैन: सिर्फ़ अपनी शिफ्ट का हिसाब और उधार एंट्री कर सकते हैं।',
+      viewer: 'व्यूअर: सिर्फ़ हिसाब देख सकते हैं, कोई बदलाव नहीं कर सकते।'
+    };
+    APP.KB = {
+      TABS,
+      SCREENS: SCR.map(x => ({ go: x[0], name: x[1], where: x[2], what: x[3], buttons: x[4], kw: x[5] })),
+      ROLES
+    };
+  })();
 
-    // Money: ₹-1,770 or -₹1,770 or ₹1,234
-    t = t.replace(/(-?)\s*₹\s*(-?)\s*([\d,]+(?:\.\d+)?)/g, (m, neg1, neg2, numStr) => {
-      const isNeg = (neg1 === '-' || neg2 === '-');
-      return (isNeg ? 'माइनस ' : '') + hiNum(parseFloat(numStr.replace(/,/g, ''))) + ' रुपये ';
+  /* ================= 2. FIRESTORE DATA LAYER WITH TTL CACHE ================= */
+  const D = {
+    _c: {},
+    clear() { this._c = {}; },
+    async memo(k, ttl, fn) {
+      const c = this._c[k];
+      if (c && Date.now() - c.t < ttl) return c.v;
+      const v = await fn();
+      this._c[k] = { t: Date.now(), v };
+      return v;
+    },
+    async parties(force) {
+      try {
+        if (!force && S.parties && S.parties.pub && S.parties.pub.length) return S.parties.pub;
+        return (await APP.getParties(false, !!force)) || [];
+      } catch (e) { return []; }
+    },
+    day(date) {
+      return this.memo('d_' + date, 15000, async () => {
+        if (!dbx()) return null;
+        const s = await dbx().collection('days').doc(date).get();
+        return s.exists ? Object.assign({ date }, s.data()) : null;
+      });
+    },
+    days(from, to) {
+      return this.memo('ds_' + from + '_' + (to || ''), 45000, async () => {
+        if (!dbx()) return [];
+        let q = dbx().collection('days').where('date', '>=', from);
+        if (to) q = q.where('date', '<=', to);
+        const s = await q.get();
+        return s.docs.map(d => Object.assign({ date: d.id }, d.data())).filter(d => d && d.sum).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      });
+    },
+    led(from, to) {
+      return this.memo('ld_' + from + '_' + (to || ''), 60000, async () => {
+        if (!dbx()) return [];
+        let q = dbx().collection('ledger').where('date', '>=', from);
+        if (to) q = q.where('date', '<=', to);
+        const s = await q.get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      });
+    },
+    ledParty(pid) {
+      return this.memo('lp_' + pid, 45000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('ledger').where('partyId', '==', pid).get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (String(a.date) + String(a.time || '')).localeCompare(String(b.date) + String(b.time || '')));
+      });
+    },
+    workers() {
+      return this.memo('wk', 120000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('workers').get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(w => w.active !== false);
+      });
+    },
+    att(date) {
+      return this.memo('at_' + date, 20000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('attendance').where('date', '==', date).get();
+        return s.docs.map(d => d.data());
+      });
+    },
+    tankers() {
+      return this.memo('tk', 90000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('tanker_invoices').get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      });
+    },
+    gcash() {
+      return this.memo('gc', 45000, async () => {
+        if (!dbx()) return [];
+        const s = await dbx().collection('gaadi_cash').get();
+        return s.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      });
+    }
+  };
+
+  /* ================= 3. MEMORY, STICKY CONTEXT & FOCUS LOCK ================= */
+  const BK = 'mazda_asst_brain_v9';
+  function loadBrain() {
+    let b = { alias: {}, partyAlias: {}, fallbackIdx: 0, mem: { tts: true } };
+    try {
+      const x = JSON.parse(localStorage.getItem(BK) || 'null');
+      if (x) b = Object.assign(b, x);
+    } catch (e) {}
+    return b;
+  }
+  function saveBrain() {
+    try { localStorage.setItem(BK, JSON.stringify(ctx.brain)); } catch (e) {}
+  }
+
+  const ctx = {
+    party: null,          // Sticky Active Party
+    vehicle: null,        // Sticky Active Vehicle
+    date: null,           // Sticky Active Date (e.g. '2026-10-20')
+    range: null,          // Sticky Date Range
+    fuel: null,           // Sticky Fuel ('petrol' | 'diesel')
+    lastSkill: null,      // Previous executed skill
+    pending: null,        // Pending confirmation action (Meter, Paytm, Udhar, Jama, Kharcha)
+    focusMode: null,      // null | 'ENTRY' | 'UDHAR' | 'SALE' (Triggered by "abhi sirf...")
+    brain: loadBrain()
+  };
+
+  /* ================= 4. FLUENT NATURAL HINDI VOICE ENGINE ================= */
+  const HI_NUMS = ('शून्य एक दो तीन चार पाँच छह सात आठ नौ दस ग्यारह बारह तेरह चौदह पंद्रह सोलह सत्रह अठारह उन्नीस बीस इक्कीस बाईस तेईस चौबीस पच्चीस छब्बीस सत्ताईस अट्ठाईस उनतीस तीस इकतीस बत्तीस तैंतीस चौंतीस पैंतीस छत्तीस सैंतीस अड़तीस उनतालीस चालीस इकतालीस बयालीस तैंतालीस चौवालीस पैंतालीस छियालीस सैंतालीस अड़तालीस उनचास पचास इक्यावन बावन तिरपन चौवन पचपन छप्पन सत्तावन अट्ठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ अड़सठ उनहत्तर सत्तर इकहत्तर बहत्तर तिहत्तर चौहत्तर पचहत्तर छिहत्तर सतहत्तर अठहत्तर उन्यासी अस्सी इक्यासी बयासी तिरासी चौरासी पचासी छियासी सतासी अठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पंचानवे छियानवे सत्तानवे अट्ठानवे निन्यानवे').split(' ');
+
+  function hiWords(numVal) {
+    let v = Math.round(Math.abs(Number(numVal) || 0));
+    if (v === 0) return 'शून्य';
+    if (v < 100) return HI_NUMS[v] || String(v);
+    const out = [];
+    const cr = Math.floor(v / 1e7); v %= 1e7;
+    const lk = Math.floor(v / 1e5); v %= 1e5;
+    const th = Math.floor(v / 1e3); v %= 1e3;
+    const h = Math.floor(v / 100); v %= 100;
+    if (cr) out.push(hiWords(cr) + ' करोड़');
+    if (lk) out.push((HI_NUMS[lk] || hiWords(lk)) + ' लाख');
+    if (th) out.push((HI_NUMS[th] || hiWords(th)) + ' हज़ार');
+    if (h) out.push((HI_NUMS[h] || String(h)) + ' सौ');
+    if (v) out.push(HI_NUMS[v] || String(v));
+    return out.join(' ');
+  }
+
+  function cleanForNaturalSpeech(rawText) {
+    let t = String(rawText || '');
+    // Replace HTML tags with spaces
+    t = t.replace(/<br\s*\/?>|<\/(div|p|li|h\d)>/gi, '। ').replace(/<[^>]*>/g, ' ');
+
+    // Format Rupees: ₹1,51,380 or -₹1,770 or ₹-1,770
+    t = t.replace(/(-?)\s*₹\s*(-?)\s*([\d,]+(?:\.\d+)?)/g, (m, n1, n2, digits) => {
+      const isNeg = (n1 === '-' || n2 === '-');
+      const val = parseFloat(digits.replace(/,/g, ''));
+      return ' ' + (isNeg ? 'माइनस ' : '') + hiWords(val) + ' रुपये ';
     });
 
-    // Liters: 12,161.05 L
-    t = t.replace(/([\d,]+(?:\.\d+)?)\s*(?:L|ltr|Ltr|lit\.?|लीटर)\b/g, (m, numStr) => {
-      return hiNum(parseFloat(numStr.replace(/,/g, ''))) + ' लीटर ';
+    // Format Liters: 12,161.05 L -> बारह हज़ार एक सौ इकसठ लीटर
+    t = t.replace(/([\d,]+(?:\.\d+)?)\s*(?:L|ltr|Ltr|lit\.?|लीटर)\b/g, (m, digits) => {
+      const val = parseFloat(digits.replace(/,/g, ''));
+      return ' ' + hiWords(val) + ' लीटर ';
     });
 
-    // Standalone numbers
-    t = t.replace(/\b(\d[\d,]*(?:\.\d+)?)\b/g, (m, numStr) => {
-      return hiNum(parseFloat(numStr.replace(/,/g, '')));
+    // Format Percentages: 15% -> पंद्रह प्रतिशत
+    t = t.replace(/(\d+(?:\.\d+)?)\s*%/g, (m, digits) => ' ' + hiWords(Math.round(parseFloat(digits))) + ' प्रतिशत ');
+
+    // Format Decimals (like 3.5 दिन -> साढ़े तीन दिन or तीन दशमलव पाँच)
+    t = t.replace(/\b(\d+)\.(\d)\b/g, (m, a, b) => {
+      if (b === '0') return hiWords(a);
+      return hiWords(a) + ' दशमलव ' + hiWords(b);
     });
 
-    // English terms to Hindi sounds
+    // Format Remaining Numbers
+    t = t.replace(/\b(\d[\d,]*)\b/g, (m, digits) => hiWords(parseFloat(digits.replace(/,/g, ''))));
+
+    // Phonetic replacements for English words so Hindi TTS speaks them smoothly
     t = t.replace(/\bpaytm\b/gi, 'पेटीएम')
          .replace(/\bswipe\b/gi, 'स्वाइप')
+         .replace(/\bupi\b/gi, 'यूपीआई')
          .replace(/\bdiesel\b/gi, 'डीज़ल')
          .replace(/\bpetrol\b/gi, 'पेट्रोल')
          .replace(/\bowner\b/gi, 'ओनर')
+         .replace(/\bmanager\b/gi, 'मैनेजर')
+         .replace(/\bcibil\b/gi, 'सिबिल')
+         .replace(/\bwhatsapp\b/gi, 'व्हाट्सऐप')
          .replace(/\bai\b/gi, 'ए आई')
          .replace(/\bp([1-4])\b/gi, 'पी $1')
          .replace(/\bd([1-4])\b/gi, 'डी $1');
 
-    // Remove all punctuation so TTS doesn't read "comma", "danda", etc.
-    t = t.replace(/[^a-zA-Z\u0900-\u097F\s]/g, ' ');
-    return t.replace(/\s+/g, ' ').trim();
+    // Strip all symbols/pipes/dots/commas/hyphens/brackets EXCEPT Hindi Poorna Viram (।) so TTS never says "danda", "comma", "dash"
+    t = t.replace(/[^a-zA-Z\u0900-\u097F।\s]/g, ' ');
+    t = t.replace(/।+/g, '।').replace(/\s+/g, ' ').trim();
+    return t;
   }
 
   const Voice = (() => {
-    let chosen = null;
+    let bestVoice = null;
+    let utterQueue = [];
 
-    function loadVoices() {
+    function pickBestVoice() {
       if (!window.speechSynthesis) return;
-      const voices = speechSynthesis.getVoices() || [];
-      const hiVoices = voices.filter(v => /^hi/i.test(v.lang) || /hindi/i.test(v.name));
-      chosen = hiVoices.find(v => /swara|lekha|google|female|kalpana/i.test(v.name)) || hiVoices[0] || voices[0] || null;
+      const all = speechSynthesis.getVoices() || [];
+      if (!all.length) return;
+      const hi = all.filter(v => /^hi/i.test(v.lang) || /hindi|हिन्दी/i.test(v.name));
+      // Priority: Natural/Online Google Hindi or Microsoft Swara or Apple Lekha
+      bestVoice =
+        hi.find(v => /natural|online|swara|lekha|google हिन्दी/i.test(v.name)) ||
+        hi.find(v => /female/i.test(v.name)) ||
+        hi[0] ||
+        all.find(v => /^en[-_]in/i.test(v.lang)) ||
+        all[0];
     }
 
     if (window.speechSynthesis) {
-      loadVoices();
-      speechSynthesis.onvoiceschanged = loadVoices;
+      pickBestVoice();
+      speechSynthesis.onvoiceschanged = pickBestVoice;
+    }
+
+    function speakNext() {
+      if (!utterQueue.length || !window.speechSynthesis) return;
+      const sentence = utterQueue.shift();
+      const u = new SpeechSynthesisUtterance(sentence);
+      u.lang = (bestVoice && bestVoice.lang) || 'hi-IN';
+      if (bestVoice) u.voice = bestVoice;
+      u.rate = 1.0; // Natural human speed
+      u.pitch = 1.02;
+      u.onend = () => { if (utterQueue.length) speakNext(); };
+      u.onerror = () => { if (utterQueue.length) speakNext(); };
+      try { speechSynthesis.speak(u); } catch (e) {}
     }
 
     return {
-      say(textToSpeak) {
-        if (!MEM.tts || !window.speechSynthesis) return;
+      say(rawText) {
+        if (!ctx.brain.mem.tts || !window.speechSynthesis) return;
         this.stop();
-        loadVoices();
-        
-        const cleanSpeech = toPureSpeech(textToSpeak);
-        if (!cleanSpeech) return;
-
-        // Chunking: Avoid browser 15-second cutoff
-        const chunks = (cleanSpeech.match(/[^,।.?!]+[,।.?!]*/g) || [cleanSpeech]).map(s => s.trim()).filter(Boolean);
-        
-        chunks.forEach(chunk => {
-          const u = new SpeechSynthesisUtterance(chunk);
-          u.lang = (chosen && chosen.lang) ? chosen.lang : 'hi-IN';
-          if (chosen) u.voice = chosen;
-          u.rate = 0.95; 
-          u.pitch = 1.0;
-          speechSynthesis.speak(u);
-        });
+        pickBestVoice();
+        const cleaned = cleanForNaturalSpeech(rawText);
+        if (!cleaned) return;
+        // Split only on long sentence breaks (> 160 chars) so normal sentences play in ONE single breath without stutter
+        if (cleaned.length <= 180) {
+          utterQueue = [cleaned.replace(/।/g, ' ')];
+        } else {
+          utterQueue = cleaned.split('।').map(s => s.trim()).filter(Boolean);
+        }
+        speakNext();
       },
       stop() {
+        utterQueue = [];
         try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {}
       }
     };
   })();
 
-  // ======================================================================
-  // SECTION 3: NORMALIZATION & TRANSLITERATION
-  // ======================================================================
+  /* ================= 5. HELPERS & STOCK FORECASTING ================= */
+  const lbl = isoDate => {
+    const t = today();
+    if (!isoDate || isoDate === t) return 'आज';
+    if (isoDate === shift(t, -1)) return 'कल';
+    if (isoDate === shift(t, -2)) return 'परसों';
+    return dmy(isoDate) + ' (' + WD[wdOf(isoDate)] + ')';
+  };
+  const sayDate = isoDate => lbl(isoDate).replace(/\s*\(.*\)/, '');
+  const R = (html, o) => Object.assign({ html }, o || {});
+  const chip = (label, q) => ({ label, q });
+  const cs = (label, skill, params) => ({ label, skill, params: params || {} });
+  const fuelName = f => (f === 'petrol' ? 'पेट्रोल' : f === 'diesel' ? 'डीज़ल' : 'पेट्रोल और डीज़ल');
+  const dayHasData = d => d && d.sum && (n(d.sum.sale) > 0 || n(d.sum.litP) > 0 || n(d.sum.litD) > 0);
+  const sumBy = (arr, fn) => arr.reduce((a, x) => a + n(fn(x)), 0);
+  const pct = (a, b) => (b ? Math.round(((a - b) / b) * 100) : 0);
+  const closeStock = (d, f) => {
+    if (!d || !d.sum) return 0;
+    const act = n(f === 'petrol' ? d.sum.actStockP : d.sum.actStockD);
+    const exp = n(f === 'petrol' ? d.sum.expStockP : d.sum.expStockD);
+    return act > 0 ? act : exp;
+  };
+  const owing = ps => (ps || []).filter(x => n(x.bal) > 0).sort((a, b) => n(b.bal) - n(a.bal));
+
+  let closeUI = () => {};
+  const openLed = id => { try { closeUI(); setTimeout(() => APP.partyView && APP.partyView(id, false), 250); } catch (e) {} };
+  const goTo = key => { try { closeUI(); setTimeout(() => APP.go && APP.go(key), 250); } catch (e) {} };
+
+  function waRemind(x) {
+    const ph = String((x && x.phone) || '').replace(/\D/g, '');
+    const msg = `नमस्ते ${x.name} जी,\n\nमाज़दा ऑयल कंपनी पर आपका वर्तमान बकाया ${M(x.bal)} है। कृपया जल्द भुगतान करने का कष्ट करें।\n\nधन्यवाद 🙏`;
+    window.open('https://wa.me/' + (ph.length === 10 ? '91' + ph : ph) + '?text=' + encodeURIComponent(msg), '_blank');
+  }
+
+  async function burnRate(f) {
+    const ds = (await D.days(shift(today(), -10), today())).filter(d => d.date !== today() || d.status === 'submitted');
+    const arr = ds.slice(-7).map(d => n(f === 'petrol' ? d.sum.litP : d.sum.litD)).filter(v => v > 0);
+    if (!arr.length) return 0;
+    let ws = 0, wt = 0;
+    arr.forEach((v, i) => { const w = i + 1; ws += v * w; wt += w; });
+    return ws / wt;
+  }
+
+  async function stockNow() {
+    const ds = await D.days(shift(today(), -10), today());
+    for (let i = ds.length - 1; i >= 0; i--) {
+      const d = ds[i], P = closeStock(d, 'petrol'), Dz = closeStock(d, 'diesel');
+      if (P > 0 || Dz > 0) return { P, D: Dz, date: d.date, d };
+    }
+    return null;
+  }
+
+  const homeChips = () => [
+    chip('📊 आज की सेल', 'आज की सेल'),
+    chip('⛽ नोज़ल ट्रेंड', 'नोज़ल ट्रेंड बताओ'),
+    chip('🛢 स्टॉक', 'स्टॉक कितना है'),
+    chip('📒 कुल उधार', 'कुल उधार')
+  ];
+
+  /* ================= 6. ALL PRO SKILLS (SK) ================= */
+  const SK = {};
+
+  SK.greet = async () => {
+    const h = new Date().getHours();
+    const g = h < 12 ? 'सुप्रभात' : h < 17 ? 'नमस्कार' : 'शुभ संध्या';
+    return R(`${g}! 🙏 मैं <b>माज़दा असिस्टेंट</b> हूँ। बताइए, आज किसका हिसाब देखें या कौन सी एंट्री लिखें?`, {
+      say: `${g}! मैं माज़दा असिस्टेंट हूँ। बताइए, आज किसका हिसाब देखें या कौन सी एंट्री लिखें?`,
+      chips: homeChips()
+    });
+  };
+
+  SK.thanks = async () => {
+    const msg = pick([
+      '😊 जी, कभी भी! पंप का हिसाब एकदम तैयार है, और कुछ पूछना हो तो बताइए।',
+      '🙏 आपका स्वागत है! आगे बताइए, क्या चेक करें?',
+      '😊 बस आप हुक्म कीजिए, मैं सारा हिसाब मुँहज़बानी रखती हूँ!'
+    ]);
+    return R(msg, { say: msg, chips: homeChips() });
+  };
+
+  SK.help = async () => R(
+    `🤖 <b>मैं आपके पंप के ये सारे काम चुटकियों में कर सकती हूँ:</b><br><br>` +
+    `1️⃣ <b>बिक्री और विश्लेषण:</b> आज, कल, परसों, किसी भी तारीख (जैसे <i>20/10/2026</i>) या पूरे महीने की सेल, "सेल कम क्यों हुई", पीक सीज़न और बेस्ट सेल डे।<br>` +
+    `2️⃣ <b>लाइव एंट्री (बोलकर या लिखकर):</b> <i>"P1 4500"</i> (मीटर रीडिंग), <i>"Paytm 1200"</i>, <i>"Chai 70"</i>, <i>"9769 में 5000 उधार"</i> या <i>"दीपक शाह 10000 जमा"</i>।<br>` +
+    `3️⃣ <b>पार्टी और गाड़ी कुंडली:</b> किस पार्टी पर कितना उधार है, गाड़ी आखिरी बार कितने दिन पहले आई, सीबिल और लेट पेमेंट वाले।<br>` +
+    `4️⃣ <b>स्टॉक, डिप और टैंकर:</b> <i>"45 डिप में कितना डीज़ल"</i>, स्टॉक कितने दिन चलेगा, और आखिरी टैंकर कब आया।<br>` +
+    `5️⃣ <b>पूरे ऐप की जानकारी:</b> आप किसी भी बटन या टैब का नाम पूछिए (जैसे <i>"कॉम्पैक्ट रिपोर्ट क्या है?"</i> या <i>"मिलान बटन क्या करता है?"</i>), मैं तुरंत समझा दूँगी!<br>` +
+    `6️⃣ <b>फ़ोकस मोड:</b> अगर आप कहेंगे <i>"अभी सिर्फ़ हिसाब लिखना"</i>, तो मैं बाकी सारी बातें बंद करके सिर्फ़ एंट्री पर ध्यान दूँगी।`,
+    {
+      say: 'मैं पंप की सेल, स्टॉक, डिप, पार्टी उधार और गाड़ियों का पूरा हिसाब बता सकती हूँ। आप बोलकर मीटर रीडिंग, पेटीएम, खर्चा और उधार या जमा की एंट्री करवा सकते हैं, और ऐप के किसी भी बटन का काम पूछ सकते हैं।',
+      chips: [chip('📖 ऐप का टूर', 'ऐप में क्या क्या है'), chip('📊 आज की सेल', 'आज की सेल'), chip('📒 कुल उधार', 'कुल उधार')]
+    }
+  );
+
+  // Rich Identity, Maker (Neeraj Dev) & Owner (Shashank Bansal) Lore
+  SK.about = async (p) => {
+    const t = p.what;
+    if (t === 'owner') {
+      return R(`🏢 इस <b>माज़दा ऑयल कंपनी (पेट्रोल पंप)</b> के मालिक <b>${PERSON.owner} (Shashank Bansal)</b> हैं।`, {
+        say: `इस माज़दा ऑयल कंपनी पेट्रोल पंप के मालिक ${PERSON.owner} हैं।`
+      });
+    }
+    if (t === 'maker_how') {
+      return R(`🧠 मुझे <b>${PERSON.maker} (Neeraj Dev)</b> ने जावास्क्रिप्ट कोडिंग और पंप के असली गणित से रात-दिन मेहनत करके बनाया है! उन्होंने मेरे दिमाग में पंप के हर नोज़ल, डिप चार्ट, उधार खाते और हर बटन की समझ बारीकी से डाली है ताकि मैं बिना इंटरनेट रुके सुपरफ़ास्ट काम कर सकूँ।`, {
+        say: `मुझे ${PERSON.maker} ने कोडिंग और पंप के असली लॉजिक से बड़ी मेहनत से बनाया है। उन्होंने मेरे दिमाग में पंप के हर नोज़ल, डिप चार्ट और खातों की समझ डाली है।`
+      });
+    }
+    if (t === 'maker_voice') {
+      return R(`😄 अरे नहीं! मुझे बनाया तो <b>${PERSON.maker}</b> ने है, लेकिन मैं आवाज़ सबकी सुनती हूँ—चाहे मालिक <b>${PERSON.owner}</b> जी हों, मैनेजर हों या पंप का स्टाफ! बस प्यार से माइक दबाकर बोलिए, मैं तुरंत काम करूँगी।`, {
+        say: `अरे नहीं, मुझे बनाया तो ${PERSON.maker} ने है, लेकिन मैं आवाज़ सबकी सुनती हूँ, चाहे मालिक हों या मैनेजर। बस माइक दबाकर बोलिए।`
+      });
+    }
+    if (t === 'maker') {
+      return R(`👨‍💻 मैं एक AI असिस्टेंट हूँ, मेरा कोई मालिक नहीं है। मुझे <b>${PERSON.maker} (Neeraj Dev)</b> ने खास तौर पर माज़दा ऑयल कंपनी के काम को स्मार्ट और आसान बनाने के लिए डिज़ाइन किया है!`, {
+        say: `मैं एक ए आई असिस्टेंट हूँ, मेरा कोई ओनर नहीं है। मुझे ${PERSON.maker} ने माज़दा ऑयल कंपनी के लिए बनाया है।`
+      });
+    }
+    if (t === 'me') {
+      const role = S.role === 'owner' ? 'मालिक' : S.role === 'manager' ? 'मैनेजर' : S.role === 'salesman' ? 'सेल्समैन' : 'यूज़र';
+      const nm = S.user ? S.user.email.split('@')[0] : (S.salesman ? S.salesman.name : 'User');
+      return R(`👤 आपका नाम <b>${esc(nm)}</b> है, और आप इस ऐप में <b>${role}</b> के रूप में लॉगिन हैं।`, {
+        say: `आपका नाम ${nm} है, और आप इस ऐप में ${role} के रूप में लॉगिन हैं।`
+      });
+    }
+    return R(`🤖 मैं <b>माज़दा असिस्टेंट</b> हूँ—आपके पेट्रोल पंप की डिजिटल मैनेजर! मुझे <b>${PERSON.maker}</b> ने बनाया है और इस पंप के मालिक <b>${PERSON.owner}</b> हैं। सेल, स्टॉक, डिप, उधार और ऐप के हर बटन की जानकारी मेरी उंगलियों पर है!`, {
+      say: `मैं माज़दा असिस्टेंट हूँ, आपके पेट्रोल पंप की डिजिटल मैनेजर। मुझे ${PERSON.maker} ने बनाया है और इस पंप के मालिक ${PERSON.owner} हैं।`,
+      chips: [chip('🧭 तुम क्या कर सकती हो?', 'तुम क्या क्या काम कर सकती हो'), chip('📖 ऐप का टूर', 'ऐप में क्या क्या है')]
+    });
+  };
+
+  /* ---------- SALE SKILLS ---------- */
+  async function saleRange(p) {
+    const r = p.range;
+    const ds = (await D.days(r.from, r.to)).filter(dayHasData);
+    if (!ds.length) return R(`📅 <b>${r.label}</b> का कोई हिसाब रिकॉर्ड में नहीं मिला।`, { say: `${r.label} का कोई हिसाब रिकॉर्ड में नहीं मिला।` });
+    const tot = sumBy(ds, d => d.sum.sale), lp = sumBy(ds, d => d.sum.litP), ld = sumBy(ds, d => d.sum.litD);
+    const best = ds.slice().sort((a, b) => n(b.sum.sale) - n(a.sum.sale))[0];
+    const low = ds.slice().sort((a, b) => n(a.sum.sale) - n(b.sum.sale))[0];
+    ctx.range = r;
+    return R(
+      `📊 <b>${r.label} का हिसाब</b> (${ds.length} दिन)<br>` +
+      `💰 कुल सेल: <b>${M(tot)}</b><br>` +
+      `⛽ पेट्रोल: <b>${L(lp)}</b> · 🛢 डीज़ल: <b>${L(ld)}</b><br>` +
+      `📈 रोज़ का औसत: <b>${M(tot / ds.length)}</b><br>` +
+      `🏆 सबसे अच्छा दिन: <b>${lbl(best.date)}</b> (${M(best.sum.sale)})<br>` +
+      `📉 सबसे कम सेल: <b>${lbl(low.date)}</b> (${M(low.sum.sale)})`,
+      {
+        say: `${r.label} में कुल सेल ${M(tot)} रही। इसमें पेट्रोल ${r0(lp)} लीटर और डीज़ल ${r0(ld)} लीटर बिका। रोज़ का औसत ${M(tot / ds.length)} रहा।`,
+        chips: [cs('🏆 बेस्ट सेल डे', 'sale.best', { range: r }), cs('📉 कम डीज़ल वाले दिन', 'sale.low', { range: r })]
+      }
+    );
+  }
+
+  SK['sale.day'] = async (p) => {
+    if (p.range) return saleRange(p);
+    const date = p.date || ctx.date || today();
+    ctx.date = date; // Lock sticky date for follow-up questions ("us din...")
+    const d = await D.day(date);
+    if (!d || !d.sum) {
+      return R(`📅 <b>${lbl(date)}</b> का हिसाब अभी दर्ज नहीं हुआ है।`, {
+        say: `${sayDate(date)} का हिसाब अभी दर्ज नहीं हुआ है।`,
+        chips: [chip('📈 कल की सेल', 'कल की सेल'), chip('📅 इस महीने की सेल', 'इस महीने की सेल')]
+      });
+    }
+    const s = d.sum, sale = n(s.sale), lp = n(s.litP), ld = n(s.litD);
+    const [prev, hist, led] = await Promise.all([
+      D.day(shift(date, -1)),
+      D.days(shift(date, -15), shift(date, -1)),
+      D.led(date, date)
+    ]);
+    const ud = sumBy(led.filter(x => x.kind === 'udhar'), x => x.amount);
+    const jm = sumBy(led.filter(x => x.kind === 'jama'), x => x.amount);
+    const cashless = n(d.paytm) + n(d.swipe);
+    let cmp = '', cmpSay = '';
+    const hs = hist.filter(dayHasData);
+    if (hs.length >= 3 && sale > 0) {
+      const avg = sumBy(hs, x => x.sum.sale) / hs.length, pc = pct(sale, avg);
+      cmp = `<br>📊 पिछले औसत (${M(avg)}) से <b class="${pc >= 0 ? 'pos' : 'neg'}">${Math.abs(pc)}% ${pc >= 0 ? 'ज़्यादा 🟢' : 'कम 🔴'}</b>`;
+      cmpSay = ` यह औसत से ${Math.abs(pc)} प्रतिशत ${pc >= 0 ? 'ज़्यादा' : 'कम'} है।`;
+    } else if (prev && prev.sum && n(prev.sum.sale) > 0 && sale > 0) {
+      const pc = pct(sale, n(prev.sum.sale));
+      cmp = `<br>📈 पिछले दिन से <b>${Math.abs(pc)}% ${pc >= 0 ? 'ज़्यादा' : 'कम'}</b>`;
+    }
+    const st = d.status === 'submitted' ? '🔒 हिसाब लॉक है' : '✏ अभी दिन खुला है';
+    return R(
+      `📊 <b>${lbl(date)} की कुल सेल: ${M(sale)}</b><br>` +
+      `⛽ पेट्रोल: <b>${L(lp)}</b> · 🛢 डीज़ल: <b>${L(ld)}</b>${cmp}<br>` +
+      `💳 Paytm/स्वाइप: ${M(cashless)} · 📒 उधार: ${M(ud)} · 💵 जमा: ${M(jm)}<br><small>${st}</small>`,
+      {
+        say: `${sayDate(date)} की कुल सेल ${M(sale)} है। पेट्रोल ${r0(lp)} लीटर और डीज़ल ${r0(ld)} लीटर बिका।${cmpSay}`,
+        chips: [
+          cs('📈 क्यों कम/ज़्यादा?', 'why.sale', { date }),
+          cs('🛢 उस दिन का स्टॉक', 'stock', { date }),
+          cs('💳 कैश-UPI बँटवारा', 'cash.split', { date }),
+          cs('⛽ नोज़ल ट्रेंड', 'nozzle.day', { date })
+        ]
+      }
+    );
+  };
+
+  SK['nozzle.day'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || !d.nz) {
+      return R(`⛽ <b>${lbl(date)}</b> की नोज़ल मीटर रीडिंग अभी दर्ज नहीं है। आप <b>"P1 4500"</b> बोलकर रीडिंग दर्ज कर सकते हैं।`, {
+        say: `${sayDate(date)} की नोज़ल मीटर रीडिंग अभी दर्ज नहीं है। आप पी एक या डी एक बोलकर रीडिंग लिख सकते हैं।`
+      });
+    }
+    const nz = d.nz;
+    const keys = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+    let lines = [], bestK = null, maxL = 0;
+    keys.forEach(k => {
+      if (nz[k] && (n(nz[k].o) > 0 || n(nz[k].c) > 0)) {
+        const o = n(nz[k].o), c = n(nz[k].c);
+        const sold = c > o ? c - o : 0;
+        if (sold > maxL) { maxL = sold; bestK = k.toUpperCase(); }
+        lines.push(`• <b>${k.toUpperCase()}</b>: <b>${L(sold)}</b> <small>(ओपनिंग ${o} → क्लोजिंग ${c || 'बाकी'})</small>`);
+      }
+    });
+    if (!lines.length) {
+      return R(`⛽ <b>${lbl(date)}</b> में किसी भी नोज़ल की रीडिंग अभी नहीं भरी गई है।`, {
+        say: `${sayDate(date)} में किसी भी नोज़ल की रीडिंग अभी नहीं भरी गई है।`
+      });
+    }
+    const winTxt = bestK ? `<br><br>🏆 सबसे ज़्यादा तेल नोज़ल <b>${bestK} (${L(maxL)})</b> से निकला है।` : '<br><br>💡 अभी क्लोजिंग रीडिंग भरना बाकी है।';
+    return R(`⛽ <b>${lbl(date)} का नोज़ल ट्रेंड:</b><br>${lines.join('<br>')}${winTxt}`, {
+      say: bestK ? `${sayDate(date)} को सबसे ज़्यादा बिक्री नोज़ल ${bestK} से ${r0(maxL)} लीटर हुई है।` : `${sayDate(date)} के नोज़ल की क्लोजिंग रीडिंग अभी बाकी है।`,
+      chips: [cs('📊 उस दिन की सेल', 'sale.day', { date }), cs('🛢 उस दिन का स्टॉक', 'stock', { date })]
+    });
+  };
+
+  SK['sale.low'] = async (p) => {
+    const f = p.fuel || ctx.fuel || 'diesel';
+    const lim = p.limit || 2000;
+    const r = p.range || ctx.range || { from: monthStart(today()), to: today(), label: 'इस महीने' };
+    const ds = (await D.days(r.from, r.to)).filter(dayHasData).filter(d => d.date !== today() || d.status === 'submitted');
+    if (!ds.length) return R(`${r.label} का हिसाब नहीं मिला।`);
+    const low = ds.filter(d => n(f === 'petrol' ? d.sum.litP : d.sum.litD) < lim);
+    if (!low.length) {
+      return R(`✅ ${r.label} कोई भी दिन ऐसा नहीं रहा जब ${fuelName(f)} <b>${lim} लीटर</b> से कम बिका हो।`, {
+        say: `${r.label} कोई भी दिन ऐसा नहीं रहा जब ${fuelName(f)} ${lim} लीटर से कम बिका हो।`
+      });
+    }
+    const worst = low.slice().sort((a, b) => n(f === 'petrol' ? a.sum.litP : a.sum.litD) - n(f === 'petrol' ? b.sum.litP : b.sum.litD))[0];
+    ctx.date = worst.date;
+    return R(
+      `📉 <b>${r.label} में ${low.length} दिन</b> ${fuelName(f)} ${lim} L से कम बिका:<br>` +
+      low.slice(0, 8).map(d => `• ${lbl(d.date)}: <b>${L(f === 'petrol' ? d.sum.litP : d.sum.litD)}</b>`).join('<br>'),
+      {
+        say: `${r.label} में ${low.length} दिन ${fuelName(f)} ${lim} लीटर से कम बिका। सबसे कम ${sayDate(worst.date)} को रहा।`,
+        chips: [cs('📈 उस दिन कम क्यों बिका?', 'why.sale', { date: worst.date })]
+      }
+    );
+  };
+
+  SK['sale.best'] = async (p) => {
+    let r = p.range || ctx.range || { from: monthStart(today()), to: today(), label: 'इस महीने' };
+    let ds = (await D.days(r.from, r.to)).filter(dayHasData);
+    if (ds.length < 3 && !p.range) {
+      r = { from: shift(today(), -30), to: today(), label: 'पिछले 30 दिन' };
+      ds = (await D.days(r.from, r.to)).filter(dayHasData);
+    }
+    if (!ds.length) return R('अभी पर्याप्त हिसाब दर्ज नहीं है।');
+    const top = ds.slice().sort((a, b) => n(b.sum.sale) - n(a.sum.sale)).slice(0, 3);
+    ctx.date = top[0].date;
+    return R(
+      `🏆 <b>${r.label} के टॉप सेल वाले दिन:</b><br>` +
+      top.map((d, i) => `${i + 1}. <b>${lbl(d.date)}</b>: ${M(d.sum.sale)}`).join('<br>'),
+      {
+        say: `${r.label} में सबसे ज़्यादा सेल ${sayDate(top[0].date)} को ${M(top[0].sum.sale)} रही।`,
+        chips: [cs('📊 उस दिन का पूरा हिसाब', 'sale.day', { date: top[0].date })]
+      }
+    );
+  };
+
+  SK['why.sale'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || !d.sum) return R(`📅 <b>${lbl(date)}</b> का हिसाब दर्ज नहीं है।`);
+    const s = d.sum, sale = n(s.sale);
+    if (sale === 0 && n(s.litP) === 0 && n(s.litD) === 0) {
+      return R(`💡 <b>${lbl(date)}</b> की नोज़ल क्लोज़िंग रीडिंग अभी भरी नहीं गई है, इसलिए बिक्री शून्य दिख रही है! रीडिंग भरते ही असली सेल आ जाएगी।`, {
+        say: `${sayDate(date)} की नोज़ल क्लोज़िंग रीडिंग अभी भरी नहीं गई है, इसलिए बिक्री शून्य दिख रही है।`
+      });
+    }
+    const [hist, led] = await Promise.all([D.days(shift(date, -15), shift(date, -1)), D.led(date, date)]);
+    const hs = hist.filter(dayHasData), lines = [], say = [];
+    const avgS = hs.length ? sumBy(hs, x => x.sum.sale) / hs.length : 0;
+    if (avgS > 0) {
+      const pc = pct(sale, avgS);
+      lines.push(`• कुल सेल ${M(sale)} है, जो औसत (${M(avgS)}) से <b>${Math.abs(pc)}% ${pc >= 0 ? 'ज़्यादा' : 'कम'}</b> है`);
+      say.push(`कुल सेल औसत से ${Math.abs(pc)} प्रतिशत ${pc >= 0 ? 'ज़्यादा' : 'कम'} है`);
+    }
+    const udh = led.filter(x => x.kind === 'udhar');
+    const udAmt = sumBy(udh, x => x.amount);
+    if (sale > 0 && udAmt > 0) {
+      lines.push(`• आज की सेल में <b>${M(udAmt)} (${Math.round((udAmt / sale) * 100)}%)</b> उधार खातों में गया है`);
+      say.push(`इसमें ${M(udAmt)} उधार में गया है`);
+    }
+    if (wdOf(date) === 0) lines.push('• रविवार होने के कारण कमर्शियल गाड़ियों की आवाजाही अलग रहती है');
+    if (!lines.length) lines.push('• बिक्री सामान्य रेंज में चल रही है');
+    return R(`📈 <b>${lbl(date)} की सेल का विश्लेषण:</b><br>${lines.join('<br>')}`, {
+      say: `${sayDate(date)} का विश्लेषण। ${say.join('। ')}।`,
+      chips: [cs('📊 उस दिन की सेल', 'sale.day', { date }), cs('💳 कैश-UPI बँटवारा', 'cash.split', { date })]
+    });
+  };
+
+  SK.peak = async () => {
+    const ds = (await D.days('2020-01-01', today())).filter(dayHasData);
+    if (!ds.length) return R('अभी पीक सीज़न निकालने के लिए पर्याप्त डेटा नहीं है।');
+    const byM = {};
+    ds.forEach(d => { const ym = d.date.slice(0, 7); byM[ym] = (byM[ym] || 0) + n(d.sum.sale); });
+    const sorted = Object.entries(byM).sort((a, b) => b[1] - a[1]);
+    const [bestYM, bestVal] = sorted[0];
+    const [yr, mo] = bestYM.split('-');
+    const mName = MON[Number(mo) - 1] + ' ' + yr;
+    return R(`🏔 आपके डेटा के अनुसार सबसे ज़्यादा बिक्री <b>${mName}</b> में देखी गई है (<b>${M(bestVal)}</b>)। यही आपका पीक सीज़न रहा है!`, {
+      say: `आपके डेटा के अनुसार सबसे ज़्यादा बिक्री ${mName} में ${M(bestVal)} रही है। यही आपका पीक सीज़न है।`
+    });
+  };
+
+  SK['cash.split'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    ctx.date = date;
+    const d = await D.day(date);
+    if (!d || !d.sum) return R(`📅 <b>${lbl(date)}</b> का हिसाब नहीं मिला।`);
+    const led = await D.led(date, date), s = d.sum, sale = n(s.sale);
+    const ud = sumBy(led.filter(x => x.kind === 'udhar'), x => x.amount);
+    const jm = sumBy(led.filter(x => x.kind === 'jama'), x => x.amount);
+    const on = n(d.paytm) + n(d.swipe);
+    const cash = Math.max(0, sale - on - ud);
+    return R(
+      `💳 <b>${lbl(date)} — गल्ला और पेमेंट बँटवारा:</b><br>` +
+      `💰 कुल सेल: <b>${M(sale)}</b><br>` +
+      `• Paytm / UPI: <b>${M(d.paytm)}</b><br>` +
+      `• कार्ड स्वाइप: <b>${M(d.swipe)}</b><br>` +
+      `• उधार में गया: <b>${M(ud)}</b><br>` +
+      `• नकद (कैश सेल): <b>${M(cash)}</b><br>` +
+      `• पुरानी उधारी जमा आई: <b>${M(jm)}</b>`,
+      {
+        say: `${sayDate(date)} की कुल सेल ${M(sale)} रही। इसमें पेटीएम और स्वाइप ${M(on)}, उधार ${M(ud)}, और नकद ${M(cash)} रहा।`
+      }
+    );
+  };
+
+  /* ---------- STOCK & DIP SKILLS ---------- */
+  SK.dip = async (p) => {
+    const v = p.dipVal;
+    if (!window.DipChart || typeof window.DipChart.getLiters !== 'function') {
+      return R('डिप चार्ट लोड नहीं हो पाया।');
+    }
+    const f = p.fuel;
+    let htmlOut = `📏 <b>${v} सेमी डिप पर स्टॉक:</b><br>`;
+    let sayParts = [`${hiWords(v)} सेंटीमीटर डिप पर`];
+    if (f !== 'petrol') {
+      const dl = window.DipChart.getLiters('diesel', v);
+      htmlOut += `🛢 डीज़ल: <b>${L(dl)}</b><br>`;
+      sayParts.push(`डीज़ल ${r0(dl)} लीटर है`);
+    }
+    if (f !== 'diesel') {
+      const pl = window.DipChart.getLiters('petrol', v);
+      htmlOut += `⛽ पेट्रोल: <b>${L(pl)}</b>`;
+      sayParts.push(`पेट्रोल ${r0(pl)} लीटर है`);
+    }
+    return R(htmlOut, { say: sayParts.join(' और ') });
+  };
+
+  SK.stock = async (p) => {
+    const f = p.fuel || ctx.fuel;
+    const targetDate = p.date || (p.useStickyDate ? ctx.date : null);
+    if (targetDate && targetDate !== today()) {
+      ctx.date = targetDate;
+      const d = await D.day(targetDate);
+      if (!d || !d.sum) return R(`📅 <b>${lbl(targetDate)}</b> का स्टॉक रिकॉर्ड नहीं मिला।`);
+      const s = d.sum, P = closeStock(d, 'petrol'), Dz = closeStock(d, 'diesel');
+      return R(
+        `🛢 <b>${lbl(targetDate)} का क्लोज़िंग स्टॉक:</b><br>` +
+        `• डीज़ल: <b>${L(Dz)}</b> <small>(बिका: ${L(s.litD)})</small><br>` +
+        `• पेट्रोल: <b>${L(P)}</b> <small>(बिका: ${L(s.litP)})</small>`,
+        {
+          say: `${sayDate(targetDate)} को डीज़ल का स्टॉक ${r0(Dz)} लीटर और पेट्रोल का स्टॉक ${r0(P)} लीटर था।`,
+          chips: [cs('📊 उस दिन की सेल', 'sale.day', { date: targetDate }), cs('🛢 आज का लाइव स्टॉक', 'stock', { date: null })]
+        }
+      );
+    }
+    const sn = await stockNow();
+    if (!sn) return R('अभी स्टॉक का डेटा उपलब्ध नहीं है।');
+    const [bp, bd] = await Promise.all([burnRate('petrol'), burnRate('diesel')]);
+    const dp = bp > 0 ? (sn.P / bp).toFixed(1) : null;
+    const dd = bd > 0 ? (sn.D / bd).toFixed(1) : null;
+    return R(
+      `🛢 <b>वर्तमान टैंक स्टॉक (${lbl(sn.date)}):</b><br>` +
+      `• डीज़ल: <b>${L(sn.D)}</b> ${dd ? `<small>(लगभग ${dd} दिन चलेगा)</small>` : ''}<br>` +
+      `• पेट्रोल: <b>${L(sn.P)}</b> ${dp ? `<small>(लगभग ${dp} दिन चलेगा)</small>` : ''}`,
+      {
+        say: `अभी टैंक में डीज़ल ${r0(sn.D)} लीटर और पेट्रोल ${r0(sn.P)} लीटर मौजूद है।`,
+        chips: [cs('🚛 आखिरी टैंकर कब आया', 'tanker.last'), chip('📊 आज की सेल', 'आज की सेल')]
+      }
+    );
+  };
+
+  SK['tanker.last'] = async () => {
+    const t = (await D.tankers()).slice(0, 3);
+    if (!t.length) return R('अभी कोई टैंकर बिल दर्ज नहीं है।');
+    const l = t[0], ago = daysBetween(l.date, today());
+    return R(
+      `🚛 <b>आखिरी टैंकर:</b> ${dmy(l.date)} (${ago === 0 ? 'आज' : ago + ' दिन पहले'})<br>` +
+      `मात्रा: <b>${L(l.litres)}</b> (${l.fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल'})${l.tankerNo ? ' · गाड़ी: ' + esc(l.tankerNo) : ''}`,
+      {
+        say: `आखिरी टैंकर ${ago === 0 ? 'आज' : ago + ' दिन पहले'} आया था, जिसमें ${r0(l.litres)} लीटर ${l.fuelType === 'petrol' ? 'पेट्रोल' : 'डीज़ल'} आया।`
+      }
+    );
+  };
+
+  /* ---------- UDHAR & PARTY SKILLS ---------- */
+  SK['udhar.total'] = async () => {
+    const ps = await D.parties(), due = owing(ps), tot = sumBy(due, x => x.bal);
+    if (!ps.length) return R('पार्टी खातों का डेटा लोड नहीं हो सका।');
+    const adv = ps.filter(x => n(x.bal) < 0);
+    return R(
+      `📒 <b>मार्केट में कुल बकाया: ${M(tot)}</b> (${due.length} खाते)<br><br>` +
+      `<b>टॉप बकायादार:</b><br>` +
+      due.slice(0, 3).map((x, i) => `${i + 1}. <b>${esc(x.name)}</b>: ${M(x.bal)}`).join('<br>') +
+      (adv.length ? `<br><small>🟢 ${adv.length} पार्टियों का एडवांस जमा है (${M(-sumBy(adv, x => x.bal))})</small>` : ''),
+      {
+        say: `मार्केट में कुल बकाया ${M(tot)} है। सबसे ज़्यादा बकाया ${due[0] ? due[0].name : ''} पर ${due[0] ? M(due[0].bal) : ''} है।`,
+        chips: [cs('🏆 टॉप 10 बकायादार', 'udhar.top'), cs('🚨 क्रेडिट लिमिट पार', 'udhar.over'), cs('💬 टॉप 3 को WhatsApp तगादा', 'wa.top')]
+      }
+    );
+  };
+
+  SK['udhar.top'] = async () => {
+    const due = owing(await D.parties()).slice(0, 10);
+    if (!due.length) return R('🎉 मार्केट में कोई उधार बाकी नहीं है!');
+    ctx.party = due[0];
+    return R(
+      `🏆 <b>टॉप 10 बकायादार पार्टियाँ:</b><br>` +
+      due.map((x, i) => `${i + 1}. <b>${esc(x.name)}</b>: ${M(x.bal)}`).join('<br>'),
+      {
+        say: `टॉप बकायादारों में पहले नंबर पर ${due[0].name} हैं, जिनका बकाया ${M(due[0].bal)} है।`,
+        chips: [cs('💬 टॉप 3 को तगादा भेजें', 'wa.top'), cs('📒 खाता खोलें', 'party.ledger', { party: due[0] })]
+      }
+    );
+  };
+
+  SK['udhar.over'] = async () => {
+    const ps = (await D.parties()).filter(x => n(x.limit) > 0 && n(x.bal) > n(x.limit));
+    if (!ps.length) return R('✅ कोई भी पार्टी अपनी तय उधार सीमा (Credit Limit) से ऊपर नहीं है।', { say: 'कोई भी पार्टी अपनी तय उधार सीमा से ऊपर नहीं है।' });
+    return R(
+      `🚨 <b>${ps.length} पार्टियाँ उधार सीमा पार कर चुकी हैं:</b><br>` +
+      ps.slice(0, 8).map(x => `• <b>${esc(x.name)}</b>: ${M(x.bal)} <small>(सीमा: ${M(x.limit)})</small>`).join('<br>'),
+      { say: `${ps.length} पार्टियाँ अपनी तय उधार सीमा पार कर चुकी हैं।` }
+    );
+  };
+
+  SK['wa.top'] = async () => {
+    const due = owing(await D.parties()).slice(0, 3);
+    if (!due.length) return R('कोई बकाया पार्टी नहीं मिली।');
+    return R(`💬 <b>नीचे बटन दबाकर सीधे WhatsApp तगादा भेजें:</b>`, {
+      say: 'नीचे नाम पर दबाइए, सीधा व्हाट्सऐप तगादा खुल जाएगा।',
+      chips: due.map(x => ({ label: `📲 ${x.name} (${M(x.bal)})`, fn: () => waRemind(x) }))
+    });
+  };
+
+  SK['party.info'] = async (p) => {
+    const x = p.party || ctx.party;
+    if (!x) return R('किस पार्टी का खाता देखना है? कृपया नाम या गाड़ी नंबर बताइए।');
+    ctx.party = x;
+    const b = n(x.bal);
+    const statusLabel = b > 0 ? `बकाया (लेना है): <b class="neg">${M(b)}</b>` : b < 0 ? `एडवांस जमा: <b class="pos">${M(Math.abs(b))}</b>` : `बकाया: <b>₹0 (हिसाब बराबर)</b>`;
+    return R(
+      `👤 <b>${esc(x.name)}</b><br>${statusLabel}<br>` +
+      `🚗 गाड़ियाँ: <small>${esc((x.vehicles || []).join(', ') || 'कोई नहीं')}</small>`,
+      {
+        say: `${x.name} का ${b >= 0 ? 'बकाया' : 'एडवांस जमा'} ${M(Math.abs(b))} है। बताइए, इनके खाते में क्या करना है?`,
+        chips: [
+          cs('📒 खाता खोलें', 'party.ledger', { party: x }),
+          cs('📅 गाड़ी कब आई थी?', 'party.visit', { party: x }),
+          { label: '➕ उधार जोड़ें', q: `${x.name} में उधार` },
+          { label: '📲 WhatsApp तगादा', fn: () => waRemind(x) }
+        ]
+      }
+    );
+  };
+
+  SK['party.ledger'] = async (p) => {
+    const x = p.party || ctx.party;
+    if (!x) return R('किस पार्टी का खाता खोलूँ?');
+    openLed(x.id);
+    return R(`⏳ <b>${esc(x.name)}</b> का खाता खोल रही हूँ...`, { say: `${x.name} का खाता खोल रही हूँ।` });
+  };
+
+  SK['party.visit'] = async (p) => {
+    const x = p.party || ctx.party;
+    if (!x) return R('किस पार्टी या गाड़ी की पिछली एंट्री देखनी है? कृपया पहले नाम या गाड़ी नंबर बताइए।');
+    ctx.party = x;
+    const entries = (await D.ledParty(x.id)).filter(e => e.kind === 'udhar');
+    if (!entries.length) {
+      return R(`📅 <b>${esc(x.name)}</b> के खाते में अभी तक कोई उधार एंट्री दर्ज नहीं है।`, {
+        say: `${x.name} के खाते में अभी कोई उधार एंट्री नहीं है।`
+      });
+    }
+    const uniqueDates = [...new Set(entries.map(e => e.date).filter(Boolean))].sort().reverse();
+    const lastEntry = entries[entries.length - 1];
+    const ago = daysBetween(uniqueDates[0], today());
+
+    if (uniqueDates.length >= 2) {
+      const gap = daysBetween(uniqueDates[1], uniqueDates[0]);
+      return R(
+        `📅 <b>${esc(x.name)}</b> की गाड़ी आख़िरी बार <b>${lbl(uniqueDates[0])}</b> को आई थी, और उससे पहले <b>${dmy(uniqueDates[1])}</b> को (यानी <b>${gap} दिन के अंतर</b> पर)।<br>` +
+        `वर्तमान बकाया: <b>${M(x.bal)}</b>`,
+        {
+          say: `${x.name} की गाड़ी पिछली बार से ${gap} दिन बाद आई है। इनका वर्तमान बकाया ${M(x.bal)} है।`,
+          chips: [cs('📒 खाता खोलें', 'party.ledger', { party: x })]
+        }
+      );
+    }
+    return R(`📅 <b>${esc(x.name)}</b> की गाड़ी <b>${lbl(lastEntry.date)}</b> (${ago === 0 ? 'आज ही' : ago + ' दिन पहले'}) आई थी।`, {
+      say: `${x.name} की गाड़ी ${ago === 0 ? 'आज ही' : ago + ' दिन पहले'} आई थी।`
+    });
+  };
+
+  /* ---------- STAFF, MARGIN & APP GUIDE SKILLS ---------- */
+  SK['staff.day'] = async (p) => {
+    const date = p.date || ctx.date || today();
+    const [w, a] = await Promise.all([D.workers(), D.att(date)]);
+    if (!w.length) return R('वर्कर लिस्ट अभी खाली है।');
+    const st = {}; a.forEach(x => { st[x.workerId] = x.status; });
+    const absent = w.filter(x => st[x.id] === 'absent');
+    const present = w.filter(x => st[x.id] === 'present');
+    return R(
+      `👷 <b>${lbl(date)} की स्टाफ हाज़िरी:</b><br>` +
+      `✔ ड्यूटी पर: <b>${present.map(x => esc(x.name)).join(', ') || 'कोई मार्क नहीं'}</b><br>` +
+      `❌ छुट्टी पर: <b>${absent.map(x => esc(x.name)).join(', ') || 'कोई नहीं'}</b>`,
+      {
+        say: `${sayDate(date)} को ${absent.length ? absent.map(x => x.name).join(' और ') + ' छुट्टी पर हैं।' : 'कोई भी वर्कर छुट्टी पर नहीं है।'}`
+      }
+    );
+  };
+
+  SK['app.tour'] = async () => {
+    const KB = APP.KB;
+    const role = S.role || 'owner';
+    return R(
+      `📖 <b>माज़दा ऐप का पूरा नक्शा (${role === 'owner' ? 'मालिक' : 'मैनेजर'} व्यू):</b><br>` +
+      `• <b>नीचे के मुख्य टैब:</b> ${esc(KB.TABS[role] || KB.TABS.owner)}<br><br>` +
+      `• <b>हिसाब टैब:</b> रोज़ का मीटर (P1-P4, D1-D4), रेट, पेटीएम, स्वाइप, खर्चा और लॉक बटन।<br>` +
+      `• <b>खाते टैब:</b> सभी पार्टियों का बकाया, उधार/जमा पर्ची, स्टेटमेंट और पोर्टल कोड।<br>` +
+      `• <b>और (⚙) मेनू:</b> इसके अंदर 24 एडवांस स्क्रीन हैं—जैसे CIBIL स्कोर, खरीद बिल/मार्जिन, टैंकर रिपोर्ट, रनशीट, वर्कर हाज़िरी और पूरा बैकअप!<br><br>` +
+      `💡 <i>आप किसी भी बटन का नाम लेकर पूछ सकते हैं, जैसे: "कॉम्पैक्ट रिपोर्ट क्या करती है?" या "मिलान बटन क्या है?"</i>`,
+      {
+        say: 'नीचे के मुख्य टैब हैं हिसाब, खाते, गाड़ी कैश, स्टॉक, मैनेजर डेस्क, निजी और मेनू। आप किसी भी बटन का नाम पूछिए, मैं उसका काम और जगह तुरंत बता दूँगी।',
+        chips: [chip('🧾 हिसाब स्क्रीन के बटन', 'हिसाब स्क्रीन में कौन से बटन हैं'), chip('📒 खाते स्क्रीन के बटन', 'खाते टैब में क्या है')]
+      }
+    );
+  };
+
+  SK['app.guide'] = async (p) => {
+    if (p.btn) {
+      const { sc, b } = p.btn;
+      return R(
+        `🔘 बटन: <b>${esc(b[0])}</b><br>` +
+        `🛠 <b>क्या काम करता है:</b> ${esc(b[1])}।<br>` +
+        `📍 <b>कहाँ मिलेगा:</b> ${esc(sc.name)} (${esc(sc.where)})`,
+        {
+          say: `${b[0]} बटन का काम है, ${b[1]}। यह आपको ${sc.name} स्क्रीन में मिलेगा।`,
+          chips: [{ label: `➡ ${sc.name} खोलें`, fn: () => goTo(sc.go) }]
+        }
+      );
+    }
+    if (p.sc) {
+      const sc = p.sc;
+      const btnList = (sc.buttons || []).map(b => `• <b>${esc(b[0])}</b>: ${esc(b[1])}`).join('<br>');
+      return R(
+        `📱 <b>${esc(sc.name)}</b><br>` +
+        `📍 <b>कहाँ है:</b> ${esc(sc.where)}<br>` +
+        `ℹ️ <b>काम:</b> ${esc(sc.what)}` +
+        (btnList ? `<br><br><b>इस स्क्रीन के मुख्य बटन:</b><br>${btnList}` : ''),
+        {
+          say: `${sc.name}। यह ${sc.where} में है। ${sc.what}`,
+          chips: [{ label: `➡ अभी खोलें`, fn: () => goTo(sc.go) }]
+        }
+      );
+    }
+    return SK['app.tour']();
+  };
+
+  /* ================= 7. SMART PARSER & INTENT ENGINE ================= */
   function norm(s) {
-    return String(s || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9\u0900-\u097F\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return String(s || '').toLowerCase().replace(/[^a-z0-9\u0900-\u097F\s]/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   const EN_TO_HI_NAMES = {
@@ -187,119 +1011,140 @@
     'laxman': 'लक्ष्मण', 'lakshman': 'लक्ष्मण', 'bharda': 'भरड़ा'
   };
 
-  // Words that should NOT be treated as party names
-  const BLOCKED_QUERY_WORDS = new Set([
-    'local', 'lokal', 'bina', 'party', 'gaadi', 'gadi', 'cash', 'लोकल', 'बिना', 'पार्टी', 'गाड़ी', 'कैश',
-    'aaj', 'aj', 'kal', 'parso', 'din', 'dino', 'tarik', 'tareekh', 'tarikh', 'date', 'purana', 'purani', 'hisab',
-    'sale', 'bikri', 'bika', 'biki', 'petrol', 'diesel', 'nozzle', 'nozel', 'trend', 'btao', 'batao', 'dikhao',
-    'kitna', 'kitne', 'kitni', 'kab', 'kyu', 'kyun', 'kyo', 'pump', 'baje', 'khulta', 'band', 'malik', 'owner',
-    'mood', 'kaisa', 'baarish', 'mausam', 'dip', 'stock', 'udhar', 'jama', 'khata', 'ledger', 'kholo', 'paytm',
-    'swipe', 'kharcha', 'chai', 'dg', 'inki', 'unka', 'inka', 'aayi', 'aaya', 'gayi', 'gaya', 'baad', 'pehle',
-    'naam', 'mera', 'aapka', 'kon', 'kaun', 'hai', 'tha', 'hoga', 'kya', 'karo', 'bhai', 'ji', 'sahab', 'sir',
-    'hazar', 'hajar', 'lakh', 'rupaye', 'rs', 'add', 'entry', 'dalna', 'daal', 'likho', 'likhna', 'chadao'
+  const BLOCKED_PARTY_WORDS = new Set([
+    'local','lokal','bina','party','gaadi','gadi','cash','लोकल','बिना','पार्टी','गाड़ी','कैश',
+    'aaj','kal','parso','din','tarik','tareekh','date','purana','hisab','sale','bikri','bika',
+    'petrol','diesel','nozzele','nozzle','trend','btao','batao','dikhao','kitna','kitne','kab','kyu','kyun',
+    'pump','baje','khulta','band','malik','owner','mood','kaisa','baarish','mausam','dip','stock',
+    'udhar','jama','khata','ledger','kholo','paytm','swipe','kharcha','chai','dg','inki','unka','inka',
+    'aayi','aaya','gayi','baad','pehle','naam','mera','aapka','kon','kaun','hai','tha','hoga','sirf','only',
+    'neeraj','shashank','bansal','button','screen','tab','report','compact','milan','lock','unlock'
   ]);
 
-  // ======================================================================
-  // SECTION 4: DATE PARSER (Exhaustive)
-  // ======================================================================
-  function resolveQueryDate(q) {
-    const todayStr = T();
-    const now = new Date(todayStr + 'T12:00:00');
-
-    // Context: "us din"
-    if (/\b(us din|ussi din|us tareekh|us tarikh|उस दिन|उसी दिन)\b/i.test(q) && ctx.activeDate) {
-      return { iso: ctx.activeDate, label: ctx.activeDate, isContext: true };
-    }
-
-    if (/\b(parso|परसों)\b/i.test(q)) return { iso: addDays(todayStr, -2), label: 'परसों' };
-    if (/\b(kal|yesterday|कल)\b/i.test(q)) return { iso: addDays(todayStr, -1), label: 'कल' };
-    if (/\b(aaj|today|आज)\b/i.test(q)) return { iso: todayStr, label: 'आज' };
-
-    // "10 din purana" / "5 din pehle"
-    const daysAgoMatch = q.match(/(\d{1,2})\s*(?:din|day|दिन)\s*(?:purana|purani|pehle|pahle|पुराना|पुरानी|पहले)/i);
-    if (daysAgoMatch) {
-      const dAgo = parseInt(daysAgoMatch[1], 10);
-      return { iso: addDays(todayStr, -dAgo), label: `${dAgo} दिन पहले` };
-    }
-
-    // "10 tarik" / "15 tareekh"
-    const tarikMatch = q.match(/(\d{1,2})\s*(?:tarik|tareekh|tarikh|तारीख|तारीक)/i);
-    if (tarikMatch) {
-      const dayNum = parseInt(tarikMatch[1], 10);
-      if (dayNum >= 1 && dayNum <= 31) {
-        let yr = now.getFullYear(), mo = now.getMonth() + 1;
-        if (dayNum > now.getDate()) { mo -= 1; if (mo < 1) { mo = 12; yr -= 1; } }
-        const target = `${yr}-${pad(mo)}-${pad(dayNum)}`;
-        return { iso: target, label: `${dayNum} तारीख` };
-      }
-    }
-
-    // "20/10/2026" or "20-10-26"
-    const dateMatch = q.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
-    if (dateMatch) {
-      let yr = dateMatch[3] ? parseInt(dateMatch[3]) : now.getFullYear();
-      if (yr < 100) yr += 2000;
-      return { iso: `${yr}-${pad(parseInt(dateMatch[2]))}-${pad(parseInt(dateMatch[1]))}`, label: `${dateMatch[1]}/${dateMatch[2]}/${yr}` };
-    }
-
-    return { iso: todayStr, label: 'आज' };
-  }
-
-  // ======================================================================
-  // SECTION 5: VEHICLE & PARTY DETECTION
-  // ======================================================================
-  async function getAppParties() {
-    if (S.parties && S.parties.pub && S.parties.pub.length) return S.parties.pub;
-    if (typeof APP.getParties === 'function') {
-      try { return await APP.getParties(false, true); } catch (e) {}
-    }
-    return [];
-  }
-
-  function detectVehicleInQuery(q, parties) {
+  function detectVehicle(raw, parties) {
     if (!parties || !parties.length) return { vKey: null, party: null };
-    const cleanQ = String(q || '').toUpperCase();
-
-    // Full plate
-    const fullPlate = cleanQ.match(/[A-Z]{2}\s*\d{1,2}\s*[A-Z]{0,3}\s*\d{4}/);
-    if (fullPlate) {
-      const plateStr = fullPlate[0].replace(/\s+/g, '');
-      const p = parties.find(pt => (pt.vehicles || []).some(v => String(v).toUpperCase().replace(/\s+/g, '').includes(plateStr)));
-      if (p) return { vKey: plateStr, party: p };
+    const up = String(raw || '').toUpperCase();
+    const plate = up.match(/[A-Z]{2}\s*\d{1,2}\s*[A-Z]{0,3}\s*\d{4}/);
+    if (plate) {
+      const cl = plate[0].replace(/\s+/g, '');
+      const p = parties.find(pt => (pt.vehicles || []).some(v => String(v).toUpperCase().replace(/\s+/g, '').includes(cl)));
+      if (p) return { vKey: cl, party: p };
     }
-
-    // 4-digit number (but not if it's attached to paytm/swipe/p1/d1)
-    const fourDigits = cleanQ.match(/\b\d{4}\b/g) || [];
-    for (const d of fourDigits) {
-      if (new RegExp(`(PAYTM|SWIPE|P[1-4]|D[1-4]|DIP)\\s*${d}`, 'i').test(cleanQ)) continue;
+    const four = up.match(/\b\d{4}\b/g) || [];
+    for (const d of four) {
+      if (new RegExp(`(PAYTM|SWIPE|P[1-4]|D[1-4]|DIP|TARIK|TAREEKH|202\\d)\\s*${d}|${d}\\s*(का|के|रुपये|RS|RUPAYE)`, 'i').test(up) && four.length === 1 && /PAYTM|SWIPE|P[1-4]|D[1-4]|202\d/i.test(up)) continue;
       const p = parties.find(pt => (pt.vehicles || []).some(v => String(v).replace(/\D/g, '').endsWith(d)));
       if (p) return { vKey: d, party: p };
     }
-
     return { vKey: null, party: null };
   }
 
-  async function extractAmounts(text, parties, excludeVehicle) {
-    let str = String(text || '').toLowerCase();
-    str = str.replace(/[a-z]{2}\s*\d{1,2}\s*[a-z]{0,3}\s*\d{4}/gi, ' ');
-    str = str.replace(/\b(p[1-4]|d[1-4])\b/gi, ' ');
-    if (excludeVehicle) str = str.replace(new RegExp(`\\b${excludeVehicle}\\b`, 'gi'), ' ');
+  async function findExplicitParty(raw, parties) {
+    if (!parties || !parties.length) return null;
+    const vCheck = detectVehicle(raw, parties);
+    if (vCheck.party) {
+      ctx.vehicle = vCheck.vKey;
+      return vCheck.party;
+    }
+    const tokens = norm(raw).split(' ').filter(w => w.length >= 3 && !BLOCKED_PARTY_WORDS.has(w) && !/^\d+$/.test(w));
+    if (!tokens.length) return null;
 
-    const knownVehicles = new Set();
-    if (parties && parties.length) {
-      parties.forEach(p => (p.vehicles || []).forEach(v => {
-        const d = String(v).replace(/\D/g, '').slice(-4);
-        if (d.length === 4) knownVehicles.add(d);
-      }));
+    const searchSet = new Set();
+    tokens.forEach(t => {
+      searchSet.add(t);
+      if (EN_TO_HI_NAMES[t]) searchSet.add(EN_TO_HI_NAMES[t]);
+    });
+
+    let bestP = null, bestScore = 0;
+    for (const p of parties) {
+      if (/लोकल|बिना पार्टी/i.test(p.name) && !/गाड़ी कैश खाता|gadi cash khata/i.test(raw)) continue;
+      const pWords = norm(p.name).split(' ').filter(w => w.length >= 2);
+      let score = 0;
+      searchSet.forEach(tok => {
+        if (pWords.includes(tok)) score += 50;
+        else if (tok.length >= 4 && pWords.some(pw => pw.startsWith(tok) || tok.startsWith(pw))) score += 25;
+      });
+      if (score > bestScore && score >= 45) {
+        bestScore = score;
+        bestP = p;
+      }
+    }
+    return bestP;
+  }
+
+  function extractDateOrRange(raw) {
+    const q = norm(raw);
+    const t = today();
+
+    // 1. Explicit DD/MM/YYYY or DD-MM-YYYY (e.g. 20/10/2026)
+    let m = /(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/.exec(raw);
+    if (m) {
+      let d = Number(m[1]), mo = Number(m[2]), yr = m[3] ? Number(m[3]) : Number(t.slice(0, 4));
+      if (yr < 100) yr += 2000;
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+        const isoStr = `${yr}-${pad(mo)}-${pad(d)}`;
+        return { kind: 'day', date: isoStr, explicit: true };
+      }
     }
 
-    const words = str.split(/\s+/);
-    const amounts = [];
+    // 2. "10 din purana" / "5 din pehle"
+    m = /(\d{1,3})\s*(?:din|day|days|दिन)\s*(?:pehle|pahle|purana|purani|purane|पहले|पुराना)/i.exec(raw);
+    if (m) {
+      return { kind: 'day', date: shift(t, -Number(m[1])), explicit: true };
+    }
 
+    // 3. "10 tarik" / "20 tareekh"
+    m = /(\d{1,2})\s*(?:tarik|tareekh|tarikh|तारीख|तारीक)/i.exec(raw);
+    if (m && Number(m[1]) >= 1 && Number(m[1]) <= 31) {
+      let yr = Number(t.slice(0, 4)), mo = Number(t.slice(5, 7)), dayNum = Number(m[1]);
+      if (dayNum > Number(t.slice(8, 10))) { mo -= 1; if (mo < 1) { mo = 12; yr -= 1; } }
+      return { kind: 'day', date: `${yr}-${pad(mo)}-${pad(dayNum)}`, explicit: true };
+    }
+
+    // 4. Relative Days: Parso, Kal, Aaj
+    if (/\b(parso|parson|परसों)\b/i.test(q)) return { kind: 'day', date: shift(t, -2), explicit: true };
+    if (/\b(kal|yesterday|कल)\b/i.test(q)) return { kind: 'day', date: shift(t, -1), explicit: true };
+    if (/\b(aaj|aj|today|abhi|आज|अभी)\b/i.test(q)) return { kind: 'day', date: t, explicit: true };
+
+    // 5. Sticky Reference ("us din", "usi tarikh", "tab", "us waqt")
+    if (/\b(us din|uss din|usi din|us tarikh|us tareekh|usi tarikh|उस दिन|उसी दिन|उस तारीख)\b/i.test(q) && ctx.date) {
+      return { kind: 'day', date: ctx.date, explicit: true };
+    }
+
+    // 6. Month / Week Ranges
+    if (/\b(pichle mahine|pichhle mahine|last month|पिछले महीने)\b/i.test(q)) {
+      const end = shift(monthStart(t), -1);
+      return { kind: 'range', range: { from: monthStart(end), to: end, label: 'पिछले महीने' } };
+    }
+    if (/\b(is mahine|iss mahine|mahine|this month|इस महीने|महीने)\b/i.test(q)) {
+      return { kind: 'range', range: { from: monthStart(t), to: t, label: 'इस महीने' } };
+    }
+    if (/\b(is hafte|hafte|week|इस हफ्ते|हफ्ते)\b/i.test(q)) {
+      return { kind: 'range', range: { from: shift(t, -6), to: t, label: 'पिछले 7 दिन' } };
+    }
+
+    return null;
+  }
+
+  async function extractAmounts(raw, parties, excludeVehicle) {
+    let str = String(raw || '').toLowerCase();
+    str = str.replace(/\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?\b/g, ' '); // strip dates
+    str = str.replace(/[a-z]{2}\s*\d{1,2}\s*[a-z]{0,3}\s*\d{4}/gi, ' '); // strip plates
+    str = str.replace(/\b(p[1-4]|d[1-4])\b/gi, ' '); // strip nozzle codes
+    if (excludeVehicle) str = str.replace(new RegExp(`\\b${excludeVehicle}\\b`, 'gi'), ' ');
+
+    const knownVehs = new Set();
+    (parties || []).forEach(p => (p.vehicles || []).forEach(v => {
+      const d = String(v).replace(/\D/g, '').slice(-4);
+      if (d.length === 4) knownVehs.add(d);
+    }));
+
+    const words = str.split(/\s+/);
+    const out = [];
     for (let i = 0; i < words.length; i++) {
       let w = words[i].replace(/[,₹]/g, '');
-      if (/^\d{4}$/.test(w) && knownVehicles.has(w)) {
-        if (!/paytm|swipe|udhar|jama|chai|dg|kharcha|rupaye|rs|का|रुपये|उधार|जमा/i.test(text)) continue;
+      if (/^\d{4}$/.test(w) && knownVehs.has(w)) {
+        if (!/paytm|swipe|udhar|jama|chai|dg|kharcha|rupaye|rs|का|रुपये|उधार|जमा/i.test(raw)) continue;
       }
       let m = w.match(/^(\d+(?:\.\d+)?)(k|l|lakh|lac)?$/i);
       if (m) {
@@ -309,334 +1154,498 @@
         if (suf === 'l' || suf === 'lakh' || suf === 'lac') val *= 100000;
         if (words[i + 1] && /^(hazar|hajar|हज़ार|हजार)$/i.test(words[i + 1])) val *= 1000;
         if (words[i + 1] && /^(lakh|lac|लाख)$/i.test(words[i + 1])) val *= 100000;
-        amounts.push(val);
+        out.push(val);
       }
     }
-    return amounts;
+    return out;
   }
 
-  async function findExplicitParty(q, parties) {
-    if (!parties) parties = await getAppParties();
-    if (!parties || !parties.length) return null;
-
-    const vCheck = detectVehicleInQuery(q, parties);
-    if (vCheck.party) { ctx.activeVehicle = vCheck.vKey; return vCheck.party; }
-
-    const rawTokens = norm(q).split(' ').filter(w => w.length >= 3 && !BLOCKED_QUERY_WORDS.has(w) && !/^\d+$/.test(w));
-    if (!rawTokens.length) return null;
-
-    const searchTokens = new Set();
-    rawTokens.forEach(t => { searchTokens.add(t); if (EN_TO_HI_NAMES[t]) searchTokens.add(EN_TO_HI_NAMES[t]); });
-
-    let bestParty = null, bestScore = 0;
-    for (const p of parties) {
-      if (/लोकल|बिना पार्टी/i.test(p.name) && !/गाड़ी कैश खाता|gadi cash khata/i.test(q)) continue;
-      const pWords = norm(p.name).split(' ').filter(w => w.length >= 2);
-      let score = 0;
-      searchTokens.forEach(tok => {
-        if (pWords.includes(tok)) score += 50;
-        else if (tok.length >= 4 && pWords.some(pw => pw.startsWith(tok) || tok.startsWith(pw))) score += 25;
-      });
-      if (score > bestScore && score >= 45) { bestScore = score; bestParty = p; }
+  function matchAppGuide(raw) {
+    const q = norm(raw);
+    const screens = (APP.KB && APP.KB.SCREENS) || [];
+    // Check buttons first
+    for (const sc of screens) {
+      for (const b of (sc.buttons || [])) {
+        const cleanBtn = norm(b[0]);
+        if (cleanBtn.length >= 3 && q.includes(cleanBtn)) {
+          return { btn: { sc, b } };
+        }
+      }
     }
-    return bestParty;
+    // Check screen names or keywords if user asks about screen/tab/button/kaam
+    if (/button|tab|screen|kya karta|kya hai|kahan milega|कहाँ है|क्या करता|बटन|स्क्रीन|टैब/i.test(q)) {
+      for (const sc of screens) {
+        const kwList = (sc.kw + ' ' + norm(sc.name)).split(/\s+/).filter(w => w.length >= 3);
+        if (kwList.some(k => q.includes(k))) return { sc };
+      }
+    }
+    return null;
   }
 
-  // ======================================================================
-  // SECTION 6: APP KNOWLEDGE BASE (Exhaustive)
-  // ======================================================================
-  const KB = {
-    'runsheet': '📋 Runsheet "More Menu" में "संचालन" सेक्शन में होती है। यहाँ से आप सेल्समैन की शिफ्ट शुरू और बंद कर सकते हैं।',
-    'manager desk': '💼 Manager Desk नीचे के मेनू में है, जहाँ आप गल्ले का मिलान और खर्चे दर्ज कर सकते हैं।',
-    'cibil': '⭐ Party CIBIL "More Menu" में "पार्टी / वर्कर" सेक्शन में मिलेगा। यह पार्टी का क्रेडिट स्कोर बताता है।',
-    'backup': '💾 पूरा बैकअप "More Menu" के सबसे नीचे है। वहाँ से JSON या CSV फाइल डाउनलोड हो जाती है।',
-    'unlock': '🔓 Unlock का बटन सिर्फ मालिक (Owner) को दिखता है। अगर कोई दिन जमा (Lock) हो गया है, तो उसे खोलने के लिए यह बटन दबाएं।',
-    'analytics': '📊 Analytics और Reports "More Menu" में "विश्लेषण" सेक्शन में मिलते हैं।',
-    'paytm': 'पेटीएम और स्वाइप की एंट्री आप "हिसाब" टैब में कर सकते हैं।',
-    'dip': 'डिप चार्ट से पेट्रोल और डीजल का स्टॉक पता चलता है। आप यहाँ पूछ सकते हैं "100 dip me kitna diesel hai"।',
-    'app lock': 'ऐप लॉक "More Menu" में सेटिंग्स में है।',
-    'shop': 'दुकान का स्टॉक "More Menu" में "संचालन" सेक्शन में मिलेगा।'
-  };
-
-  // ======================================================================
-  // SECTION 7: RESPONSE HELPER
-  // ======================================================================
-  function R(html, o) { return Object.assign({ html }, o || {}); }
-
-  // ======================================================================
-  // SECTION 8: CORE BRAIN (handleQuery)
-  // ======================================================================
+  /* ================= 8. MAIN ROUTER & ENTRY HANDLERS ================= */
   async function handleQuery(rawText, ui) {
     const raw = String(rawText || '').trim();
     const q = norm(raw);
-    const parties = await getAppParties();
+    const parties = await D.parties();
 
-    // Check for Pending Action
-    if (ctx.pendingAction) {
+    // ------------------------------------------------------------------
+    // 0. PENDING CONFIRMATION (Haan / Radd)
+    // ------------------------------------------------------------------
+    if (ctx.pending) {
       if (/^(haan|yes|ha|ok|theek|sahi|kar do|save|हाँ|हां|जी|सही|कर दो)$/i.test(q)) {
-        return await commitAction(ui);
+        return await commitPending(ui);
       }
       if (/^(nahi|no|cancel|radd|mat|stop|नहीं|ना|रद्द|मत)$/i.test(q)) {
-        ctx.pendingAction = null;
-        return R('ठीक है, मैंने वह एंट्री रद्द कर दी है।', { say: 'ठीक है, रद्द कर दिया।' });
+        ctx.pending = null;
+        return R('ठीक है, मैंने वह एंट्री रद्द कर दी है। आगे बताइए?', { say: 'ठीक है, मैंने वह एंट्री रद्द कर दी है। आगे बताइए?' });
       }
-      ctx.pendingAction = null;
+      ctx.pending = null;
     }
 
-    // 1. Safety & Identity
-    if (/\b(remove|delete|hatao|mita|डिलीट|हटाओ|मिटाओ)\b/i.test(q)) {
-      return R('माफ़ कीजिए, मैं कोई भी एंट्री delete नहीं कर सकती। यह अधिकार सिर्फ owner के पास है।', { say: 'माफ़ कीजिए, मैं कोई भी एंट्री डिलीट नहीं कर सकती।' });
-    }
-    if (/(pump|mazda).*(owner|malik|kiska|shashank|मालिक|किसका)/i.test(q)) {
-      return R(`इस पंप के मालिक <b>${PERSON.owner}</b> हैं।`, { say: `इस पंप के मालिक ${PERSON.owner} जी हैं।` });
-    }
-    if (/(tumhara|aapka).*(owner|malik)|kisne banaya|who made you|किसने बनाया/i.test(q)) {
-      return R(`मैं एक AI हूँ, मेरा कोई owner नहीं है। मुझे <b>${PERSON.maker}</b> ने बनाया है।`, { say: `मुझे ${PERSON.maker} ने बनाया है।` });
-    }
-    if (/(mera naam|main kaun|मेरा नाम|मैं कौन)/i.test(q)) {
-      const uName = S.user ? S.user.email.split('@')[0] : (S.salesman ? S.salesman.name : 'User');
-      const role = S.role === 'owner' ? 'मालिक' : (S.role === 'manager' ? 'मैनेजर' : 'यूज़र');
-      return R(`आपका नाम <b>${esc(uName)}</b> है और आप इस ऐप में <b>${role}</b> के रूप में लॉगिन हैं।`, { say: `आप ${uName} हैं और आप ${role} हैं।` });
-    }
-    if (/(tum|aap).*(kaun|kya|kahan)|who are you|तुम कौन/i.test(q)) {
-      return R('मैं <b>माज़दा असिस्टेंट</b> हूँ! मैं आपके पंप की सेल, नोज़ल रीडिंग, उधार खाते और डिप का पूरा हिसाब मुंहज़बानी रखती हूँ।', { say: 'मैं माज़दा असिस्टेंट हूँ, मैं आपके पंप का पूरा हिसाब रखती हूँ।' });
-    }
-
-    // 2. App Guide (KB lookup)
-    for (const key in KB) {
-      if (q.includes(key)) {
-        return R(KB[key], { say: KB[key] });
-      }
-    }
-
-    // 3. Sales, Dates & "Why" Analysis
-    if (/sale|bikri|bika|dhandha|galla|सेल|बिक्री|बिका/i.test(q)) {
-      const dObj = resolveQueryDate(q);
-      ctx.activeDate = dObj.iso;
-      
-      if (db()) {
-        const dSnap = await db().collection('days').doc(dObj.iso).get();
-        if (!dSnap.exists) {
-          return R(`📅 <b>${dObj.label}</b> का हिसाब नहीं मिला।`, { say: `${dObj.label} का हिसाब नहीं मिला।` });
-        }
-        const sum = dSnap.data().sum || {};
-        return R(`📊 <b>${dObj.label} की कुल सेल: ${money(sum.sale)}</b><br>⛽ पेट्रोल: <b>${lit(sum.litP)}</b><br>🛢️ डीज़ल: <b>${lit(sum.litD)}</b>`, {
-          say: `${dObj.label} की कुल सेल ${money(sum.sale)} है। पेट्रोल ${Math.round(sum.litP)} लीटर और डीज़ल ${Math.round(sum.litD)} लीटर बिका।`,
-          chips: [{ label: '⛽ नोज़ल ट्रेंड', onClick: () => handleQuery('Nozzle trend', ui).then(r => ui.bot(r)) }]
-        });
-      }
-    }
-
-    // 4. Standalone Vehicle Query (e.g., "9769")
-    if (/^\d{4}$/.test(q) || /^[a-z]{2}\s*\d{1,2}\s*[a-z]{0,3}\s*\d{4}$/i.test(q)) {
-      const vCheck = detectVehicleInQuery(q, parties);
-      if (vCheck.party) {
-        ctx.activeParty = vCheck.party;
-        ctx.activeVehicle = vCheck.vKey;
-        return R(`🚗 गाड़ी <b>${esc(vCheck.vKey)}</b> पार्टी <b>${esc(vCheck.party.name)}</b> की है।<br>वर्तमान बकाया: <b>${money(vCheck.party.bal)}</b><br><br>बताइए, इसमें कितने का उधार या जमा लिखना है?`, {
-          say: `गाड़ी ${vCheck.vKey} पार्टी ${vCheck.party.name} की है। इनका बकाया ${money(vCheck.party.bal)} है।`,
-          chips: [
-            { label: '📒 खाता खोलें', onClick: () => { ui.close(); APP.partyView(vCheck.party.id, false); } }
-          ]
-        });
-      }
-      return R(`गाड़ी नंबर <b>${esc(q.toUpperCase())}</b> किसी पार्टी में नहीं मिली।`, { say: 'यह गाड़ी नंबर नहीं मिला।' });
-    }
-
-    // 5. Context Follow-up (Inka / Uski / Us din)
-    if (/\b(inka|uska|iski|uski|unko|unka|inki|इनका|उसका|उनका)\b/i.test(q) || /khata kholo|ledger kholo|खाता खोलो/i.test(q)) {
-      if (ctx.activeParty) {
-        if (/khata|ledger|खाता/i.test(q)) {
-          setTimeout(() => { ui.close(); if (typeof APP.partyView === 'function') APP.partyView(ctx.activeParty.id, false); }, 800);
-          return R(`⏳ <b>${esc(ctx.activeParty.name)}</b> का खाता खोल रही हूँ...`, { say: `${ctx.activeParty.name} का खाता खोल रही हूँ।` });
-        }
-        return R(`👤 <b>${esc(ctx.activeParty.name)}</b> का बकाया: <b class="neg">${money(ctx.activeParty.bal)}</b>`, { say: `${ctx.activeParty.name} का बकाया ${money(ctx.activeParty.bal)} है।` });
-      }
-      if (ctx.activeDate) {
-        return R(`📅 आपने पिछली बार <b>${ctx.activeDate}</b> की बात की थी। उस दिन का क्या देखना है?`, { say: `आपने ${ctx.activeDate} की बात की थी।` });
-      }
-      return R('किस पार्टी या तारीख की बात कर रहे हैं?', { say: 'किस पार्टी की बात कर रहे हैं?' });
-    }
-
-    // 6. Dip Chart
-    if (/dip|डिप/i.test(q)) {
-      const dipMatch = q.match(/\b\d+(\.\d+)?\b/);
-      if (dipMatch && window.DipChart) {
-        const v = parseFloat(dipMatch[0]);
-        let txt = `📏 <b>${v} डिप पर:</b><br>🛢️ डीज़ल: <b>${lit(window.DipChart.getLiters('diesel', v))}</b><br>⛽ पेट्रोल: <b>${lit(window.DipChart.getLiters('petrol', v))}</b>`;
-        return R(txt, { say: `${v} डिप पर डीज़ल ${Math.round(window.DipChart.getLiters('diesel', v))} लीटर और पेट्रोल ${Math.round(window.DipChart.getLiters('petrol', v))} लीटर है।` });
-      }
-    }
-
-    // 7. Total Market Udhar
-    if (/(kul|total|market|कुल|मार्केट).*(udhar|baaki|उधार|बाकी)/i.test(q) || /^(udhar|कुल उधार)$/i.test(q)) {
-      const due = parties.filter(p => num(p.bal) > 0).sort((a, b) => num(b.bal) - num(a.bal));
-      const total = due.reduce((acc, p) => acc + num(p.bal), 0);
-      return R(`📊 <b>कुल बकाया: ${money(total)}</b> (${due.length} खाते)<br>1. <b>${esc(due[0]?.name || '')}</b>: ${money(due[0]?.bal || 0)}`, {
-        say: `मार्केट में कुल बकाया ${money(total)} है।`
+    // ------------------------------------------------------------------
+    // 1. FOCUS LOCK MODE ("Abhi sirf hisab likhna" / "Only udhar")
+    // ------------------------------------------------------------------
+    if (/\b(focus hatao|sab baat karo|normal mode|lock hatao|फोकस हटाओ|नॉर्मल मोड)\b/i.test(q)) {
+      ctx.focusMode = null;
+      if (ui && ui.updateFocusBadge) ui.updateFocusBadge();
+      return R('🔓 <b>फ़ोकस मोड हटा दिया गया है।</b> अब आप पंप से जुड़ा कोई भी सवाल या विश्लेषण पूछ सकते हैं!', {
+        say: 'फ़ोकस मोड हटा दिया गया है। अब आप कोई भी सवाल पूछ सकते हैं।'
       });
     }
 
-    // 8. Smart Pivot (Weather, etc.)
-    if (/baarish|mausam|weather|rain|बारिश|मौसम/i.test(q)) {
-      let sale = '₹0';
-      if (db()) {
-        const d = await db().collection('days').doc(T()).get();
-        if (d.exists) sale = money((d.data().sum || {}).sale);
-      }
-      return R(`🌤️ मौसम का पता नहीं, पर आज की सेल <b>${sale}</b> हो चुकी है!`, { say: `मौसम का पता नहीं, पर आज की सेल ${sale} हो चुकी है।` });
+    if (/\b(sirf|only|kewal|सिर्फ|सिर्फ़|केवल)\b/i.test(q) && /\b(hisab|entry|udhar|reading|likhna|likho|kaam|हिसाब|एंट्री|उधार|लिखना|लिखो)\b/i.test(q)) {
+      ctx.focusMode = 'ENTRY';
+      if (ui && ui.updateFocusBadge) ui.updateFocusBadge();
+      return R('🎯 <b>फ़ोकस मोड चालू (सिर्फ़ हिसाब और एंट्री):</b><br>अब मैं बाहर की किसी भी बात पर ध्यान नहीं दूँगी। आप सीधे बोलिए: <b>"P1 4500"</b>, <b>"Paytm 1200"</b>, <b>"Chai 70"</b> या <b>"9769 में 5000 उधार"</b>।<br><small>(बाहर निकलने के लिए कहें: "फ़ोकस हटाओ")</small>', {
+        say: 'जी बिल्कुल! मैंने फ़ोकस मोड चालू कर लिया है। अब मैं सिर्फ़ हिसाब और एंट्री लिखूँगी। आप सीधे रीडिंग, पेटीएम या उधार बोलिए।'
+      });
     }
 
-    // 9. Entries
-    if (/\b(udhar|jama|likho|उधार|जमा)\b/i.test(q)) {
-      return await handleUdharEntry(q, parties);
+    // ------------------------------------------------------------------
+    // 2. STRICT DELETE BLOCKER
+    // ------------------------------------------------------------------
+    if (/\b(remove|delete|hatao|mita|डिलीट|हटाओ|मिटाओ)\b/i.test(q)) {
+      return R('⚠️ माफ़ कीजिए, मैं कोई भी एंट्री delete नहीं कर सकती। यह अधिकार सिर्फ owner (शशांक बंसल जी) के पास है।', {
+        say: 'माफ़ कीजिए, मैं कोई भी एंट्री डिलीट नहीं कर सकती। यह अधिकार सिर्फ ओनर के पास है।'
+      });
     }
-    if (/\b(paytm|swipe|kharcha|chai|dg|पेटीएम)\b/i.test(q)) {
-      return await handleDailyFieldEntry(q, parties);
-    }
+
+    // ------------------------------------------------------------------
+    // 3. DATA ENTRIES (Meter P1-D4, Paytm/Swipe/Kharcha, Udhar/Jama)
+    // ------------------------------------------------------------------
     const nzMatch = q.match(/\b(p[1-4]|d[1-4])\b/i);
     if (nzMatch) {
-      const amounts = await extractAmounts(q, parties, null);
-      if (amounts[0]) return await handleMeterEntry(nzMatch[0].toLowerCase(), amounts[0]);
+      const amounts = await extractAmounts(raw, parties, null);
+      if (amounts[0]) return await prepMeterEntry(nzMatch[0].toLowerCase(), amounts[0]);
     }
 
-    // 10. Party Search
-    const explicitParty = await findExplicitParty(q, parties);
-    if (explicitParty) {
-      ctx.activeParty = explicitParty;
-      return R(`👤 <b>${esc(explicitParty.name)}</b><br>बकाया: <b class="neg">${money(explicitParty.bal)}</b>`, {
-        say: `${explicitParty.name} का बकाया ${money(explicitParty.bal)} है।`,
-        chips: [{ label: '📒 खाता खोलें', onClick: () => { ui.close(); APP.partyView(explicitParty.id, false); } }]
+    if (/\b(paytm|swipe|kharcha|chai|dg|पेटीएम|स्वाइप|खर्चा|चाय)\b/i.test(q)) {
+      const amounts = await extractAmounts(raw, parties, null);
+      if (amounts[0]) return await prepDailyEntry(q, amounts[0]);
+    }
+
+    if (/\b(udhar|jama|likho|likhna|chadao|dalna|उधार|जमा|लिखो|चढ़ाओ)\b/i.test(q)) {
+      // Make sure it's not "kul udhar" or "udhar batao"
+      if (!/\b(kul|total|kitna|batao|dikhao|top|sabse|कुल|कितना|बताओ|दिखाओ)\b/i.test(q)) {
+        return await prepLedgerEntry(raw, parties);
+      }
+    }
+
+    // If Focus Mode is locked to ENTRY, block non-entry chitchat
+    if (ctx.focusMode === 'ENTRY') {
+      const vCheck = detectVehicle(raw, parties);
+      const pFound = vCheck.party || (await findExplicitParty(raw, parties));
+      const amounts = await extractAmounts(raw, parties, vCheck.vKey);
+      if (pFound && amounts[0]) {
+        ctx.party = pFound;
+        if (vCheck.vKey) ctx.vehicle = vCheck.vKey;
+        return await prepLedgerEntry(raw, parties);
+      }
+      if (pFound) {
+        ctx.party = pFound;
+        if (vCheck.vKey) ctx.vehicle = vCheck.vKey;
+        return R(`🎯 <b>${esc(pFound.name)}</b> चुना गया। अब सीधे रकम बोलिए (जैसे <b>"5000 उधार"</b> या <b>"10000 जमा"</b>)।`, {
+          say: `${pFound.name} का खाता चुना गया। कितने रुपये उधार या जमा लिखने हैं?`
+        });
+      }
+      return R('🎯 अभी <b>"सिर्फ़ हिसाब लिखना" (फ़ोकस मोड)</b> चालू है। कृपया सीधे एंट्री बोलें—जैसे <b>"P1 4500"</b>, <b>"Paytm 500"</b>, या <b>"9769 में 2000 उधार"</b>।', {
+        say: 'अभी फ़ोकस मोड चालू है। कृपया सीधे रीडिंग, पेटीएम या उधार की रकम बोलिए।',
+        chips: [{ label: '🔓 फ़ोकस मोड हटाएँ', q: 'फ़ोकस हटाओ' }]
       });
     }
 
-    // 11. Fallback
-    return R('🤔 मैं पंप की असिस्टेंट हूँ। आप "आज की सेल", "9769 का उधार", या "P1 4500" बोल सकते हैं।', {
-      say: 'मैं पंप की असिस्टेंट हूँ। आप सेल, उधार या मीटर रीडिंग पूछ सकते हैं।'
-    });
+    // ------------------------------------------------------------------
+    // 4. IDENTITY, CREATOR (NEERAJ DEV) & OWNER (SHASHANK BANSAL) LORE
+    // ------------------------------------------------------------------
+    if (/neeraj|नीरज/i.test(q)) {
+      if (/aawaj|voice|sunti|सुनती|आवाज़/i.test(q)) return SK.about({ what: 'maker_voice' });
+      if (/kaise banaya|kaise janti|kaun hai|kon hai|कैसे बनाया|कैसे जानती|कौन है/i.test(q)) return SK.about({ what: 'maker_how' });
+      return SK.about({ what: 'maker' });
+    }
+    if (/(tumhara|aapka|tera|tujhe).*(owner|malik|किसने|मालिक)|kisne banaya|who made you|किसने बनाया/i.test(q)) {
+      return SK.about({ what: 'maker' });
+    }
+    if (/malik|owner|shashank|बॉस|मालिक/i.test(q) && /mood|khush|gussa|kaisa|मूड|खुश|गुस्सा/i.test(q)) {
+      const d = await D.day(today());
+      const sv = d && d.sum ? n(d.sum.sale) : 0;
+      return R(`😄 मालिक <b>${PERSON.owner}</b> जी का मूड तो पंप के मीटर और साफ हिसाब से बनता है! आज अब तक <b>${M(sv)}</b> की सेल हो चुकी है। हिसाब टनाटन रखिए, मालिक हमेशा खुश रहेंगे!`, {
+        say: `मालिक ${PERSON.owner} जी का मूड तो पंप के साफ हिसाब से बनता है। आज अब तक ${M(sv)} की सेल हो चुकी है।`
+      });
+    }
+    if (/(pump|mazda|company).*(owner|malik|kiska|shashank|मालिक|किसका)/i.test(q)) {
+      return SK.about({ what: 'owner' });
+    }
+    if (/(mera naam|main kaun|who am i|मेरा नाम|मैं कौन)/i.test(q)) {
+      return SK.about({ what: 'me' });
+    }
+    if (/(kya kya kar sakti|kya kaam kar sakti|tumhara kaam|help|मदद|क्या क्या कर सकती|क्या काम)/i.test(q)) {
+      return SK.help();
+    }
+    if (/(tum|aap).*(kaun|kya|kahan)|who are you|तुम कौन/i.test(q)) {
+      return SK.about({ what: 'self' });
+    }
+
+    // ------------------------------------------------------------------
+    // 5. APP KNOWLEDGE BASE (Buttons, Screens, Tour)
+    // ------------------------------------------------------------------
+    if (/(app me kya|app ka tour|sari screen|सारी स्क्रीन|ऐप में क्या|ऐप का टूर)/i.test(q)) {
+      return SK['app.tour']();
+    }
+    const guideMatch = matchAppGuide(raw);
+    if (guideMatch) {
+      return SK['app.guide'](guideMatch);
+    }
+
+    // ------------------------------------------------------------------
+    // 6. STANDALONE VEHICLE QUICK LOOKUP (e.g. "9769")
+    // ------------------------------------------------------------------
+    if (/^\d{4}$/.test(q) || /^[a-z]{2}\s*\d{1,2}\s*[a-z]{0,3}\s*\d{4}$/i.test(q)) {
+      const vCheck = detectVehicle(raw, parties);
+      if (vCheck.party) {
+        ctx.party = vCheck.party;
+        ctx.vehicle = vCheck.vKey;
+        return R(
+          `🚗 गाड़ी <b>${esc(vCheck.vKey)}</b> पार्टी <b>${esc(vCheck.party.name)}</b> की है।<br>` +
+          `वर्तमान बकाया: <b class="neg">${M(vCheck.party.bal)}</b><br><br>` +
+          `बताइए, इसमें कितने का उधार लिखना है या इनका खाता खोलूँ?`,
+          {
+            say: `गाड़ी ${vCheck.vKey} पार्टी ${vCheck.party.name} की है। इनका बकाया ${M(vCheck.party.bal)} है। बताइए, इसमें क्या एंट्री करनी है?`,
+            chips: [
+              cs('📒 खाता खोलें', 'party.ledger', { party: vCheck.party }),
+              cs('📅 गाड़ी कब आई थी?', 'party.visit', { party: vCheck.party }),
+              chip('➕ ₹2000 उधार', `${vCheck.vKey} में 2000 का उधार`)
+            ]
+          }
+        );
+      }
+      return R(`गाड़ी नंबर <b>${esc(raw.toUpperCase())}</b> किसी भी पार्टी के खाते में रजिस्टर्ड नहीं मिली।`, {
+        say: 'यह गाड़ी नंबर किसी भी पार्टी के खाते में नहीं मिला।'
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // 7. DIP CHART LOOKUP ("45 dip mai diesel")
+    // ------------------------------------------------------------------
+    if (/\b(dip|डिप)\b/i.test(q)) {
+      const dm = q.match(/\b(\d+(?:\.\d+)?)\b/);
+      if (dm) {
+        const fuel = /diesel|hsd|डीजल|डीज़ल/i.test(q) ? 'diesel' : (/petrol|ms|पेट्रोल/i.test(q) ? 'petrol' : null);
+        return SK.dip({ dipVal: parseFloat(dm[1]), fuel });
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // 8. DATE & STICKY CONTEXT RESOLUTION ("20/10/2026", "us din", "10 din purana")
+    // ------------------------------------------------------------------
+    const dtInfo = extractDateOrRange(raw);
+    const hasStickyDayRef = /\b(us din|uss din|usi din|us tarikh|उस दिन|उसी दिन|उस तारीख|तब)\b/i.test(q);
+
+    // Nozzle Trend
+    if (/\b(nozzle|nozzele|nozel|नोजल|नोज़ल)\b/i.test(q)) {
+      return SK['nozzle.day']({ date: (dtInfo && dtInfo.date) || (hasStickyDayRef ? ctx.date : today()) });
+    }
+
+    // Peak Season / Best Day / Low Diesel Days
+    if (/\b(peak season|पीक सीजन|पीक सीज़न)\b/i.test(q)) return SK.peak();
+    if (/\b(best sale|sabse jyada sale|top sale|बेस्ट सेल|सबसे ज्यादा बिक्री)\b/i.test(q)) {
+      return SK['sale.best']({ range: dtInfo && dtInfo.range });
+    }
+    if (/\b(kam diesel|low diesel|कम डीजल|कम डीज़ल)\b/i.test(q)) {
+      return SK['sale.low']({ fuel: 'diesel', range: dtInfo && dtInfo.range });
+    }
+
+    // Why Sale Low / High
+    if (/\b(sale|bikri|bika|petrol|diesel|सेल|बिक्री|बिका|पेट्रोल|डीज़ल)\b/i.test(q) && /\b(kyu|kyun|kyo|क्यों|क्युं)\b/i.test(q)) {
+      return SK['why.sale']({ date: (dtInfo && dtInfo.date) || (hasStickyDayRef ? ctx.date : today()) });
+    }
+
+    // Stock / Tanker Queries
+    if (/\b(tanker|टैंकर)\b/i.test(q)) return SK['tanker.last']();
+    if (/\b(stock|tank|tanki|स्टॉक|टैंक|टंकी|कितना तेल बचा)\b/i.test(q)) {
+      const f = /diesel|डीजल|डीज़ल/i.test(q) ? 'diesel' : (/petrol|पेट्रोल/i.test(q) ? 'petrol' : null);
+      if (f) ctx.fuel = f;
+      return SK.stock({ fuel: f, date: dtInfo && dtInfo.date, useStickyDate: hasStickyDayRef });
+    }
+
+    // Cash / Galla Split
+    if (/\b(galla|cash split|bantwara|गल्ला|नकद कितना)\b/i.test(q)) {
+      return SK['cash.split']({ date: (dtInfo && dtInfo.date) || (hasStickyDayRef ? ctx.date : today()) });
+    }
+
+    // Sale Queries (or standalone date queries like "20/10/2026 ka hisab" or "us din ki sale")
+    if (/\b(sale|bikri|bika|dhandha|hisab|सेल|बिक्री|बिका|धंधा|हिसाब)\b/i.test(q) || (dtInfo && dtInfo.explicit)) {
+      if (dtInfo && dtInfo.kind === 'range') return SK['sale.day']({ range: dtInfo.range });
+      const targetD = (dtInfo && dtInfo.date) || (hasStickyDayRef ? ctx.date : today());
+      return SK['sale.day']({ date: targetD });
+    }
+
+    // ------------------------------------------------------------------
+    // 9. STAFF ATTENDANCE
+    // ------------------------------------------------------------------
+    if (/\b(staff|worker|hajiri|haziri|attendance|chutti|वर्कर|स्टाफ|हाज़िरी|छुट्टी)\b/i.test(q)) {
+      return SK['staff.day']({ date: (dtInfo && dtInfo.date) || (hasStickyDayRef ? ctx.date : today()) });
+    }
+
+    // ------------------------------------------------------------------
+    // 10. PARTY VISIT HISTORY & PRONOUN FOLLOW-UPS ("Inki gaadi...", "Inka khata...")
+    // ------------------------------------------------------------------
+    if (/\b(kitne din baad|kab aayi|kab aaye|pichli baar|aakhiri baar|कितने दिन बाद|कब आई|पिछली बार|आखिरी बार)\b/i.test(q)) {
+      const p = (await findExplicitParty(raw, parties)) || ctx.party;
+      return SK['party.visit']({ party: p });
+    }
+
+    if (/\b(inka|uska|iski|uski|unko|unka|inki|इनका|उसका|उनका|इनकी)\b/i.test(q) || /\b(khata kholo|ledger kholo|खाता खोलो)\b/i.test(q)) {
+      if (ctx.party) {
+        if (/khata|ledger|खाता/i.test(q)) return SK['party.ledger']({ party: ctx.party });
+        return SK['party.info']({ party: ctx.party });
+      }
+      if (ctx.date) {
+        return SK['sale.day']({ date: ctx.date });
+      }
+      return R('आप किस पार्टी या तारीख की बात कर रहे हैं? कृपया एक बार नाम या तारीख बताइए।', {
+        say: 'आप किस पार्टी या तारीख की बात कर रहे हैं? कृपया एक बार नाम या तारीख बताइए।'
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // 11. MARKET UDHAR SUMMARY vs SPECIFIC PARTY SEARCH
+    // ------------------------------------------------------------------
+    if (/(kul|total|market|sabse jyada|top|कुल|मार्केट|सबसे ज्यादा).*(udhar|baaki|उधार|बाकी)/i.test(q) || /^(udhar|kul udhar|कुल उधार)$/i.test(q)) {
+      return SK['udhar.total']();
+    }
+
+    const explicitParty = await findExplicitParty(raw, parties);
+    if (explicitParty) {
+      ctx.party = explicitParty;
+      const amounts = await extractAmounts(raw, parties, ctx.vehicle);
+      if (amounts[0] && /\b(में|mein|me|ka|का)\b/i.test(q)) {
+        return await prepLedgerEntry(raw, parties);
+      }
+      return SK['party.info']({ party: explicitParty });
+    }
+
+    // ------------------------------------------------------------------
+    // 12. SMART PIVOTS (Weather, Cricket, Timing, Chitchat)
+    // ------------------------------------------------------------------
+    if (/kitne baje|timing|khulta|band hota|कितने बजे|खुलता|बंद होता/i.test(q)) {
+      return R('⛽ माज़दा ऑयल कंपनी पंप पर सुबह से रात तक लगातार सेवा चलती है। आप जब चाहें रीडिंग या उधार यहाँ दर्ज कर सकते हैं।', {
+        say: 'माज़दा ऑयल कंपनी पंप पर सुबह से रात तक सेवा चलती है। आप जब चाहें हिसाब दर्ज कर सकते हैं।'
+      });
+    }
+
+    if (/baarish|mausam|weather|rain|thand|garmi|dhoop|बारिश|मौसम|धूप|ठंड|गर्मी/i.test(q)) {
+      const d = await D.day(today());
+      const sv = d && d.sum ? M(d.sum.sale) : '₹0';
+      return R(`🌤️ मौसम का तो बादल जानें, पर अपने पंप पर आज <b>${sv}</b> की सेल हो चुकी है! क्या आज का स्टॉक या नोज़ल ट्रेंड देखें?`, {
+        say: `मौसम का तो पता नहीं, पर आज अपने पंप पर ${sv} की सेल हो चुकी है।`
+      });
+    }
+
+    if (/match|cricket|ipl|score|मैच|क्रिकेट/i.test(q)) {
+      const d = await D.day(today());
+      const sv = d && d.sum ? M(d.sum.sale) : '₹0';
+      return R(`🏏 मैच का स्कोर तो टीवी बताएगा, लेकिन आज अपने पंप का स्कोर <b>${sv}</b> पहुँच चुका है!`, {
+        say: `मैच का स्कोर तो टीवी बताएगा, पर आज अपने पंप की सेल ${sv} हो चुकी है।`
+      });
+    }
+
+    if (/thank|shukriya|dhanyawad|धन्यवाद|शुक्रिया|थैंक/i.test(q)) return SK.thanks();
+    if (/^(hi|hello|namaste|namaskar|hey|नमस्ते|नमस्कार|हेलो)$/i.test(q)) return SK.greet();
+
+    // ------------------------------------------------------------------
+    // 13. CONFIDENT ROTATING FALLBACK LOOP
+    // ------------------------------------------------------------------
+    const fbList = [
+      {
+        html: `🤔 यह सवाल पंप के हिसाब से थोड़ा अलग है! मैं आपको <b>आज की सेल</b>, <b>किसी तारीख का हिसाब</b>, <b>पार्टी का उधार</b>, <b>डिप स्टॉक</b> या <b>ऐप के किसी भी बटन का काम</b> तुरंत बता सकती हूँ। क्या दिखाऊँ?`,
+        say: 'मैं आपको आज की सेल, किसी तारीख का हिसाब, पार्टी का उधार या ऐप के किसी भी बटन का काम तुरंत बता सकती हूँ। बताइए क्या दिखाऊँ?'
+      },
+      {
+        html: `😊 मैं माज़दा पंप की डिजिटल मैनेजर हूँ! आप चाहें तो कोई गाड़ी नंबर (जैसे <b>9769</b>) बोलें, <b>"P1 4500"</b> से रीडिंग चढ़ाएँ, या <b>"अभी सिर्फ़ हिसाब लिखना"</b> बोलकर फ़ोकस मोड चालू कर लें!`,
+        say: 'मैं माज़दा पंप की डिजिटल मैनेजर हूँ। आप कोई गाड़ी नंबर बोलें, या पी एक चार हज़ार पाँच सौ बोलकर सीधे रीडिंग चढ़ा लें।'
+      }
+    ];
+    const pickFb = fbList[ctx.brain.fallbackIdx % fbList.length];
+    ctx.brain.fallbackIdx = (ctx.brain.fallbackIdx + 1) % fbList.length;
+    saveBrain();
+    return R(pickFb.html, { say: pickFb.say, chips: homeChips() });
   }
 
-  // ======================================================================
-  // SECTION 9: ENTRY & COMMIT LOGIC
-  // ======================================================================
-  async function handleUdharEntry(q, parties) {
-    const vCheck = detectVehicleInQuery(q, parties);
-    let p = vCheck.party || (await findExplicitParty(q, parties)) || ctx.activeParty;
-    
-    if (vCheck.vKey) ctx.activeVehicle = vCheck.vKey;
-    
-    if (!p) {
-      return R('किस पार्टी का उधार दर्ज करना है? कृपया नाम या गाड़ी नंबर बताइए।', { say: 'किस पार्टी का उधार दर्ज करना है?' });
-    }
-    
-    ctx.activeParty = p;
-    const amounts = await extractAmounts(q, parties, vCheck.vKey || ctx.activeVehicle);
-    const val = amounts[0];
-    
-    if (!val) {
-      return R(`<b>${esc(p.name)}</b> का कितने रुपये का उधार लिखना है?`, { say: `${p.name} का कितने रुपये का उधार लिखना है?` });
-    }
+  /* ================= 9. ENTRY PREPARATION & DATABASE COMMIT ================= */
+  async function prepMeterEntry(nozzleKey, closingVal) {
+    const t = today();
+    const d = await D.day(t);
+    const openVal = (d && d.nz && d.nz[nozzleKey]) ? n(d.nz[nozzleKey].o) : 0;
 
-    ctx.pendingAction = { type: 'UDHAR', party: p, amount: val, vehicle: vCheck.vKey || ctx.activeVehicle || '', date: T() };
-    return R(`<b>उधार एंट्री</b><br>पार्टी: <b>${esc(p.name)}</b><br>${ctx.pendingAction.vehicle ? 'गाड़ी: <b>'+esc(ctx.pendingAction.vehicle)+'</b><br>' : ''}रकम: <b>${money(val)}</b><br><br>क्या दर्ज करूँ?`, {
-      say: `${p.name} के खाते में ${money(val)} उधार दर्ज करना है। क्या यह सही है?`,
-      chips: [
-        { label: '✅ Haan', onClick: (ui) => commitAction(ui) },
-        { label: '❌ Radd', onClick: (ui) => { ctx.pendingAction = null; ui.bot(R('रद्द कर दिया।')); } }
-      ]
-    });
-  }
-
-  async function handleDailyFieldEntry(q, parties) {
-    const amounts = await extractAmounts(q, parties, null);
-    const val = amounts[0];
-    
-    if (!val) {
-      return R('कृपया रकम भी बताइए, जैसे "Paytm 500" या "Chai 70".', { say: 'कृपया रकम भी बताइए।' });
-    }
-    
-    let field = '', desc = '';
-    if (/paytm|पेटीएम/i.test(q)) field = 'paytm';
-    else if (/swipe|स्वाइप/i.test(q)) field = 'swipe';
-    else if (/chai|चाय/i.test(q)) { field = 'kharcha'; desc = 'चाय-नाश्ता'; }
-    else if (/dg|जनरेटर/i.test(q)) { field = 'kharcha'; desc = 'DG जनरेटर'; }
-    else { field = 'kharcha'; desc = 'अन्य खर्चा'; }
-
-    ctx.pendingAction = { type: field === 'kharcha' ? 'KHARCHA' : 'DAILY_FIELD', field, desc, value: val, date: T() };
-    return R(`आज का <b>${field.toUpperCase()}</b> ${desc ? '('+desc+')' : ''} <b>${money(val)}</b> सेट करना है?`, {
-      say: `क्या ${field} में ${money(val)} सेट करना है?`,
-      chips: [
-        { label: '✅ Haan', onClick: (ui) => commitAction(ui) },
-        { label: '❌ Radd', onClick: (ui) => { ctx.pendingAction = null; ui.bot(R('रद्द कर दिया।')); } }
-      ]
-    });
-  }
-
-  async function handleMeterEntry(nozzleKey, closingVal) {
-    const today = T();
-    let openVal = 0;
-    
-    if (db()) {
-      const d = await db().collection('days').doc(today).get();
-      if (d.exists && d.data().nz && d.data().nz[nozzleKey]) openVal = num(d.data().nz[nozzleKey].o);
-    }
-    
     if (closingVal < openVal) {
-      return R(`⚠️ गलती! ओपनिंग <b>${openVal}</b> है, क्लोजिंग कम नहीं हो सकती।`, { say: `गलती, ओपनिंग ${openVal} है, क्लोजिंग कम नहीं हो सकती।` });
+      return R(`⚠️ <b>गलती!</b> नोज़ल <b>${nozzleKey.toUpperCase()}</b> की ओपनिंग रीडिंग <b>${openVal}</b> है, क्लोज़िंग रीडिंग ओपनिंग से कम नहीं हो सकती!`, {
+        say: `गलती। नोज़ल ${nozzleKey.toUpperCase()} की ओपनिंग ${openVal} है, क्लोज़िंग कम नहीं हो सकती।`
+      });
     }
-    
-    ctx.pendingAction = { type: 'METER', key: nozzleKey, value: closingVal, date: today };
-    return R(`नोज़ल <b>${nozzleKey.toUpperCase()}</b> की क्लोजिंग <b>${closingVal}</b> दर्ज करनी है?`, {
-      say: `नोज़ल ${nozzleKey.toUpperCase()} की क्लोजिंग ${closingVal} दर्ज करनी है?`,
+
+    const sold = openVal > 0 ? closingVal - openVal : 0;
+    ctx.pending = { type: 'METER', key: nozzleKey, value: closingVal, date: t };
+    return R(
+      `⛽ नोज़ल <b>${nozzleKey.toUpperCase()}</b> की क्लोज़िंग रीडिंग <b>${closingVal}</b> ${sold > 0 ? `(बिक्री: <b>${L(sold)}</b>)` : ''} दर्ज करनी है?<br>क्या इसे सेव कर दूँ?`,
+      {
+        say: `नोज़ल ${nozzleKey.toUpperCase()} की क्लोज़िंग रीडिंग ${closingVal} सेव करनी है, क्या यह सही है?`,
+        chips: [
+          { label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) },
+          { label: '❌ रद्द करें', fn: ui => { ctx.pending = null; ui.bot(R('ठीक है, रद्द कर दिया।', { say: 'ठीक है, रद्द कर दिया।' })); } }
+        ]
+      }
+    );
+  }
+
+  async function prepDailyEntry(q, val) {
+    const t = today();
+    if (/paytm|पेटीएम/i.test(q)) {
+      ctx.pending = { type: 'DAILY_FIELD', field: 'paytm', value: val, date: t };
+      return R(`💳 आज का <b>Paytm</b> कलेक्शन <b>${M(val)}</b> सेट करना है?`, {
+        say: `क्या आज का पेटीएम कलेक्शन ${M(val)} सेट करना है?`,
+        chips: [
+          { label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) },
+          { label: '❌ रद्द करें', fn: ui => { ctx.pending = null; ui.bot(R('रद्द कर दिया।', { say: 'रद्द कर दिया।' })); } }
+        ]
+      });
+    }
+    if (/swipe|स्वाइप/i.test(q)) {
+      ctx.pending = { type: 'DAILY_FIELD', field: 'swipe', value: val, date: t };
+      return R(`💳 आज का <b>Swipe</b> कलेक्शन <b>${M(val)}</b> सेट करना है?`, {
+        say: `क्या आज का स्वाइप कलेक्शन ${M(val)} सेट करना है?`,
+        chips: [
+          { label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) },
+          { label: '❌ रद्द करें', fn: ui => { ctx.pending = null; ui.bot(R('रद्द कर दिया।', { say: 'रद्द कर दिया।' })); } }
+        ]
+      });
+    }
+    let desc = 'अन्य खर्चा';
+    if (/chai|चाय/i.test(q)) desc = 'चाय-नाश्ता';
+    else if (/dg|generator|जनरेटर/i.test(q)) desc = 'DG जनरेटर';
+    ctx.pending = { type: 'KHARCHA', desc, value: val, date: t };
+    return R(`💸 खर्चा <b>${desc}</b> में <b>${M(val)}</b> दर्ज करना है?`, {
+      say: `क्या खर्चा ${desc} में ${M(val)} दर्ज करना है?`,
       chips: [
-        { label: '✅ Haan', onClick: (ui) => commitAction(ui) },
-        { label: '❌ Radd', onClick: (ui) => { ctx.pendingAction = null; ui.bot(R('रद्द कर दिया।')); } }
+        { label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) },
+        { label: '❌ रद्द करें', fn: ui => { ctx.pending = null; ui.bot(R('रद्द कर दिया।', { say: 'रद्द कर दिया।' })); } }
       ]
     });
   }
 
-  async function commitAction(ui) {
-    const act = ctx.pendingAction;
-    if (!act) return;
-    ctx.pendingAction = null;
-    
-    if (!db()) {
-      return ui.bot(R('❌ डेटाबेस कनेक्शन नहीं है।'));
+  async function prepLedgerEntry(raw, parties) {
+    const q = norm(raw);
+    const isJama = /\b(jama|paid|wapas|जमा|वापस)\b/i.test(q) && !/\b(udhar|उधार)\b/i.test(q);
+    const vCheck = detectVehicle(raw, parties);
+    let p = vCheck.party || (await findExplicitParty(raw, parties)) || ctx.party;
+    if (vCheck.vKey) ctx.vehicle = vCheck.vKey;
+
+    if (!p) {
+      return R(`किस पार्टी का ${isJama ? 'जमा' : 'उधार'} लिखना है? कृपया पार्टी का नाम या गाड़ी नंबर बताइए।`, {
+        say: `किस पार्टी का ${isJama ? 'जमा' : 'उधार'} लिखना है? कृपया नाम या गाड़ी नंबर बताइए।`
+      });
     }
-    
+    ctx.party = p;
+    const amounts = await extractAmounts(raw, parties, vCheck.vKey || ctx.vehicle);
+    const val = amounts[0];
+    if (!val) {
+      return R(`👤 <b>${esc(p.name)}</b> के खाते में कितने रुपये ${isJama ? 'जमा' : 'उधार'} लिखने हैं?`, {
+        say: `${p.name} के खाते में कितने रुपये ${isJama ? 'जमा' : 'उधार'} लिखने हैं?`
+      });
+    }
+
+    ctx.pending = {
+      type: isJama ? 'JAMA' : 'UDHAR',
+      party: p,
+      amount: val,
+      vehicle: vCheck.vKey || ctx.vehicle || '',
+      date: today()
+    };
+
+    const kindTitle = isJama ? '🟢 जमा (भुगतान) एंट्री' : '🔴 उधार एंट्री';
+    return R(
+      `<b>${kindTitle}</b><br>` +
+      `पार्टी: <b>${esc(p.name)}</b><br>` +
+      (ctx.pending.vehicle ? `गाड़ी: <b>${esc(ctx.pending.vehicle)}</b><br>` : '') +
+      `रकम: <b>${M(val)}</b><br><br>क्या मैं इसे सेव कर दूँ?`,
+      {
+        say: `${p.name} के खाते में ${M(val)} ${isJama ? 'जमा' : 'उधार'} दर्ज करना है। क्या मैं इसे सेव कर दूँ?`,
+        chips: [
+          { label: '✅ हाँ, सेव करें', fn: ui => commitPending(ui) },
+          { label: '❌ रद्द करें', fn: ui => { ctx.pending = null; ui.bot(R('ठीक है, एंट्री रद्द कर दी।', { say: 'ठीक है, एंट्री रद्द कर दी।' })); } }
+        ]
+      }
+    );
+  }
+
+  async function commitPending(ui) {
+    const act = ctx.pending;
+    if (!act) return;
+    ctx.pending = null;
+    if (!dbx()) return ui.bot(R('❌ डेटाबेस उपलब्ध नहीं है।'));
+
     try {
       if (act.type === 'METER') {
-        await db().collection('days').doc(act.date).set({ [`nz.${act.key}.c`]: act.value }, { merge: true });
-        if (APP.recalc && document.getElementById('nzwarn')) APP.recalc();
-        return ui.bot(R(`✅ नोज़ल <b>${act.key.toUpperCase()}</b> की क्लोजिंग सेव हो गई।`, { say: 'रीडिंग सेव हो गई।' }));
+        await dbx().collection('days').doc(act.date).set({ [`nz.${act.key}.c`]: act.value }, { merge: true });
+        D.clear();
+        safeRecalc();
+        return ui.bot(R(`✅ नोज़ल <b>${act.key.toUpperCase()}</b> की क्लोज़िंग रीडिंग <b>${act.value}</b> सेव हो गई! आगे बताइए?`, {
+          say: `नोज़ल ${act.key.toUpperCase()} की क्लोज़िंग ${act.value} सेव हो गई। आगे बताइए?`
+        }));
       }
-      
       if (act.type === 'DAILY_FIELD') {
-        await db().collection('days').doc(act.date).set({ [act.field]: act.value }, { merge: true });
-        if (APP.recalc && document.getElementById('nzwarn')) APP.recalc();
-        return ui.bot(R(`✅ <b>${act.field.toUpperCase()}</b> कलेक्शन सेव हो गया।`, { say: 'कलेक्शन सेव हो गया।' }));
+        await dbx().collection('days').doc(act.date).set({ [act.field]: act.value }, { merge: true });
+        D.clear();
+        safeRecalc();
+        return ui.bot(R(`✅ आज का <b>${act.field.toUpperCase()}</b> कलेक्शन <b>${M(act.value)}</b> सफलतापूर्वक सेव हो गया!`, {
+          say: `आज का ${act.field} कलेक्शन ${M(act.value)} सेव हो गया।`
+        }));
       }
-      
       if (act.type === 'KHARCHA') {
-        const dRef = db().collection('days').doc(act.date);
-        const d = await dRef.get();
-        let items = (d.exists && Array.isArray(d.data().kharchaItems)) ? d.data().kharchaItems.slice() : [];
+        const dRef = dbx().collection('days').doc(act.date);
+        const dSnap = await dRef.get();
+        let items = (dSnap.exists && Array.isArray(dSnap.data().kharchaItems)) ? dSnap.data().kharchaItems.slice() : [];
         items.push({ label: act.desc, amount: act.value });
         await dRef.set({ kharchaItems: items }, { merge: true });
-        if (APP.recalc && document.getElementById('nzwarn')) APP.recalc();
-        return ui.bot(R(`✅ खर्चा <b>${esc(act.desc)}</b> सेव हो गया।`, { say: 'खर्चा सेव हो गया।' }));
+        D.clear();
+        safeRecalc();
+        return ui.bot(R(`✅ खर्चा <b>${esc(act.desc)}</b> में <b>${M(act.value)}</b> सेव हो गया!`, {
+          say: `खर्चा ${act.desc} में ${M(act.value)} सेव हो गया।`
+        }));
       }
-      
-      if (act.type === 'UDHAR') {
-        const batch = db().batch();
-        const ref = db().collection('ledger').doc();
-        const ts = (APP.FV && APP.FV.serverTimestamp) ? APP.FV.serverTimestamp() : new Date();
-        batch.set(ref, {
+      if (act.type === 'UDHAR' || act.type === 'JAMA') {
+        const isJama = act.type === 'JAMA';
+        const delta = isJama ? -Math.abs(act.amount) : Math.abs(act.amount);
+        const batch = dbx().batch();
+        const lRef = dbx().collection('ledger').doc();
+        const serverTS = (APP.FV && APP.FV.serverTimestamp) ? APP.FV.serverTimestamp() : new Date();
+        const incFn = (APP.FV && APP.FV.increment) ? APP.FV.increment(delta) : delta;
+
+        batch.set(lRef, {
           partyId: act.party.id,
           partyName: act.party.name,
           date: act.date,
-          time: new Date().toTimeString().slice(0,5),
-          kind: 'udhar',
+          time: (typeof APP.nowTime === 'function') ? APP.nowTime() : '12:00',
+          kind: isJama ? 'jama' : 'udhar',
           amount: Math.abs(act.amount),
           vehicle: act.vehicle || '',
           fuel: '',
@@ -644,69 +1653,169 @@
           litre: 0,
           note: 'Assistant entry',
           by: S.user ? S.user.email : 'assistant',
-          at: ts
+          at: serverTS
         });
-        batch.update(db().collection('parties').doc(act.party.id), { bal: (APP.FV && APP.FV.increment) ? APP.FV.increment(act.amount) : act.amount });
+        batch.update(dbx().collection('parties').doc(act.party.id), { bal: incFn });
         await batch.commit();
         if (S.parties) S.parties.pub = null;
-        if (APP.recalc && document.getElementById('nzwarn')) APP.recalc();
-        return ui.bot(R(`✅ <b>${esc(act.party.name)}</b> का ${money(act.amount)} उधार दर्ज हो गया।`, { say: `${act.party.name} का उधार दर्ज हो गया।` }));
+        D.clear();
+        safeRecalc();
+
+        return ui.bot(R(`✅ <b>${esc(act.party.name)}</b> के खाते में <b>${M(act.amount)}</b> ${isJama ? 'जमा' : 'उधार'} दर्ज हो गया!`, {
+          say: `${act.party.name} के खाते में ${M(act.amount)} ${isJama ? 'जमा' : 'उधार'} दर्ज हो गया।`,
+          chips: [cs('📒 खाता खोलें', 'party.ledger', { party: act.party })]
+        }));
       }
     } catch (e) {
-      return ui.bot(R(`❌ डेटा सेव नहीं हुआ: ${esc(e.message)}`));
+      return ui.bot(R(`❌ सेव नहीं हो पाया: ${esc(e.message)}`, { say: 'माफ़ कीजिए, डेटा सेव नहीं हो पाया।' }));
     }
   }
 
-  // ======================================================================
-  // SECTION 10: UI (Chat Modal & FAB)
-  // ======================================================================
-  function injectFAB() {
-    if (document.getElementById('ai-assist-fab')) return;
+  /* ================= 10. AUTOMATED OWNER / MANAGER PROACTIVE BRIEFING ================= */
+  async function generateSmartBriefing() {
+    const h = new Date().getHours();
+    const wish = h < 12 ? 'सुप्रभात' : h < 17 ? 'नमस्कार' : 'शुभ संध्या';
+    const roleTitle = S.role === 'owner' ? `मालिक (${PERSON.owner} जी)` : (S.role === 'manager' ? 'मैनेजर' : '');
+
+    try {
+      const [dToday, dYest, ps, sn] = await Promise.all([
+        D.day(today()),
+        D.day(shift(today(), -1)),
+        D.parties(),
+        stockNow()
+      ]);
+
+      const alerts = [];
+      const sayAlerts = [];
+
+      // 1. Today / Yesterday Sale Status
+      const tSale = dToday && dToday.sum ? n(dToday.sum.sale) : 0;
+      const ySale = dYesterdaySale(dYest);
+      if (tSale > 0) {
+        alerts.push(`📊 <b>आज की लाइव सेल:</b> ${M(tSale)}`);
+        sayAlerts.push(`आज अब तक ${M(tSale)} की सेल हो चुकी है`);
+      } else if (ySale > 0) {
+        alerts.push(`📈 <b>कल की कुल सेल:</b> ${M(ySale)} <small>(आज की क्लोज़िंग बाकी है)</small>`);
+        sayAlerts.push(`कल की कुल सेल ${M(ySale)} रही थी`);
+      }
+
+      // 2. Stock Alert
+      if (sn) {
+        if (sn.D > 0 && sn.D < 2500) {
+          alerts.push(`⚠️ <b class="neg">कम डीज़ल अलर्ट:</b> टैंक में सिर्फ़ ${L(sn.D)} डीज़ल बचा है!`);
+          sayAlerts.push(`ध्यान दीजिए, डीज़ल स्टॉक कम है, सिर्फ़ ${r0(sn.D)} लीटर बचा है`);
+        } else if (sn.P > 0 && sn.P < 1800) {
+          alerts.push(`⚠️ <b class="neg">कम पेट्रोल अलर्ट:</b> टैंक में सिर्फ़ ${L(sn.P)} पेट्रोल बचा है!`);
+          sayAlerts.push(`पेट्रोल स्टॉक सिर्फ़ ${r0(sn.P)} लीटर बचा है`);
+        }
+      }
+
+      // 3. Over-limit or High Udhar Alert for Owner/Manager
+      const overLim = (ps || []).filter(x => n(x.limit) > 0 && n(x.bal) > n(x.limit));
+      const due = owing(ps);
+      const totDue = sumBy(due, x => x.bal);
+      if (overLim.length > 0) {
+        alerts.push(`🚨 <b>उधार अलर्ट:</b> ${overLim.length} पार्टियाँ क्रेडिट लिमिट पार हैं (कुल मार्केट बकाया: ${M(totDue)})`);
+      } else if (totDue > 0) {
+        alerts.push(`📒 <b>कुल मार्केट उधार:</b> ${M(totDue)} <small>(टॉप: ${due[0] ? esc(due[0].name) : ''})</small>`);
+      }
+
+      const bodyHtml = alerts.length
+        ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #d5dfef;font-size:13px;">${alerts.join('<br>')}</div>`
+        : `<br><small>आप बोलकर रीडिंग (<b>P1 4500</b>), <b>Paytm 500</b>, या किसी भी पार्टी का उधार लिखवा सकते हैं।</small>`;
+
+      const spoken = `${wish}! मैं माज़दा असिस्टेंट हूँ। ${sayAlerts.join('। ')}। बताइए, अभी क्या देखना है?`;
+      return R(`🤖 <b>${wish}${roleTitle ? ' ' + roleTitle : ''}!</b> मैं माज़दा असिस्टेंट हूँ।${bodyHtml}`, {
+        say: spoken,
+        chips: homeChips()
+      });
+    } catch (e) {
+      return SK.greet();
+    }
+  }
+  function dYesterdaySale(d) { return d && d.sum ? n(d.sum.sale) : 0; }
+
+  /* ================= 11. UI MODAL & GLOWING 🤖 ROBOT FAB ================= */
+  function injectRobotFAB() {
+    let existing = document.getElementById('ai-assist-fab');
+    if (existing) existing.remove();
+
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes mazdaBotPulse {
+        0% { box-shadow: 0 0 0 0 rgba(244, 180, 26, 0.7), 0 6px 20px rgba(11, 61, 145, 0.5); transform: translateY(0px); }
+        50% { box-shadow: 0 0 0 10px rgba(244, 180, 26, 0), 0 10px 24px rgba(11, 61, 145, 0.65); transform: translateY(-3px); }
+        100% { box-shadow: 0 0 0 0 rgba(244, 180, 26, 0), 0 6px 20px rgba(11, 61, 145, 0.5); transform: translateY(0px); }
+      }
+      #ai-assist-fab {
+        position: fixed; bottom: 78px; right: 16px; width: 62px; height: 62px;
+        border-radius: 50%; background: linear-gradient(135deg, #07255c 0%, #0b3d91 55%, #1a66e0 100%);
+        color: #fff; font-size: 30px; border: 2.5px solid #f4b41a;
+        z-index: 9999; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        animation: mazdaBotPulse 3s infinite ease-in-out; user-select: none;
+      }
+      #ai-assist-fab::after {
+        content: 'AI'; position: absolute; bottom: -4px; right: -2px;
+        background: #f4b41a; color: #07255c; font-size: 10px; font-weight: 800;
+        padding: 1px 5px; border-radius: 8px; border: 1.5px solid #fff;
+      }
+    `;
+    document.head.appendChild(style);
+
     const fab = document.createElement('button');
     fab.id = 'ai-assist-fab';
     fab.innerHTML = '🤖';
     fab.title = 'माज़दा AI असिस्टेंट';
-    fab.style.cssText = 'position:fixed;bottom:80px;right:18px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#0b3d91,#1a5fd0);color:#fff;font-size:28px;border:2.5px solid #f4b41a;box-shadow:0 6px 18px rgba(11,61,145,0.45);z-index:9999;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform 0.2s;';
     fab.onclick = () => openAssistant();
     document.body.appendChild(fab);
   }
-  
-  window.addEventListener('load', () => setTimeout(injectFAB, 1500));
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(injectRobotFAB, 900);
+  } else {
+    window.addEventListener('DOMContentLoaded', () => setTimeout(injectRobotFAB, 900));
+  }
 
   function openAssistant() {
     if (document.getElementById('assist-modal')) return;
-    
+
     const modal = document.createElement('div');
     modal.id = 'assist-modal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,22,56,0.85);backdrop-filter:blur(4px);z-index:99999;display:flex;flex-direction:column;justify-content:flex-end;';
-    
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,22,56,0.82);backdrop-filter:blur(5px);z-index:99999;display:flex;flex-direction:column;justify-content:flex-end;';
     modal.innerHTML = `
-      <div style="background:#fff;border-radius:24px 24px 0 0;padding:16px 16px 20px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 -6px 25px rgba(0,0,0,0.3);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="background:#fff;border-radius:24px 24px 0 0;padding:15px 16px 18px;max-height:89vh;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,0.35);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:22px;">🤖</span>
-            <h3 style="margin:0;color:#0b3d91;font-size:17px;font-weight:700;">माज़दा असिस्टेंट</h3>
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#0b3d91,#1a5fd0);display:flex;align-items:center;justify-content:center;font-size:20px;border:1.5px solid #f4b41a;">🤖</div>
+            <div>
+              <h3 style="margin:0;color:#0b3d91;font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:6px;">
+                माज़दा असिस्टेंट
+                <span id="a-focus-badge" style="display:none;background:#ffebee;color:#c62828;font-size:10.5px;padding:2px 7px;border-radius:10px;border:1px solid #ef9a9a;">🎯 सिर्फ़ हिसाब</span>
+              </h3>
+              <div style="font-size:11px;color:#5f6c85;">Smart Pump Manager · Always Ready</div>
+            </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center;">
-            <button id="a-tts" style="background:#f4f6fa;border:1px solid #d0d7e5;border-radius:50%;width:36px;height:36px;font-size:17px;cursor:pointer;">🔊</button>
-            <button id="a-close" style="background:#f4f6fa;border:1px solid #d0d7e5;border-radius:50%;width:36px;height:36px;font-size:17px;cursor:pointer;">❌</button>
+            <button id="a-tts" title="आवाज़ चालू/बंद" style="background:#f4f6fa;border:1px solid #d0d7e5;border-radius:50%;width:36px;height:36px;font-size:17px;cursor:pointer;">🔊</button>
+            <button id="a-close" title="बंद करें" style="background:#f4f6fa;border:1px solid #d0d7e5;border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;">✖</button>
           </div>
         </div>
-        <div id="a-chat" style="flex:1;overflow-y:auto;background:#f4f6fa;border-radius:14px;padding:12px;margin-bottom:10px;min-height:160px;max-height:46vh;font-size:14px;display:flex;flex-direction:column;gap:10px;"></div>
+        <div id="a-chat" style="flex:1;overflow-y:auto;background:#f4f6fa;border-radius:14px;padding:12px;margin-bottom:10px;min-height:175px;max-height:48vh;font-size:14px;display:flex;flex-direction:column;gap:10px;"></div>
         <div id="a-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;min-height:34px;"></div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <input type="text" id="a-input" placeholder="यहाँ टाइप करें या 🎤 दबाकर बोलें..." style="flex:1;border:1.5px solid #c9d3e6;border-radius:12px;padding:12px 14px;font-size:14px;outline:none;">
-          <button id="a-mic" style="width:48px;height:48px;border-radius:50%;background:#f4b41a;border:none;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(244,180,26,0.4);">🎤</button>
-          <button id="a-send" style="width:48px;height:48px;border-radius:50%;background:#0b3d91;color:#fff;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(11,61,145,0.4);">➤</button>
+          <input type="text" id="a-input" placeholder="यहाँ लिखें या 🎤 दबाकर बोलें..." style="flex:1;border:1.5px solid #c9d3e6;border-radius:12px;padding:12px 14px;font-size:14px;outline:none;">
+          <button id="a-mic" title="बोलकर पूछें" style="width:48px;height:48px;border-radius:50%;background:#f4b41a;border:none;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(244,180,26,0.4);">🎤</button>
+          <button id="a-send" title="भेजें" style="width:48px;height:48px;border-radius:50%;background:#0b3d91;color:#fff;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(11,61,145,0.4);">➤</button>
         </div>
       </div>
       <style>
-        .a-chip { background:#fff; border:1px solid #0b3d91; border-radius:20px; padding:7px 14px; font-size:12.5px; color:#0b3d91; cursor:pointer; font-weight:600; white-space:nowrap; }
+        .a-chip { background:#fff; border:1px solid #0b3d91; border-radius:20px; padding:7px 13px; font-size:12.5px; color:#0b3d91; cursor:pointer; font-weight:600; transition:all 0.15s; white-space:nowrap; }
         .a-chip:active { background:#0b3d91; color:#fff; }
         .neg { color: #d32f2f; }
+        .pos { color: #1b8a3d; }
+        .mut { color: #6c788e; }
       </style>
     `;
-    
     document.body.appendChild(modal);
 
     const $ = s => modal.querySelector(s);
@@ -714,23 +1823,22 @@
     const input = $('#a-input');
     const chipBox = $('#a-chips');
     const mic = $('#a-mic');
+    const send = $('#a-send');
+    const ttsBtn = $('#a-tts');
+    const closeBtn = $('#a-close');
+    const focusBadge = $('#a-focus-badge');
+
     let rec = null;
-    let isProcessing = false;
+    let busy = false;
 
     const addBubble = (html, isUser) => {
       const d = document.createElement('div');
-      d.style.cssText = `padding:10px 14px;border-radius:14px;max-width:88%;line-height:1.5;word-break:break-word;${isUser ? 'background:#0b3d91;color:#fff;align-self:flex-end;border-bottom-right-radius:2px;' : 'background:#fff;border:1px solid #e1e7f2;align-self:flex-start;color:#222;border-bottom-left-radius:2px;box-shadow:0 2px 5px rgba(0,0,0,0.03);'}`;
+      d.style.cssText = `padding:10px 14px;border-radius:14px;max-width:88%;line-height:1.52;word-break:break-word;${isUser ? 'background:#0b3d91;color:#fff;align-self:flex-end;border-bottom-right-radius:3px;' : 'background:#fff;border:1px solid #e1e7f2;align-self:flex-start;color:#1e2430;border-bottom-left-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.04);'}`;
       d.innerHTML = html;
       chat.appendChild(d);
       chat.scrollTop = chat.scrollHeight;
       return d;
     };
-
-    const defaultChips = [
-      { label: '📊 आज की सेल', onClick: () => executeInput('आज की सेल') },
-      { label: '⛽ नोज़ल ट्रेंड', onClick: () => executeInput('Nozzle trend') },
-      { label: '📒 कुल उधार', onClick: () => executeInput('कुल उधार') }
-    ];
 
     const ui = {
       close: () => {
@@ -738,33 +1846,50 @@
         try { if (rec) rec.abort(); } catch (e) {}
         modal.remove();
       },
+      updateFocusBadge: () => {
+        focusBadge.style.display = ctx.focusMode ? 'inline-block' : 'none';
+      },
       bot: r => {
         if (!r) return;
+        ui.updateFocusBadge();
         addBubble(r.html, false);
         chipBox.innerHTML = '';
-        (r.chips && r.chips.length ? r.chips : defaultChips).forEach(c => {
-          const btn = document.createElement('button');
-          btn.className = 'a-chip';
-          btn.textContent = c.label;
-          btn.onclick = () => c.onClick(ui);
-          chipBox.appendChild(btn);
+        const list = (r.chips && r.chips.length) ? r.chips : homeChips();
+        list.forEach(c => {
+          const b = document.createElement('button');
+          b.className = 'a-chip';
+          b.textContent = c.label;
+          b.onclick = async () => {
+            if (c.fn) return c.fn(ui);
+            if (c.onClick) return c.onClick(ui);
+            if (c.skill && SK[c.skill]) {
+              Voice.stop();
+              addBubble(esc(c.label), true);
+              const res = await SK[c.skill](c.params || {});
+              return ui.bot(res);
+            }
+            if (c.q) return runText(c.q);
+          };
+          chipBox.appendChild(b);
         });
         Voice.say(r.say || r.html);
       }
     };
 
-    $('#a-close').onclick = ui.close;
-    $('#a-tts').onclick = () => {
-      MEM.tts = !MEM.tts;
-      saveMem();
-      $('#a-tts').textContent = MEM.tts ? '🔊' : '🔇';
-      if (!MEM.tts) Voice.stop();
+    closeUI = ui.close;
+    closeBtn.onclick = ui.close;
+    ttsBtn.onclick = () => {
+      ctx.brain.mem.tts = !ctx.brain.mem.tts;
+      saveBrain();
+      ttsBtn.textContent = ctx.brain.mem.tts ? '🔊' : '🔇';
+      if (!ctx.brain.mem.tts) Voice.stop();
     };
-    $('#a-tts').textContent = MEM.tts ? '🔊' : '🔇';
+    ttsBtn.textContent = ctx.brain.mem.tts ? '🔊' : '🔇';
+    ui.updateFocusBadge();
 
-    async function executeInput(text) {
-      if (!text || !text.trim() || isProcessing) return;
-      isProcessing = true;
+    async function runText(text) {
+      if (!text || !text.trim() || busy) return;
+      busy = true;
       chipBox.innerHTML = '';
       Voice.stop();
       addBubble(esc(text), true);
@@ -772,58 +1897,59 @@
 
       const loader = addBubble('<span style="color:#666;font-size:12px;">⚡ देख रही हूँ...</span>', false);
       try {
-        const response = await handleQuery(text, ui);
+        const res = await handleQuery(text, ui);
         loader.remove();
-        if (response) ui.bot(response);
+        if (res) ui.bot(res);
       } catch (err) {
         loader.remove();
-        ui.bot(R(`❌ गड़बड़ हो गई: ${esc(err.message)}`));
+        ui.bot(R(`❌ गड़बड़ हो गई: ${esc(err.message)}`, { say: 'माफ़ कीजिए, कोई तकनीकी गड़बड़ हो गई।' }));
       } finally {
-        isProcessing = false;
+        busy = false;
       }
     }
 
-    $('#a-send').onclick = () => executeInput(input.value);
-    input.onkeypress = e => { if (e.key === 'Enter') executeInput(input.value); };
+    send.onclick = () => runText(input.value);
+    input.onkeypress = e => { if (e.key === 'Enter') runText(input.value); };
 
-    mic.onclick = () => {
+    function startListening() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return toast('इस ब्राउज़र में आवाज़ सपोर्ट नहीं है');
-      if (isProcessing) return;
+      if (!SR) return toast('इस ब्राउज़र में वॉइस सपोर्ट नहीं है');
+      if (busy) return;
       try { if (rec) rec.abort(); } catch (e) {}
       rec = new SR();
       rec.lang = 'hi-IN';
       rec.interimResults = true;
+
       mic.style.background = '#c62828';
-      input.placeholder = 'सुन रही हूँ...';
-      let final = '';
+      mic.style.color = '#fff';
+      input.placeholder = 'सुन रही हूँ... बोलिए';
+      let finalStr = '';
+
       rec.onresult = e => {
-        let txt = '';
+        let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          txt += e.results[i][0].transcript;
-          if (e.results[i].isFinal) final = txt;
+          if (e.results[i].isFinal) finalStr = e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
         }
-        input.value = txt;
+        input.value = finalStr || interim;
       };
       rec.onerror = () => {
         mic.style.background = '#f4b41a';
-        input.placeholder = 'यहाँ टाइप करें...';
+        input.placeholder = 'यहाँ लिखें या 🎤 दबाकर बोलें...';
       };
       rec.onend = () => {
         mic.style.background = '#f4b41a';
-        input.placeholder = 'यहाँ टाइप करें...';
-        if (final) executeInput(final);
+        input.placeholder = 'यहाँ लिखें या 🎤 दबाकर बोलें...';
+        if (finalStr) runText(finalStr);
       };
       try { rec.start(); } catch (e) {}
-    };
+    }
 
-    const hr = new Date().getHours();
-    const greet = hr < 12 ? 'सुप्रभात' : hr < 17 ? 'नमस्कार' : 'शुभ संध्या';
-    
-    ui.bot(R(`${greet}! मैं <b>माज़दा असिस्टेंट</b> हूँ।<br>आप गाड़ी नंबर (जैसे <b>9769</b>), रीडिंग (<b>P1 4500</b>), या <b>Paytm 500</b> बोलकर तुरंत काम करवा सकते हैं।`, {
-      say: `${greet}, मैं माज़दा असिस्टेंट हूँ। बताइए, क्या करना है?`
-    }));
+    mic.onclick = () => { Voice.stop(); startListening(); };
+
+    // Automated Smart Briefing on Open
+    generateSmartBriefing().then(r => ui.bot(r));
   }
 
-  console.log('[Mazda assistant.js v10.0] Ultimate Mega Assistant Loaded ✓');
+  console.log('[Mazda assistant.js v9.0] Ultimate Cognitive Pro Engine Ready ✓');
 })();
