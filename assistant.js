@@ -876,7 +876,7 @@
     return R(`⏳ <b>${esc(x.name)}</b> का खाता खोल रही हूँ...`, { say: `${x.name} का खाता खोल रही हूँ।` });
   };
 
-  SK['party.visit'] = async (p) => {
+SK['party.visit'] = async (p) => {
     const x = p.party || ctx.party;
     if (!x) return R('किस पार्टी या गाड़ी की पिछली एंट्री देखनी है? कृपया पहले नाम या गाड़ी नंबर बताइए।');
     ctx.party = x;
@@ -893,14 +893,13 @@
     if (uniqueDates.length >= 2) {
       const gap = daysBetween(uniqueDates[1], uniqueDates[0]);
       return R(
-        `📅 <b>${esc(x.name)}</b> की गाड़ी आख़िरी बार <b>${lbl(uniqueDates[0])}</b> को आई थी, और उससे पहले <b>${dmy(uniqueDates[1])}</b> को (यानी <b>${gap} दिन के अंतर</b> पर)।<br>` +
+        `📅 <b>${esc(x.name)}</b> की गाड़ी आख़िरी बार <b>${lbl(uniqueDates[0])}</b> को आई थी, और उससे पहले <b>${dmy(uniqueDates[1])}</b> को आई थी।<br><br>` +
         `वर्तमान बकाया: <b>${M(x.bal)}</b>`,
         {
           say: `${x.name} की गाड़ी पिछली बार से ${gap} दिन बाद आई है। इनका वर्तमान बकाया ${M(x.bal)} है।`,
           chips: [cs('📒 खाता खोलें', 'party.ledger', { party: x })]
         }
-      }
-    );
+      );
     }
     return R(`📅 <b>${esc(x.name)}</b> की गाड़ी <b>${lbl(lastEntry.date)}</b> (${ago === 0 ? 'आज ही' : ago + ' दिन पहले'}) आई थी।`, {
       say: `${x.name} की गाड़ी ${ago === 0 ? 'आज ही' : ago + ' दिन पहले'} आई थी।`
