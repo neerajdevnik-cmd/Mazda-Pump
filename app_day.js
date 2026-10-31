@@ -350,14 +350,16 @@
 
   function renderRows(st) {
     const rows = st.rows;
+    // 🔥 FIX: APP.isOwner() bhi check kiya gaya hai taaki email mismatch ki problem na aaye
+    const isOwner = (APP.isTrueOwner && APP.isTrueOwner()) || (APP.isOwner && APP.isOwner());
+    
     $('#rowsbox').innerHTML = rows.length ? rows.map(r => `<div class="item"><div class="a"><b>${esc(r.partyName)}</b>
       <small>${esc(r.time || '')} · ${r.kind === 'udhar' ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FUEL[r.fuel] || '') + ' ' + lit(r.litre) : '') : 'जमा · ' + (MODE[r.mode] || '') + (r.note && !AUTO_NOTES.includes(r.note) ? ' · ' + esc(r.note) : '')}</small>
       ${r.src === 'salesman' ? `<small style="color:${r.verified ? '#0a7d33' : '#b26a00'}">👤 ${esc(r.by)} ने की · ${r.verified ? '✔ मिलान हो गया' : '⏳ मिलान बाकी'}</small>` : ''}</div>
       <div style="text-align:right"><b class="${r.kind === 'udhar' ? 'neg' : 'pos'}">${r.kind === 'udhar' ? '-' : '+'}${money(r.amount)}</b>
-      ${APP.isTrueOwner() ? `<div>${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}">🗑</button></div>` : ''}</div></div>`).join('')
+      ${isOwner ? `<div style="margin-top:4px;">${r.src === 'salesman' && !r.verified ? `<button class="btn sm g" data-do="verE" data-id="${r.id}" style="padding:2px 6px;font-size:12px">✔ मिलान</button> ` : ''}<button class="btn sm w" data-do="editE" data-id="${r.id}" style="padding:2px 8px;">✏️</button> <button class="btn sm r" data-do="delE" data-id="${r.id}" style="padding:2px 8px;">🗑</button></div>` : ''}</div></div>`).join('')
       : '<p class="mut">आज कोई पार्टी एंट्री नहीं</p>';
   }
-
   async function updateMarginCard(d, o, date) {
     if (!APP.margins) return;
     const cache = S._costCache || (S._costCache = {});
