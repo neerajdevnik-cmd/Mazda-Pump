@@ -119,7 +119,46 @@
   const db = () => APP.db, FV = () => APP.FV;
   const kv = (a, b, c) => `<div class="kv"><span>${a}</span><b class="${c || ''}">${b}</b></div>`;
   /* ======================= AI REGISTER SCANNER (v2) ======================= */
-  APP.scanRegister = async function (st) {
+
+  /* ===== कई दिन एक साथ: पहले हर दिन की जाँच, सब confirm के बाद ही एंट्री ===== */
+  function splitDays(text) {
+    let t = String(text || '').replace(/```json/gi, '').replace(/```/g, '').replace(/[\u201c\u201d]/g, '"').replace(/,\s*([}\]])/g, '$1');
+    const isDay = o => o && typeof o === 'object' && !Array.isArray(o) && (o.date || o.nz || o.udhar || o.jama);
+    try { const j = JSON.parse(t); const arr = Array.isArray(j) ? j : (Array.isArray(j.days) ? j.days : null); if (arr) return arr.filter(isDay); } catch (e) { }
+    const out = []; let depth = 0, st = -1, inStr = false, esc = false;
+    for (let i = 0; i < t.length; i++) { const c = t[i];
+      if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true; else if (c === '{') { if (depth === 0) st = i; depth++; } else if (c === '}') { depth--; if (depth === 0 && st >= 0) { try { const o = JSON.parse(t.slice(st, i + 1)); if (isDay(o)) out.push(o); } catch (e) { } st = -1; } } }
+    return out;
+  }
+  async function runQueue(st, days) {
+    const plans = [], skipped = [];
+    for (let i = 0; i < days.length; i++) {
+      const o = { preText: JSON.stringify(days[i]), defer: true, idx: i + 1, total: days.length };
+      const plan = await APP.scanRegister(st, o);
+      if (o.stopAll) { toast('सब रद्द — कुछ भी सेव नहीं हुआ'); return; }
+      if (plan) plans.push(plan); else skipped.push(days[i].date || ('दिन ' + (i + 1)));
+    }
+    if (!plans.length) { toast('कोई दिन नहीं चुना — कुछ सेव नहीं हुआ'); return; }
+    const tot = plans.reduce((a, p) => ({ u: a.u + p.sum.u, j: a.j + p.sum.j, ua: a.ua + p.sum.ua, ja: a.ja + p.sum.ja, ex: a.ex + p.sum.ex }), { u: 0, j: 0, ua: 0, ja: 0, ex: 0 });
+    const go = await new Promise(resolve => {
+      const m = modal('<h3>✅ आख़िरी जाँच — ' + plans.length + ' दिन</h3>' + plans.map(p => '<div class="kv"><span>' + esc(APP.dmy(p.date)) + '</span><b style="font-size:12px">उधार ' + p.sum.u + ' · जमा ' + p.sum.j + ' · खर्चा ' + money(p.sum.ex) + '</b></div>').join('') +
+        (skipped.length ? '<div class="warn" style="margin-top:6px">छोड़े गए दिन: ' + esc(skipped.join(', ')) + '</div>' : '') +
+        '<div class="kv" style="margin-top:6px"><span><b>कुल उधार</b></span><b class="neg">' + tot.u + ' एंट्री · ' + money(tot.ua) + '</b></div><div class="kv"><span><b>कुल जमा</b></span><b class="pos">' + tot.j + ' एंट्री · ' + money(tot.ja) + '</b></div>' +
+        '<p class="mut" style="font-size:12px;margin-top:6px">"सब सेव करो" दबाने पर ही हर दिन का हिसाब और एंट्री बनेगी। लॉक दिन अपने-आप छूट जाएँगे।</p>' +
+        '<div class="btns" style="margin-top:10px"><button class="btn g" id="q-ok">✅ सब सेव करो</button><button class="btn w" id="q-no">❌ रद्द</button></div>');
+      $('#q-ok', m).onclick = () => { m.close(); resolve(true); }; $('#q-no', m).onclick = () => { m.close(); resolve(false); };
+    });
+    if (!go) { toast('रद्द — कुछ भी सेव नहीं हुआ'); return; }
+    const res = [];
+    for (const p of plans) { try { const r = await p.apply(true); res.push(APP.dmy(p.date) + ': ' + (r && r.note ? r.note : r.wrote + ' एंट्री') + (r && r.failed && r.failed.length ? ' ⚠️' + r.failed.length + ' फेल' : '')); } catch (e) { res.push(APP.dmy(p.date) + ': ❌ ' + e.message); } }
+    alert('पूरा हुआ:\n' + res.join('\n'));
+    toast(plans.length + ' दिन सेव हुए');
+  }
+  const waitSaved = async d => { for (let i = 0; i < 40; i++) { if (!(APP.S.draft && APP.S.draft[d])) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+
+  APP.scanRegister = async function (st, opts) {
+    opts = opts || {};
     const esc = APP.esc;
     const NZ = K.NZ;
     const clean = s => String(s == null ? '' : s).replace(/[\u200b-\u200d\ufeff]/g, '').trim();
@@ -158,7 +197,7 @@
 "udhar":[{"party":"","vehicle":"","fuel":"diesel","litre":0,"amount":0}],
 "jama":[{"party":"","mode":"cash","amount":0}]}
 Rules: p1-p4 petrol nozzle, d1-d4 diesel nozzle; o=opening, c=closing. Sirf numbers (koi rupee sign ya comma nahi). Jo cheez photo mein na dikhe wo key mat likho. fuel sirf "petrol"/"diesel". jama mode sirf cash/paytm/swipe/bank. Register mein "AD" likha ho to wo purane din ka cash hai: usko jama mein mat daalo, "openCash" mein likho. Date YYYY-MM-DD.
-Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath. Agar register mein sirf ek total kharcha likha hai aur kis cheez ka hai ye samajh nahi aa raha, to usko kharchaItems mein "label":"" ke saath likho (apni taraf se mat bantna).`;
+PAYTM RULE: Paytm / PhonePe / GPay / UPI / "पेटीएम" (kisi bhi spelling mein) ko KABHI kharchaItems mein mat likho — uska total sirf "paytm" mein jaye. Card / swipe sirf "swipe" mein. Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaam" mein driver ka inaam, "chaiKhana" mein chai-khana. Baaki har alag kharcha (jaise puncture, safai, bijli, repair) "kharchaItems" mein ALAG-ALAG likho, har ek ka "label" (kis cheez ka) aur "amount" ke saath. Agar register mein sirf ek total kharcha likha hai aur kis cheez ka hai ye samajh nahi aa raha, to usko kharchaItems mein "label":"" ke saath likho (apni taraf se mat bantna).`;
     const buildPrompt = parties => BASE_PROMPT +
       '\n\nPARTY LIST (party ka naam SIRF is list se, bilkul isi spelling mein likho. Gaadi number se bhi party pehchano. Agar kisi list wali party se na mile to photo wala naam jaisa hai waisa likho):\n' +
       parties.map(p => '- ' + p.name + (p.vehicles && p.vehicles.length ? '  (gaadi: ' + p.vehicles.join(', ') + ')' : '')).join('\n');
@@ -251,7 +290,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       catch (e) { if (e.status === -1) return await geminiReadOnce(file, 1000, 0.8); throw e; }
     };
 
-    const text = await new Promise(resolve => {
+    const text = opts.preText ? opts.preText : await new Promise(resolve => {
       const m = modal(`
         <h3>📷 AI कोड पेस्ट करें</h3>
         <p class="mut" style="margin:4px 0 8px">Gemini / Claude का दिया JSON यहाँ पेस्ट करें</p>
@@ -289,6 +328,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       $('#scan-no', m).onclick = () => { m.close(); resolve(null); };
     });
     if (!text || !text.trim()) return;
+    if (!opts.preText) { const days = splitDays(text); if (days.length > 1) return runQueue(st, days); }
 
     let raw;
     try {
@@ -352,13 +392,15 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       if (!(a > 0)) return;
       const lb = clean(it.label || it.name || it.item || it.for);
       let cat = 'other';
-      if (/\bdg\b|जनरेटर|generator/i.test(lb)) cat = 'kharcha';
+      if (/paytm|patym|paytem|pay\s*tm|पेटीएम|पे\s*टी\s*एम|phone\s*pe|phonepe|फोन\s*पे|g\s*pay|gpay|google\s*pay|\bupi\b|यूपीआई|bhim/i.test(lb)) cat = 'paytm';
+      else if (/swipe|स्वाइप|स्वैप|\bcard\b|कार्ड|\bpos\b/i.test(lb)) cat = 'swipe';
+      else if (/\bdg\b|जनरेटर|generator/i.test(lb)) cat = 'kharcha';
       else if (/ड्राइवर|driver|इनाम/i.test(lb)) cat = 'driverInaam';
       else if (/चाय|खाना|chai|khana|nasta|नाश्ता/i.test(lb)) cat = 'chaiKhana';
       expL.push({ cat, label: cat === 'other' ? lb : '', amount: a });
     });
     const expOrig = K.r2(expL.reduce((a, x) => a + x.amount, 0));
-    const KHN = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
+    const KHN = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना', paytm: '💳 Paytm/UPI (खर्चा नहीं)', swipe: '💳 स्वाइप (खर्चा नहीं)' };
     const expName = x => x.cat === 'other' ? (x.label || '❓ नाम नहीं पता') : KHN[x.cat];
 
     const udharIn = Array.isArray(raw.udhar) ? raw.udhar : (Array.isArray(raw.ledger) ? raw.ledger : []);
@@ -452,7 +494,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
 
     const picks = await new Promise(resolve => {
       const m = modal(`
-        <h3>जाँच लें, फिर भरें</h3>
+        <h3>जाँच लें, फिर भरें${opts.total ? ' — दिन ' + opts.idx + '/' + opts.total : ''}</h3>
         <div class="kv"><span>तारीख</span><b>${esc(APP.dmy(date))}${switching ? ' ⚠️ (दूसरा दिन)' : ''}</b></div>
         <div class="kv"><span>हिसाब के बॉक्स</span><b>${fieldCount}</b></div>
         ${nzTxt ? `<div class="mut" style="font-size:12px;margin:4px 0">${nzTxt}</div>` : ''}
@@ -468,8 +510,8 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
           <small class="mut">एक बार चुनने पर app ये नाम/गाड़ी याद रखेगा।</small></div>` : ''}
         ${bad.length ? `<div class="warn" style="margin-top:8px"><b>❌ ये नहीं भरी जा सकीं (${bad.length}):</b><br>${bad.map(esc).join('<br>')}</div>` : ''}
         <div class="btns" style="margin-top:12px">
-          <button class="btn g" id="pv-ok">✅ भर दो</button>
-          <button class="btn w" id="pv-no">रद्द</button>
+          <button class="btn g" id="pv-ok">${opts.total ? '✔ ये दिन सही है' : '✅ भर दो'}</button>
+          <button class="btn w" id="pv-no">${opts.total ? '⏭ ये दिन छोड़ो' : 'रद्द'}</button>${opts.total ? '<button class="btn r" id="pv-stop">❌ सब रद्द</button>' : ''}
         </div>`);
       const renderExp = () => {
         const box = $('#pv-exp', m); if (!box) return;
@@ -492,9 +534,12 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       renderExp();
       $('#pv-ok', m).onclick = () => { const r = {}; $$('select[data-pi]', m).forEach(el => { if (el.value) r[el.dataset.pi] = el.value; }); m.close(); resolve(r); };
       $('#pv-no', m).onclick = () => { m.close(); resolve(null); };
+      const stp = $('#pv-stop', m); if (stp) stp.onclick = () => { opts.stopAll = true; m.close(); resolve(null); };
     });
-    if (!picks) return;
+    if (!picks) return null;
 
+    const apply = async qr => {
+    if (qr && APP.S.cur && APP.S.cur.date !== date) { try { APP.collectDraft(); } catch (e) { } await APP.dayView(date); }
     const mk = {};
     Object.keys(picks).forEach(i => {
       if (picks[i] !== '__new') return;
@@ -528,6 +573,7 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
       const ls = expL.filter(x => x.cat === k);
       if (ls.length) f['f-' + k] = K.r2(ls.reduce((a, x) => a + x.amount, 0));
     });
+    ['paytm', 'swipe'].forEach(k => { const ls = expL.filter(x => x.cat === k); if (!ls.length) return; const add = K.r2(ls.reduce((a, x) => a + x.amount, 0)), id = 'f-' + k, have = f[id] !== undefined ? f[id] : 0; if (Math.abs(have - add) < 0.01) return; f[id] = K.r2(num(have) + add); });
     const newExp = expL.filter(x => x.cat === 'other').map(x => ({ label: x.label, amount: x.amount }));
     const newU = U.filter(x => !x.dup), newJ = J.filter(x => !x.dup);
 
@@ -578,11 +624,20 @@ Kharcha ke rules: "kharcha" mein SIRF DG/generator ka kharcha likho, "driverInaa
     if (wrote) { APP.S.parties = null; }
     try { await APP.dayView(date); } catch (e) { }
 
+    let note = '';
+    if (qr) { if (S_cur_locked()) note = 'दिन लॉक है — छोड़ा गया'; else { try { APP.A.save(); await waitSaved(date); note = filled + ' बॉक्स, ' + wrote + ' एंट्री सेव'; } catch (e) { note = 'सेव नहीं हुआ: ' + e.message; } } }
     const tail = [];
     if (missing.length) tail.push('नहीं भरे: ' + missing.join(', '));
     if (failed.length) tail.push('एंट्री फेल: ' + failed.join(' | '));
-    if (tail.length) alert(tail.join('\n'));
-    toast(`${filled} बॉक्स भरे · ${wrote} एंट्री जुड़ीं — अब 💾 सेव दबाएँ`);
+    if (!qr) { if (tail.length) alert(tail.join('\n')); toast(`${filled} बॉक्स भरे · ${wrote} एंट्री जुड़ीं — अब 💾 सेव दबाएँ`); }
+    return { filled, wrote, failed, missing, note };
+    };
+    if (opts.defer) {
+      const pU = pend.filter((x, i) => x.kind === 'udhar' && picks[i]), pJ = pend.filter((x, i) => x.kind !== 'udhar' && picks[i]);
+      const sm = (l, f2) => l.reduce((t, x) => t + f2(x), 0);
+      return { date, apply, sum: { u: newU0.length + pU.length, ua: sm(newU0, x => x.amount) + sm(pU, x => x.base.amount), j: newJ0.length + pJ.length, ja: sm(newJ0, x => x.amount) + sm(pJ, x => x.base.amount), ex: expL.filter(x => x.cat !== 'paytm' && x.cat !== 'swipe').reduce((t, x) => t + x.amount, 0) } };
+    }
+    await apply(false);
   };
 
 })();
