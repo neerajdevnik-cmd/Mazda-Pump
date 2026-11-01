@@ -25,7 +25,7 @@
       ['R10', 'audit (रिकॉर्ड) कोई नहीं बदल/हटा सकता। हिसाब का दिन कभी delete नहीं होता।'],
       ['R11', 'बचा कैश माइनस हो तो दिन जमा नहीं होगा। डिप 250 cm से ज़्यादा लिखी तो लीटर मानकर cm में बदल दी जाएगी।'],
       ['R12', 'रेट कभी 0 या खाली नहीं हो सकता — न दिन का, न ledger की उधार एंट्री का।'],
-      ['R13', 'स्वतः ठीक सिर्फ़ गलत रेट/बैलेंस सुधारता है; कोई दिन या एंट्री न बनाता है, न हटाता है, लॉक दिन नहीं छूता। पूरा data सिर्फ़ ऐप के अपने बैकअप से (मालिक द्वारा अपलोड करने पर) वापस भरेगा।']
+      ['R13', 'स्वतः ठीक दिन का रेट कभी नहीं छूता; सिर्फ़ ledger की गलत एंट्री को उस दिन के रेट पर लाता और बैलेंस मिलाता है; कोई दिन या एंट्री न बनाता है, न हटाता है, लॉक दिन नहीं छूता। पूरा data सिर्फ़ ऐप के अपने बैकअप से (मालिक द्वारा अपलोड करने पर) वापस भरेगा।']
     ];
 
     const fail = [];                       // हर जाँच अपने error यहाँ डालती है
@@ -103,7 +103,7 @@
         }
         if (c === 'priv_ledger' && r === 'salesman' && op.type === 'set' && d.kind && d.kind !== 'udhar') E('R8', 'सेल्समैन सिर्फ़ उधार लिख सकता है।');
         if (c === 'parties' && op.type === 'delete' && cur && Math.abs(num(cur.bal)) > 0.5) E('R6', 'जिस पार्टी का बैलेंस बाकी है उसे हटाया नहीं जा सकता।');
-        if (c === 'bank_deposits' && op.type === 'delete' && !String(id).startsWith('sbi_auto_')) E('R10', 'बैंक एंट्री हटाई नहीं जाती; "हटाई गई" निशान लगता है।');
+        if (c === 'bank_deposits' && op.type === 'delete' && !String(id).startsWith('sbi_auto_')) E('R10', 'बैंक एंट्री सीधे हटाई नहीं जाती; "हटाई गई" निशान लगता है।');
         if (r === 'salesman' && !['ledger', 'priv_ledger', 'parties', 'priv_parties', 'sm_shifts', 'cash_submissions', 'audit', 'attendance', 'salary_payments', 'shop', 'runsheets'].includes(c)) E('R8', 'सेल्समैन के लिए ये बदलाव मना है (' + c + ')।');
       }
       return fail.slice();
@@ -130,7 +130,7 @@
         const col = t.parent && t.parent.id, id = t.id;
         if (k === 'set') return async (d, o) => { await gate([{ type: 'set', col, id, data: d, opts: o }]); return t.set(d, o); };
         if (k === 'update') return async (d) => { await gate([{ type: 'update', col, id, data: d }]); return t.update(d); };
-        if (k === 'delete') return async () => { await gate([{ type: 'delete', col, id }]); return t.delete(); };
+        if (k === 'delete') return async () => { if (col === 'bank_deposits' && !String(id).startsWith('sbi_auto_')) return softRemoveBank(id); await gate([{ type: 'delete', col, id }]); return t.delete(); };
         const v = t[k]; return typeof v === 'function' ? v.bind(t) : v;
       } });
     };
@@ -147,7 +147,7 @@
       const pb = {
         set(r, d, o) { mk('set', r, d, o); return pb; },
         update(r, d) { mk('update', r, d); return pb; },
-        delete(r) { mk('delete', r); return pb; },
+        delete(r) { const u = un(r); if (u.parent.id === 'bank_deposits' && !String(u.id).startsWith('sbi_auto_')) mk('update', r, { removed: true, removedAt: FV.serverTimestamp(), removedBy: (S.user && S.user.email) || '?' }); else mk('delete', r); return pb; },
         async commit() {
           await gate(ops); const b = rawBatch();
           ops.forEach(o => { if (o.type === 'set') b.set(o.ref, o.data, o.opts); else if (o.type === 'update') b.update(o.ref, o.data); else b.delete(o.ref); });
@@ -190,20 +190,13 @@
       const P = { dayRates: [], ledgerRates: [], bal: [], skipLocked: 0, out: { zero: [], rate: [], bal: [], nodays: [], cash: [] } };
       const eff = {}, last = { rateP: 0, rateD: 0 };
 
-      /* 1) जिन दिनों का रेट 0/खाली है: सही रेट पुराने रिकॉर्ड से (rate_history → उसी दिन की ledger → पिछला दिन) */
+      /* 1) दिन का रेट कभी नहीं बदला जाता। 0/खाली रेट वाले दिन सिर्फ़ सूची में दिखते हैं (सुधार: बैकअप रिस्टोर) */
       Object.keys(days).sort().forEach(k => {
         const d = days[k]; eff[k] = {};
         ['rateP', 'rateD'].forEach(f => {
           const v = num(d[f]);
-          if (v > 0) { eff[k][f] = v; last[f] = v; return; }
-          let h = null; hist.forEach(x => { if (x.date <= k) h = x; });
-          let fix = h ? num(h[f]) : 0, src = 'रेट इतिहास';
-          if (!(fix > 0)) { const set = new Set(rows.filter(r => r.date === k && r.kind === 'udhar' && r.fuel === (f === 'rateD' ? 'diesel' : 'petrol') && num(r.rate) > 0).map(r => num(r.rate))); if (set.size === 1) { fix = [...set][0]; src = 'उसी दिन की ledger'; } }
-          if (!(fix > 0) && last[f] > 0) { fix = last[f]; src = 'पिछले दिन का रेट'; }
-          const label = dmy(k) + ' · ' + (f === 'rateD' ? 'डीज़ल' : 'पेट्रोल') + ' रेट ' + v;
-          if (!(fix > 0)) { P.out.zero.push(label + ' — सही रेट का रिकॉर्ड नहीं मिला (बैकअप से रिस्टोर करें)'); return; }
-          if (d.status === 'submitted') { P.skipLocked++; P.out.zero.push(label + ' → ' + fix + ' (दिन लॉक है, अनलॉक के बाद ही ठीक होगा)'); return; }
-          P.dayRates.push({ id: k, field: f, value: fix }); P.out.zero.push(label + ' → ' + fix + ' (' + src + ')'); eff[k][f] = fix; last[f] = fix;
+          if (v > 0) eff[k][f] = v;
+          else P.out.zero.push(dmy(k) + ' · ' + (f === 'rateD' ? 'डीज़ल' : 'पेट्रोल') + ' रेट ' + v + ' — दिन का रेट स्वतः ठीक नहीं छूता, बैकअप से रिस्टोर करें');
         });
       });
 
@@ -240,16 +233,9 @@
     async function applyFix() {
       if (role() !== 'owner') throw new Error('स्वतः ठीक सिर्फ़ मालिक कर सकता है');
       const P = await plan();                                  // ताज़ा योजना
-      if (!(P.dayRates.length + P.ledgerRates.length + P.bal.length)) return { d: 0, l: 0, b: 0, skip: P.skipLocked };
+      if (!(P.ledgerRates.length + P.bal.length)) return { d: 0, l: 0, b: 0, skip: P.skipLocked };
       await downloadBackup('before-autofix');                  // पहले अभी का data फ़ाइल में सुरक्षित
       const done = { d: 0, l: 0, b: 0, skip: P.skipLocked };
-      const byDay = {}; P.dayRates.forEach(x => { (byDay[x.id] = byDay[x.id] || {})[x.field] = x.value; });
-      const dayIds = Object.keys(byDay);
-      if (dayIds.length) {
-        APP.Rules.sys = true;                                  // सिर्फ़ रेट-0 सुधार के लिए, बस इसी लिखाई तक
-        try { for (let i = 0; i < dayIds.length; i += 150) { const b = db.batch(); dayIds.slice(i, i + 150).forEach(id => b.update(db.collection('days').doc(id), byDay[id])); await b.commit(); done.d += Math.min(150, dayIds.length - i); } }
-        finally { APP.Rules.sys = false; }
-      }
       for (let i = 0; i < P.ledgerRates.length; i += 150) { const b = db.batch(); P.ledgerRates.slice(i, i + 150).forEach(x => b.update(db.collection('ledger').doc(x.id), { rate: x.rate, amount: x.amount })); await b.commit(); done.l += Math.min(150, P.ledgerRates.length - i); }
       for (let i = 0; i < P.bal.length; i += 150) { const b = db.batch(); P.bal.slice(i, i + 150).forEach(x => b.update(db.collection('parties').doc(x.id), { bal: x.bal })); await b.commit(); done.b += Math.min(150, P.bal.length - i); }
       try { await rawCol('audit').add({ at: FV.serverTimestamp(), by: (S.user && S.user.email) || '?', action: 'rules_autofix', detail: JSON.stringify(done) }); } catch (e) { }
@@ -392,25 +378,58 @@
         try { const id = await saveBankParty({ partyId: pid, partyName: party.name, amount, date: g('bp-d'), mode: g('bp-m'), ref: g('bp-r'), note: g('bp-n') }); if (id) { m.close(); APP.S.parties = null; APP.toast('बैंक जमा दर्ज ✔ ' + id); } } catch (e) { /* toast नियम ने दिखा दिया */ }
       };
     }
+    /* ===== बैंक एंट्री "हटाओ" दबाने पर: असल में हटती नहीं, "हटाई गई" निशान लगता है (R10), पार्टी वाली हो तो ledger/बैलेंस भी उलट जाते हैं ===== */
+    async function softRemoveBank(id) {
+      const sn = await rawCol('bank_deposits').doc(id).get(); if (!sn.exists) return;
+      const cur = sn.data(); if (cur.removed) return;
+      const b = db.batch();
+      b.update(db.collection('bank_deposits').doc(id), { removed: true, removedAt: FV.serverTimestamp(), removedBy: (S.user && S.user.email) || '?' });
+      if (cur.partyId) {
+        const ls = await rawCol('ledger').where('bankId', '==', id).get();
+        ls.docs.forEach(x => b.delete(db.collection('ledger').doc(x.id)));
+        if (ls.size) b.update(db.collection('parties').doc(cur.partyId), { bal: FV.increment(num(cur.amount)) });
+      }
+      await b.commit();
+      try { if (S.parties) S.parties.pub = null; APP.toast('✔ बैंक एंट्री "हटाई गई" निशान के साथ हट गई'); } catch (e) { }
+    }
+
+    /* ===== पूरा बैंक जमा: मैनेजर डेस्क + पार्टी (चेक/RTGS/UPI/नकद) सब एक कुल में ===== */
+    async function bankAllModal() {
+      const m = APP.modal('<h3>🏦 पूरा बैंक जमा</h3><p class="mut">लोड हो रहा है…</p>');
+      try {
+        const [bs, ls] = await Promise.all([rawCol('bank_deposits').get(), rawCol('ledger').where('kind', '==', 'jama').get()]);
+        const items = [];
+        bs.docs.forEach(x => { const d = x.data(); if (d.removed) return; items.push({ date: d.date, amount: num(d.amount), who: d.partyName || 'मैनेजर डेस्क', mode: d.mode || '-', ref: d.ref || '', payId: d.payId || '', src: d.partyId ? 'पार्टी' : 'डेस्क' }); });
+        ls.docs.forEach(x => { const d = x.data(); if (d.mode !== 'bank' || d.bankId) return; items.push({ date: d.date, amount: num(d.amount), who: d.partyName || '', mode: d.payMode || 'bank', ref: '', payId: d.payId || '', src: 'सिर्फ़ ledger में' }); });
+        items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+        const sum = a => K.r2(a.reduce((t, x) => t + x.amount, 0)), by = s => items.filter(x => x.src === s);
+        const ml = k => (MODES.find(z => z[0] === k) || [0, k])[1];
+        let html = '<h3>🏦 पूरा बैंक जमा</h3><div style="font-size:20px;font-weight:800;color:#0a7d33">कुल ₹' + sum(items).toLocaleString('en-IN') + ' <span class="mut" style="font-size:13px">(' + items.length + ' जमा)</span></div>' +
+          '<div style="font-size:13px;margin:6px 0">डेस्क: ₹' + sum(by('डेस्क')).toLocaleString('en-IN') + ' (' + by('डेस्क').length + ') · पार्टी: ₹' + sum(by('पार्टी')).toLocaleString('en-IN') + ' (' + by('पार्टी').length + ')' + (by('सिर्फ़ ledger में').length ? ' · सिर्फ़ ledger में: ₹' + sum(by('सिर्फ़ ledger में')).toLocaleString('en-IN') + ' (' + by('सिर्फ़ ledger में').length + ')' : '') + '</div>';
+        html += items.slice(0, 80).map(x => '<div style="border-top:1px solid #e3e8f2;padding:6px 0"><b>₹' + x.amount.toLocaleString('en-IN') + '</b> · ' + APP.esc(x.who) + '<div class="mut" style="font-size:12px">' + dmy(x.date) + ' · ' + APP.esc(ml(x.mode)) + ' · ' + APP.esc(x.src) + (x.ref ? ' · चेक/UTR: ' + APP.esc(x.ref) : '') + (x.payId ? ' · ' + APP.esc(x.payId) : '') + '</div></div>').join('') + (items.length > 80 ? '<div class="mut">…और ' + (items.length - 80) + ' पुरानी</div>' : '');
+        html += '<div class="btns" style="margin-top:10px"><button class="btn w" id="ba-x">बंद</button></div>';
+        m.querySelector('.sheet').innerHTML = html; m.querySelector('#ba-x').onclick = () => m.close();
+      } catch (e) { m.querySelector('.sheet').innerHTML = APP.errBox(e); }
+    }
     async function auditModal() {
       const m = APP.modal('<h3>🔎 नियम जाँच</h3><p class="mut">जाँच चल रही है…</p>');
       try {
-        const P = await plan(), o = P.out, fixN = P.dayRates.length + P.ledgerRates.length + P.bal.length;
+        const P = await plan(), o = P.out, fixN = P.ledgerRates.length + P.bal.length;
         const sec = (t, a) => '<div style="margin-top:8px"><b>' + t + ' (' + a.length + ')</b>' + (a.length ? a.slice(0, 12).map(x => '<div style="font-size:13px;padding:2px 0">• ' + APP.esc(x) + '</div>').join('') + (a.length > 12 ? '<div class="mut">…और ' + (a.length - 12) + '</div>' : '') : '<div style="color:#0a7d33;font-size:13px">✔ सब ठीक</div>') + '</div>';
-        let html = '<h3>🔎 नियम जाँच</h3>' + sec('रेट 0/खाली वाले दिन', o.zero) + sec('ledger का रेट ≠ दिन का रेट', o.rate) + sec('पार्टी का बैलेंस ≠ एंट्रियों का जोड़', o.bal) +
+        let html = '<h3>🔎 नियम जाँच</h3>' + sec('रेट 0/खाली वाले दिन (सिर्फ़ सूची)', o.zero) + sec('ledger का रेट ≠ दिन का रेट', o.rate) + sec('पार्टी का बैलेंस ≠ एंट्रियों का जोड़', o.bal) +
           sec('बिना हिसाब वाले दिन की एंट्री (सिर्फ़ सूची)', o.nodays) + sec('माइनस कैश वाले दिन (सिर्फ़ सूची)', o.cash) +
-          '<div class="mut" style="font-size:12px;margin-top:8px">🪄 स्वतः ठीक करें सिर्फ़ ऊपर के पहले 3 खानों की गलत चीज़ें सुधारेगा। कोई दिन या एंट्री बनेगी/हटेगी नहीं, लॉक दिन नहीं छुए जाएँगे, और सुधार से पहले अभी का data फ़ाइल में डाउनलोड हो जाएगा।</div><div class="btns" style="margin-top:10px">';
+          '<div class="mut" style="font-size:12px;margin-top:8px">🪄 स्वतः ठीक करें दिन का रेट कभी नहीं बदलता। ये सिर्फ़ ledger की गलत एंट्री को उस दिन के रेट पर लाता है और पार्टी का बैलेंस मिलाता है। कोई दिन या एंट्री बनेगी/हटेगी नहीं, लॉक दिन नहीं छुए जाएँगे, और सुधार से पहले अभी का data फ़ाइल में डाउनलोड हो जाएगा।</div><div class="btns" style="margin-top:10px">';
         if (fixN && role() === 'owner') html += '<button class="btn g" id="au-fix">🪄 स्वतः ठीक करें (' + fixN + ' गलतियाँ)</button>';
         html += '<button class="btn w" id="au-x">बंद</button></div>';
         m.querySelector('.sheet').innerHTML = html;
         m.querySelector('#au-x').onclick = () => m.close();
         const fx = m.querySelector('#au-fix');
         if (fx) fx.onclick = async () => {
-          if (!confirm('ये सिर्फ़ ये बदलेगा:\n• ' + P.dayRates.length + ' दिन-रेट (0 से सही)\n• ' + P.ledgerRates.length + ' ledger एंट्री का रेट/रकम\n• ' + P.bal.length + ' पार्टी का बैलेंस\n\nकोई दिन/एंट्री नहीं हटेगी, लॉक दिन नहीं छुएँगे। पहले अभी का data डाउनलोड होगा। आगे बढ़ें?')) return;
+          if (!confirm('ये सिर्फ़ ये बदलेगा:\n• ' + P.ledgerRates.length + ' ledger एंट्री का रेट/रकम\n• ' + P.bal.length + ' पार्टी का बैलेंस\n\nकोई दिन/एंट्री नहीं हटेगी, लॉक दिन नहीं छुएँगे। पहले अभी का data डाउनलोड होगा। आगे बढ़ें?')) return;
           fx.disabled = true; fx.textContent = '⏳ सुधार हो रहा है...';
           try {
             const d = await applyFix();
-            APP.toast('✅ सुधार पूरा (दिन-रेट: ' + d.d + ', ledger: ' + d.l + ', बैलेंस: ' + d.b + ')' + (d.skip ? ' | ' + d.skip + ' लॉक एंट्री छोड़ी' : ''));
+            APP.toast('✅ सुधार पूरा (ledger: ' + d.l + ', बैलेंस: ' + d.b + ')' + (d.skip ? ' | ' + d.skip + ' लॉक एंट्री छोड़ी' : ''));
             m.close(); if (S.parties) S.parties.pub = null; if (APP.go) APP.go('more');
           } catch (e) { APP.toast('❌ सुधार नहीं हो पाया: ' + e.message); fx.disabled = false; fx.textContent = '🪄 स्वतः ठीक करें (' + fixN + ' गलतियाँ)'; }
         };
@@ -433,14 +452,14 @@
         } catch (e) { APP.toast(e.message); }
       };
     }
-    APP.Rules = { rateModal, BOOK, check, gate, audit, sys: false, parseNote, saveBankParty, bankModal, bankNote, backupNow, restoreModal };
+    APP.Rules = { rateModal, BOOK, check, gate, audit, sys: false, parseNote, saveBankParty, bankModal, bankNote, bankAllModal, backupNow, restoreModal };
 
     /* "और" पेज और हिसाब पेज के बटन */
     let tm = null;
     const add = (id, txt, fn, host, cls) => { if (document.getElementById(id)) return; const b = document.createElement('button'); b.id = id; b.type = 'button'; b.className = 'btn ' + (cls || 'w'); b.style.cssText = 'margin-top:10px;width:100%'; b.textContent = txt; b.onclick = fn; host.appendChild(b); };
     function buttons() {
       const main = document.getElementById('main'); if (!main || role() === 'salesman') return;
-      if (S.tab === 'more' && role() !== 'viewer') { add('rl-bank', '🏦 पार्टी का बैंक जमा जोड़ें', bankModal, main, 'g'); if (role() === 'owner') add('rl-rate', '💲 नया रेट लगाएँ (मालिक)', rateModal, main, 'o'); add('rl-audit', '🔎 नियम जाँच (रेट / बैलेंस)', auditModal, main); if (role() === 'owner') { add('rl-bk', '💾 बैकअप डाउनलोड', backupNow, main, 'g'); add('rl-rs', '⬆️ बैकअप अपलोड (पूरा रिस्टोर)', restoreModal, main, 'o'); } add('rl-book', '📜 नियम पुस्तिका', bookModal, main); }
+      if (S.tab === 'more' && role() !== 'viewer') { add('rl-bank', '🏦 पार्टी का बैंक जमा जोड़ें', bankModal, main, 'g'); add('rl-bankall', '🏦 पूरा बैंक जमा (पार्टी समेत)', bankAllModal, main, 'g'); if (role() === 'owner') add('rl-rate', '💲 नया रेट लगाएँ (मालिक)', rateModal, main, 'o'); add('rl-audit', '🔎 नियम जाँच (रेट / बैलेंस)', auditModal, main); if (role() === 'owner') { add('rl-bk', '💾 बैकअप डाउनलोड', backupNow, main, 'g'); add('rl-rs', '⬆️ बैकअप अपलोड (पूरा रिस्टोर)', restoreModal, main, 'o'); } add('rl-book', '📜 नियम पुस्तिका', bookModal, main); }
       if (S.tab === 'more' && role() === 'viewer') add('rl-book', '📜 नियम पुस्तिका', bookModal, main);
       if (S.tab === 'day' && role() !== 'viewer' && document.getElementById('f-note') && !document.getElementById('rl-note')) { const n = document.getElementById('f-note'); const b = document.createElement('button'); b.id = 'rl-note'; b.type = 'button'; b.className = 'btn sm o'; b.style.marginTop = '6px'; b.textContent = '🏦 नोट से बैंक एंट्री बनाओ'; b.onclick = bankNote; n.after(b); }
     }
