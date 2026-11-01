@@ -230,10 +230,111 @@
     async function auditModal() {
       const m = APP.modal('<h3>🔎 नियम जाँच</h3><p class="mut">जाँच चल रही है…</p>');
       try {
-        const o = await audit(), sec = (t, a) => '<div style="margin-top:8px"><b>' + t + ' (' + a.length + ')</b>' + (a.length ? a.slice(0, 12).map(x => '<div style="font-size:13px;padding:2px 0">• ' + APP.esc(x) + '</div>').join('') + (a.length > 12 ? '<div class="mut">…और ' + (a.length - 12) + '</div>' : '') : '<div style="color:#0a7d33;font-size:13px">✔ सब ठीक</div>') + '</div>';
-        m.querySelector('.sheet').innerHTML = '<h3>🔎 नियम जाँच</h3>' + sec('ledger का रेट ≠ दिन का रेट', o.rate) + sec('बिना हिसाब वाले दिन की एंट्री', o.nodays) + sec('पार्टी का बैलेंस ≠ एंट्रियों का जोड़', o.bal) + sec('माइनस कैश वाले दिन', o.cash) + '<div class="mut" style="font-size:12px;margin-top:8px">ये सिर्फ़ सूची है, कुछ अपने-आप नहीं बदला गया।</div><div class="btns" style="margin-top:10px"><button class="btn w" id="au-x">बंद</button></div>';
+        const o = await audit();
+        const sec = (t, a) => '<div style="margin-top:8px"><b>' + t + ' (' + a.length + ')</b>' + (a.length ? a.slice(0, 12).map(x => '<div style="font-size:13px;padding:2px 0">• ' + APP.esc(x) + '</div>').join('') + (a.length > 12 ? '<div class="mut">…और ' + (a.length - 12) + '</div>' : '') : '<div style="color:#0a7d33;font-size:13px">✔ सब ठीक</div>') + '</div>';
+        
+        const hasIssues = o.rate.length || o.nodays.length || o.bal.length || o.cash.length;
+        
+        let html = '<h3>🔎 नियम जाँच</h3>' + 
+          sec('ledger का रेट ≠ दिन का रेट', o.rate) + 
+          sec('बिना हिसाब वाले दिन की एंट्री', o.nodays) + 
+          sec('पार्टी का बैलेंस ≠ एंट्रियों का जोड़', o.bal) + 
+          sec('माइनस कैश वाले दिन', o.cash) + 
+          '<div class="mut" style="font-size:12px;margin-top:8px">ये सिर्फ़ सूची है, कुछ अपने-आप नहीं बदला गया।</div>';
+        
+        html += '<div class="btns" style="margin-top:10px">';
+        if (hasIssues) html += '<button class="btn g" id="au-fix">🪄 स्वतः ठीक करें (सिर्फ अनलॉक दिन)</button>';
+        html += '<button class="btn w" id="au-x">बंद</button></div>';
+        
+        m.querySelector('.sheet').innerHTML = html;
         m.querySelector('#au-x').onclick = () => m.close();
-      } catch (e) { m.querySelector('.sheet').innerHTML = APP.errBox(e); }
+        
+        if (hasIssues) {
+          m.querySelector('#au-fix').onclick = async () => {
+            if (!confirm('⚠️ क्या आप सारी गलतियां अपने आप ठीक करना चाहते हैं?\n\n(ध्यान दें: लॉक किए हुए दिनों को यह नहीं बदलेगा, उन्हें आपको पहले अनलॉक करना होगा)')) return;
+            
+            const btn = m.querySelector('#au-fix'); 
+            btn.disabled = true; 
+            btn.textContent = '⏳ सुधार हो रहा है...';
+            
+            try {
+              const ps = await rawCol('parties').get();
+              const ls = await rawCol('ledger').get();
+              const ds = await rawCol('days').get();
+              
+              const daysMap = {}; ds.docs.forEach(d => daysMap[d.id] = d.data());
+              const allRows = ls.docs.map(d => ({ id: d.id, ...d.data() }));
+              
+              let fixedBal = 0, fixedRate = 0, fixedDays = 0, skippedLocked = 0;
+
+              // 1. पार्टी का बैलेंस सही करें (यह सुरक्षित है, क्योंकि यह किसी दिन को नहीं बदलता)
+              for (const p of ps.docs) {
+                const sum = allRows.filter(r => r.partyId === p.id).reduce((a, r) => a + K.signed(r), 0);
+                if (Math.abs(sum - num(p.data().bal)) > 0.5) {
+                  await rawCol('parties').doc(p.id).update({ bal: sum });
+                  fixedBal++;
+                }
+              }
+              
+              // 2. रेट और बिना हिसाब वाले दिन सही करें
+              const b = rawBatch();
+              const newDaysCreated = {}; // डुप्लीकेट डेज न बनें
+              
+              for (const r of allRows) {
+                const dayData = daysMap[r.date];
+                
+                // बिना हिसाब वाले दिन बनाएं
+                if (!K.isOpening(r) && !r.bankId && !dayData && r.date !== today()) {
+                  if (!newDaysCreated[r.date]) {
+                    b.set(rawCol('days').doc(r.date), { date: r.date, status: 'open', rateP: S.rates.petrol, rateD: S.rates.diesel, testing: 5 }, { merge: true });
+                    newDaysCreated[r.date] = true;
+                    fixedDays++;
+                  }
+                }
+
+                // रेट सही करें (सिर्फ अगर दिन अनलॉक है)
+                if (r.kind === 'udhar' && r.fuel && dayData) {
+                  if (dayData.status === 'submitted') {
+                    // अगर दिन लॉक है, तो इसे स्किप करें
+                    skippedLocked++;
+                  } else {
+                    const dRate = r.fuel === 'diesel' ? num(dayData.rateD) : num(dayData.rateP);
+                    if (dRate > 0 && Math.abs(dRate - num(r.rate)) > 0.01 && num(r.litre) > 0) {
+                      const newAmt = K.r2(num(r.litre) * dRate);
+                      b.update(rawCol('ledger').doc(r.id), { rate: dRate, amount: newAmt });
+                      fixedRate++;
+                    }
+                  }
+                }
+              }
+              
+              await b.commit();
+              
+              // अगर रेट सुधरा है, तो पार्टी का बैलेंस फिर से सिंक करना पड़ेगा
+              if (fixedRate > 0) {
+                 const ls2 = await rawCol('ledger').get();
+                 const allRows2 = ls2.docs.map(d => ({ id: d.id, ...d.data() }));
+                 for (const p of ps.docs) {
+                    const sum = allRows2.filter(r => r.partyId === p.id).reduce((a, r) => a + K.signed(r), 0);
+                    await rawCol('parties').doc(p.id).update({ bal: sum });
+                 }
+              }
+
+              APP.toast(`✅ सुधार पूरा! (बैलेंस: ${fixedBal}, रेट: ${fixedRate}, दिन: ${fixedDays})` + (skippedLocked ? ` | ${skippedLocked} लॉक एंट्री छोड़ी गईं` : ''));
+              m.close();
+              if (S.parties) S.parties.pub = null;
+              if (APP.go) APP.go('more'); // रिफ्रेश करें
+              
+            } catch (e) {
+              APP.toast('❌ सुधार नहीं हो पाया: ' + e.message);
+              btn.disabled = false; 
+              btn.textContent = '🪄 स्वतः ठीक करें (सिर्फ अनलॉक दिन)';
+            }
+          };
+        }
+      } catch (e) { 
+        m.querySelector('.sheet').innerHTML = APP.errBox(e); 
+      }
     }
     function bookModal() { const m = APP.modal('<h3>📜 नियम पुस्तिका</h3>' + BOOK.map(r => '<div style="padding:5px 0;border-bottom:1px dashed #e3e8f2;font-size:13.5px"><b>' + r[0] + '</b> · ' + APP.esc(r[1]) + '</div>').join('') + '<div class="btns" style="margin-top:10px"><button class="btn w" id="bk-x">बंद</button></div>'); m.querySelector('#bk-x').onclick = () => m.close(); }
 
