@@ -76,9 +76,9 @@
   Object.assign(APP, { AUTO_LBL, AUTO_NOTES, toast, commit, audit, errBox, modal, isOwner, isSalesman, isViewer, isTrueOwner });
 
   /* ================= खर्चा: अलग-अलग चीज़ों में बाँटने / एडिट करने वाला एडिटर ================= */
-  const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)']];
+  const EXP_CATS = [['kharcha', 'DG (जनरेटर)'], ['driverInaam', 'ड्राइवर इनाम'], ['chaiKhana', 'चाय-खाना'], ['other', 'अन्य (नाम लिखें)'], ['paytm', 'Paytm / UPI (खर्चा नहीं)'], ['swipe', 'स्वाइप / कार्ड (खर्चा नहीं)']];
   const EXP_HINTS = ['पंचर', 'सफाई', 'बिजली', 'मरम्मत', 'स्टेशनरी', 'पानी', 'ट्रांसपोर्ट', 'स्टाफ'];
-  const KHF = { kharcha: 'f-kharcha', driverInaam: 'f-driverInaam', chaiKhana: 'f-chaiKhana' };
+  const KHF = { kharcha: 'f-kharcha', driverInaam: 'f-driverInaam', chaiKhana: 'f-chaiKhana', paytm: 'f-paytm', swipe: 'f-swipe' };
 
   function expEditor(o) {
     const must = (o.mustTotal === undefined || o.mustTotal === null) ? null : r2(o.mustTotal);
