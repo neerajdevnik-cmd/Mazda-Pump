@@ -255,167 +255,42 @@
         { id: 'party_bisht', name: 'बिष्ट जी कॉन्ट्रैक्टर', phone: '9876500005', vehicles: ['UK01EA4321'], bal: -12000, limit: 40000, portalCode: '100105' }
       ];
 
-      /* =========================================================================
-   SUPER_ADMIN.JS (v4 - PURE REAL DATA GENERATOR)
-   Is file me P1-P4, D1-D4, Bank, CIBIL, Party Ledger sab real data generate hoga.
-   ========================================================================= */
-(function () {
-  'use strict';
-  const APP = window.APP;
-  if (!APP || !APP.db) return;
-  const db = APP.db;
-
-  const num = x => Number(x) || 0;
-  const r2 = x => Math.round(num(x) * 100) / 100;
-  const pad = n => String(n).padStart(2, '0');
-  const formatDate = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-
-  window.superAdminGenerateDemo = async function() {
-    const pid = window.PUMP_SYSTEM?.activePumpId;
-    if (!pid) return alert("Pump ID nahi mili.");
-    if (pid === 'mazda' && !confirm("Aap MAZDA ka original data overwrite karne ja rahe hain. Kya aap sure hain?")) return;
-
-    if (!confirm("6 mahine ka 100% REAL DATA (P1-P4, D1-D4, Bank, CIBIL) generate hoga. Purana delete ho jayega. Ready?")) return;
-
-    // 8 Nozzles Fix
-    const nozzles = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
-    const daysToGen = 180; // 6 Months
-    const today = new Date();
-    
-    // 4 Real Parties (for Ledger & CIBIL)
-    const parties = [
-      { name: "Shri Jeevan Dev Transport", phone: "9876543210", limit: 50000, cibil: 780, opening: 15000 },
-      { name: "Kumaon Roadlines", phone: "9876543211", limit: 100000, cibil: 820, opening: 25000 },
-      { name: "Almora Taxi Union", phone: "9876543212", limit: 20000, cibil: 650, opening: 5000 },
-      { name: "Bamsyun Bus Stand", phone: "9876543213", limit: 15000, cibil: 710, opening: 2000 }
-    ];
-
-    try {
-      alert("⏳ Real Data ban raha hai... Thoda waqt lagega, window close mat karna.");
-      
-      // Clear old data
-      const cols = ['days', 'parties', 'bank_tx', 'tanker_reports', 'dip_chart', 'audit'];
-      for (let col of cols) {
-        const snap = await db.collection(col).get();
-        const batch = db.batch();
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
+      for (const p of demoParties) {
+        await pumpRef.collection('parties').doc(p.id).set({ ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       }
 
-      // Add Parties
-      const partyRefs = [];
-      for (let p of parties) {
-        const ref = await db.collection('parties').add(p);
-        partyRefs.push({ id: ref.id, ...p });
-      }
+      const today = new Date();
+      let mP1 = 150000, mP2 = 220000, mP3 = 90000, mP4 = 110000;
+      let mD1 = 450000, mD2 = 380000, mD3 = 290000, mD4 = 310000;
+      let openStockP = 12000, openStockD = 25000;
 
-      // Generate 180 Days
-      for (let i = daysToGen; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const dateStr = formatDate(d);
+      for (let i = 180; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-        // Rates fluctuate daily
-        const rateP = 100.00 + (Math.sin(i / 10) * 2); 
-        const rateD = 90.00 + (Math.cos(i / 10) * 1.5);
-        
-        let dayData = {
-          date: dateStr,
-          rateP: r2(rateP),
-          rateD: r2(rateD),
-          nz: {}, // Nozzle readings
-          paytm: 0, swipe: 0, cashGiven: 0,
-          kharcha: 0, driverInaam: 0, chaiKhana: 0,
-          credits: [], deposits: []
-        };
+        const lp1 = Math.floor(300 + Math.random() * 200);
+        const lp2 = Math.floor(250 + Math.random() * 180);
+        const lp3 = Math.floor(200 + Math.random() * 150);
+        const lp4 = Math.floor(220 + Math.random() * 160);
+        const litP = lp1 + lp2 + lp3 + lp4;
 
-        let totalSaleAmt = 0;
+        const ld1 = Math.floor(1000 + Math.random() * 600);
+        const ld2 = Math.floor(900 + Math.random() * 500);
+        const ld3 = Math.floor(800 + Math.random() * 400);
+        const ld4 = Math.floor(850 + Math.random() * 450);
+        const litD = ld1 + ld2 + ld3 + ld4;
 
-        // 1. Fill ALL 8 Nozzles (P1-P4, D1-D4)
-        for (let nz of nozzles) {
-          const isPetrol = nz.startsWith('p');
-          // Petrol sells less, Diesel sells more
-          const baseSale = isPetrol ? (300 + Math.random() * 200) : (500 + Math.random() * 400); 
-          const lit = r2(baseSale);
-          const rate = isPetrol ? rateP : rateD;
-          const amt = r2(lit * rate);
-          
-          // Meter reading format used by app_day.js
-          // 'op' = Opening, 'cl' = Closing, 'lit' = Litres, 'amt' = Amount
-          dayData.nz[nz] = { op: 0, cl: lit, test: 0, lit: lit, amt: amt }; 
-          totalSaleAmt += amt;
-        }
-        
-        // 2. Split Payments
-        dayData.paytm = r2(totalSaleAmt * 0.15); // 15% Paytm/UPI
-        dayData.swipe = r2(totalSaleAmt * 0.10); // 10% Card Swipe
-        dayData.cashGiven = r2(totalSaleAmt * 0.60); // 60% Cash
-        
-        // 3. Expenses (Kharcha)
-        dayData.kharcha = r2(150 + Math.random() * 300); // DG
-        dayData.driverInaam = 100;
-        dayData.chaiKhana = r2(50 + Math.random() * 100);
+        const rateP = 100.23, rateD = 95.68;
+        const sale = Math.round(litP * rateP + litD * rateD);
 
-        // 4. Udhaar (Credits) & Jama (Deposits)
-        if (i % 2 === 0) { 
-          const p = partyRefs[Math.floor(Math.random() * partyRefs.length)];
-          dayData.credits.push({ partyId: p.id, partyName: p.name, amount: r2(2000 + Math.random() * 5000) });
-        }
-        if (i % 3 === 0) { 
-          const p = partyRefs[Math.floor(Math.random() * partyRefs.length)];
-          // Mix of Cash, Paytm, Swipe, and NEFT
-          const modes = ['cash', 'paytm', 'swipe', 'bank'];
-          dayData.deposits.push({ 
-            partyId: p.id, partyName: p.name, 
-            amount: r2(3000 + Math.random() * 4000), 
-            mode: modes[Math.floor(Math.random() * modes.length)] 
-          });
-        }
+        mP1 += lp1; mP2 += lp2; mP3 += lp3; mP4 += lp4;
+        mD1 += ld1; mD2 += ld2; mD3 += ld3; mD4 += ld4;
 
-        // 5. Bank Transactions (NEFT/RTGS & Auto Settlement)
-        if (i % 2 === 0) {
-           await db.collection('bank_tx').add({
-             date: dateStr, bankId: 'sbi_main', type: 'credit',
-             amount: r2(dayData.paytm + dayData.swipe), mode: 'Settlement',
-             note: 'Paytm/Swipe Auto Settlement'
-           });
-        }
-        if (i % 5 === 0) { // Weekly Cash Deposit
-           await db.collection('bank_tx').add({
-             date: dateStr, bankId: 'sbi_main', type: 'credit',
-             amount: r2(dayData.cashGiven * 0.8), mode: 'Cash Deposit',
-             note: 'Cash Deposit by Pump'
-           });
-        }
-        if (i % 7 === 0) { // RTGS for Tanker
-           await db.collection('bank_tx').add({
-             date: dateStr, bankId: 'sbi_main', type: 'debit',
-             amount: r2(150000), mode: 'RTGS',
-             note: 'RTGS to BPCL for Tanker'
-           });
-        }
+        const malikAmt = Math.round(sale * 0.35);
+        const paytmAmt = Math.round(sale * 0.30);
+        const swipeAmt = Math.round(sale * 0.15);
 
-        // 6. Dip Chart & Tanker Data
-        if (i % 4 === 0) {
-          await db.collection('tanker_reports').add({
-             date: dateStr, tankerNo: 'UK-07-TA-1122', product: 'Diesel', 
-             invoiceQty: 8000, receivedQty: 7990, density: 825.5
-          });
-        }
-
-        // Save Day Data
-        await db.collection('days').doc(dateStr).set(dayData);
-      }
-
-      alert("✅ 6 Mahine ka REAL DATA successfully generate ho gaya! Ab page refresh karein.");
-      location.reload();
-
-    } catch (err) {
-      console.error(err);
-      alert("Error: " + err.message);
-    }
-  };
-})();
         const dayRecord = {
           date: iso,
           status: 'submitted',
