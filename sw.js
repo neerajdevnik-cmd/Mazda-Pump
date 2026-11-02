@@ -1,4 +1,4 @@
-tconst V = 'mazda-v106';
+tconst V = 'mazda-v107';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js', 'assistant.js', 'assistant_brain.js',
