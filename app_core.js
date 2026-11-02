@@ -1,4 +1,4 @@
-/* माज़दा ऑयल कंपनी - Core App Controller (Base & Setup) */
+/* माज़दा ऑयल कंपनी - Core App Controller (Base & Setup + Multi-Pump Engine Integrated) */
 (function () {
   'use strict';
   const C = window.CFG, K = window.Calc;
@@ -31,7 +31,11 @@
   let auth, db, FV;
   
   const isOwner = () => S.role === 'owner';
-  const isTrueOwner = () => S.user && S.user.email && S.user.email.toLowerCase() === 'neeraj@mazda.in';
+  const isTrueOwner = () => {
+    if (!S.user || !S.user.email) return false;
+    const em = S.user.email.toLowerCase();
+    return em === 'neeraj@mazda.in' || em === 'neeraj@mazda-pump.in';
+  };
   const isSalesman = () => S.role === 'salesman';
   const isViewer = () => S.role === 'viewer';
 
@@ -150,10 +154,10 @@
     const lk = locked === undefined ? !!(S.cur && S.cur.locked) : locked;
     const dis = lk ? 'disabled' : '';
     box.innerHTML = items.length ? items.map((it, i) => `<div class="exr item" style="padding:6px 0">
-        <div class="a"><input class="exl" placeholder="किस चीज़ का खर्चा?" value="${esc(it.label || '')}" ${dis}></div>
-        <input class="exa" inputmode="decimal" placeholder="रुपये" value="${esc(it.amount == null ? '' : it.amount)}" style="width:96px" ${dis}>
-        ${lk ? '' : `<button class="btn sm w" type="button" data-do="splitX" data-i="${i}">✂️</button><button class="btn sm r" type="button" data-do="delX" data-i="${i}">🗑</button>`}
-      </div>`).join('') : '<div class="mut" style="font-size:12px;margin:4px 0">अभी कोई और खर्चा नहीं — नीचे "+ और खर्चा जोड़ें" दबाएँ</div>';
+      <div class="a"><input class="exl" placeholder="किस चीज़ का खर्चा?" value="${esc(it.label || '')}" ${dis}></div>
+      <input class="exa" inputmode="decimal" placeholder="रुपये" value="${esc(it.amount == null ? '' : it.amount)}" style="width:96px" ${dis}>
+      ${lk ? '' : `<button class="btn sm w" type="button" data-do="splitX" data-i="${i}">✂️</button><button class="btn sm r" type="button" data-do="delX" data-i="${i}">🗑</button>`}
+    </div>`).join('') : '<div class="mut" style="font-size:12px;margin:4px 0">अभी कोई और खर्चा नहीं — नीचे "+ और खर्चा जोड़ें" दबाएँ</div>';
     $$('#expbox input').forEach(i => i.addEventListener('input', () => { if(APP.recalc) APP.recalc(); if(APP.triggerAutoSave) APP.triggerAutoSave(); }));
   }
   
@@ -185,45 +189,50 @@
   Object.assign(APP, { getParties, partyById });
 
   function loginView(msg) {
+    const logoSrc = (window.PUMP_SYSTEM && window.PUMP_SYSTEM.currentConfig && window.PUMP_SYSTEM.currentConfig.logo) || './logo.png';
     $('#app').innerHTML = `
-    <div class="login">
-      <img src="./logo.png" alt="" style="display:block;width:120px;height:120px;margin:0 auto 12px;border-radius:50%">
-      <h1 style="text-align:center">${esc(C.pump.name)}</h1>
-      <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
-      
-      <div class="seg" style="margin:16px 0">
-        <button id="tab-man" class="on">मालिक</button>
-        <button id="tab-sm">सेल्समैन</button>
-        <button id="tab-vw">मालिक-व्यू</button>
-      </div>
+      <div class="login">
+        <img src="${esc(logoSrc)}" alt="" class="login-logo" style="display:block;width:120px;height:120px;margin:0 auto 12px;border-radius:50%">
+        <h1 style="text-align:center" class="pump-title-dyn">${esc(C.pump.name)}</h1>
+        <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
+        
+        <div class="seg" style="margin:16px 0">
+          <button id="tab-man" class="on">मालिक</button>
+          <button id="tab-sm">सेल्समैन</button>
+          <button id="tab-vw">मालिक-व्यू</button>
+        </div>
 
-      <div id="form-man">
-        <label>यूज़रनेम (ईमेल)</label>
-        <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">
-        <label>पासवर्ड</label>
-        <input id="pw" type="password" autocomplete="current-password">
-        <div class="btns" style="margin-top:14px"><button class="btn full" id="go-btn">लॉगिन करें</button></div>
-      </div>
+        <div id="form-man">
+          <label>यूज़रनेम (ईमेल)</label>
+          <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">
+          <label>पासवर्ड</label>
+          <input id="pw" type="password" autocomplete="current-password">
+          <div class="btns" style="margin-top:14px"><button class="btn full" id="go-btn">लॉगिन करें</button></div>
+        </div>
 
-      <div id="form-sm" style="display:none">
-        <label>सेल्समैन चुनें</label>
-        <select id="sm-sel">
-          ${(C.salesmen || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-        </select>
-        <label>4-अंकों का PIN</label>
-        <input id="sm-pin" type="password" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="अपना PIN दर्ज करें">
-        <div class="btns" style="margin-top:14px"><button class="btn full g" id="go-sm">सेल्समैन लॉगिन</button></div>
-      </div>
+        <div id="form-sm" style="display:none">
+          <label>सेल्समैन चुनें</label>
+          <select id="sm-sel">
+            ${(C.salesmen || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+          </select>
+          <label>4-अंकों का PIN</label>
+          <input id="sm-pin" type="password" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="अपना PIN दर्ज करें">
+          <div class="btns" style="margin-top:14px"><button class="btn full g" id="go-sm">सेल्समैन लॉगिन</button></div>
+        </div>
 
-      <div id="form-vw" style="display:none">
-        <label>मालिक व्यू कोड</label>
-        <input id="vw-code" type="password" placeholder="कोड दर्ज करें" autocomplete="off">
-        <div class="btns" style="margin-top:14px"><button class="btn full o" id="go-vw">देखने के लिए लॉगिन</button></div>
-        <p class="mut" style="font-size:12px;margin-top:10px;text-align:center">केवल देख सकते हैं — कोई बदलाव नहीं</p>
-      </div>
+        <div id="form-vw" style="display:none">
+          <label>मालिक व्यू कोड</label>
+          <input id="vw-code" type="password" placeholder="कोड दर्ज करें" autocomplete="off">
+          <div class="btns" style="margin-top:14px"><button class="btn full o" id="go-vw">देखने के लिए लॉगिन</button></div>
+          <p class="mut" style="font-size:12px;margin-top:10px;text-align:center">केवल देख सकते हैं — कोई बदलाव नहीं</p>
+        </div>
 
-      ${msg ? '<div class="err" style="margin-top:10px">' + esc(msg) + '</div>' : ''}
-    </div>`;
+        ${msg ? '<div class="err" style="margin-top:10px">' + esc(msg) + '</div>' : ''}
+      </div>`;
+
+    if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.applyDOMBranding) {
+      setTimeout(() => window.PUMP_SYSTEM.applyDOMBranding(), 50);
+    }
 
     $('#tab-man').onclick = () => {
       $('#tab-man').classList.add('on'); $('#tab-sm').classList.remove('on'); $('#tab-vw').classList.remove('on');
@@ -246,7 +255,7 @@
       catch (e) { loginView('यूज़रनेम या पासवर्ड गलत है: ' + e.message); }
     };
 
-   $('#go-sm').onclick = async () => {
+    $('#go-sm').onclick = async () => {
       localStorage.removeItem('mazda_viewer'); S.role = null;
       const smId = $('#sm-sel').value;
       const pin = $('#sm-pin').value.trim();
@@ -270,7 +279,8 @@
 
     $('#go-vw').onclick = async () => {
       const code = $('#vw-code').value.trim();
-      if (code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
+      const expectedCode = C.viewerCode || 'Mazda@123';
+      if (code !== expectedCode && code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
       try {
         if (auth) {
           if (!auth.currentUser) await auth.signInAnonymously();
@@ -289,10 +299,19 @@
 
   function boot() {
     try {
-      firebase.initializeApp(C.firebase);
+      if (!firebase.apps.length) {
+        firebase.initializeApp(C.firebase);
+      }
       auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
-      APP.db = db; APP.auth = auth; APP.FV = FV;
       try { db.settings({ ignoreUndefinedProperties: true }); } catch(e) { console.log('Settings error', e); }
+
+      // Multi-Pump Multi-Tenant Routing & Branding Hook
+      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) {
+        db = window.PUMP_SYSTEM.wrapFirestore(db);
+        window.PUMP_SYSTEM.initBranding(db);
+      }
+
+      APP.db = db; APP.auth = auth; APP.FV = FV;
     } catch (e) {
       console.error(e);
       const err = document.getElementById('error-box');
@@ -321,7 +340,8 @@
       } else {
         localStorage.removeItem('mazda_viewer');
         const em = (u.email || '').toLowerCase();
-        S.role = em === C.ownerEmail.toLowerCase() ? 'owner' : 'manager';
+        const isOwnerAccount = em === (C.ownerEmail || '').toLowerCase() || em === 'neeraj@mazda.in' || em === 'neeraj@mazda-pump.in';
+        S.role = isOwnerAccount ? 'owner' : 'manager';
         S.user = u; S.date = todayISO(); shell();
         db.collection('days').orderBy('date', 'desc').limit(1).get().then(s => {
           if (!s.empty) { const d = s.docs[0].data(); S.rates = { petrol: d.rateP, diesel: d.rateD }; }
@@ -347,12 +367,16 @@
     $('#app').innerHTML = `
       <header>
         <div style="display:flex;align-items:center;gap:10px">
-          <div><b>${esc(C.pump.name)}</b><small>${titleRole} · ${userName}</small></div>
+          <div><b class="pump-title-dyn">${esc(C.pump.name)}</b><small>${titleRole} · ${userName}</small></div>
         </div>
         <button id="top-logout">लॉगआउट</button>
       </header>
       <main id="main"></main>
       <nav>${tabs.map(t => `<button data-tab="${t[0]}"><i>${t[1]}</i>${t[2]}</button>`).join('')}</nav>`;
+
+    if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.applyDOMBranding) {
+      setTimeout(() => window.PUMP_SYSTEM.applyDOMBranding(), 50);
+    }
 
     $('#top-logout').onclick = () => {
       localStorage.removeItem('mazda_sm'); localStorage.removeItem('mazda_viewer');
