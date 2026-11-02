@@ -4,6 +4,7 @@
    - 1-Click Realistic 6-Month Demo Generator (All 4 Nozzles P1-P4 & D1-D4,
      Proper Debit/Credit Ledger, Bank Deposits, UPI/Paytm, Expenses & CIBIL)
    - 1-Click All Clear (Reset / Wipe Demo Data safely)
+   - Remove / Delete Pump Button with Full DB Cleanup
    ========================================================================= */
 (function () {
   'use strict';
@@ -52,8 +53,9 @@
         </div>
 
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ddd;display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn sm w" data-demo="${p.id}" style="background:#e8f4fd;color:#0369a1;border-color:#bae6fd;">🚀 6 महीने का 100% रियल डेमो डेटा भरें</button>
-          <button class="btn sm r" data-clear="${p.id}" style="background:#fef2f2;color:#991b1b;border-color:#fecaca;">🗑️ डेटा ऑल-क्लियर (Reset)</button>
+          <button class="btn sm w" data-demo="${p.id}" style="background:#e8f4fd;color:#0369a1;border-color:#bae6fd;">🚀 6 महीने का 100% रियल डेमो डेटा</button>
+          <button class="btn sm o" data-clear="${p.id}" style="background:#fff4e5;color:#b26a00;border-color:#fed7aa;">🗑️ ऑल-क्लियर (Reset)</button>
+          <button class="btn sm r" data-remove="${p.id}" style="background:#fef2f2;color:#991b1b;border-color:#fecaca;">❌ पंप डिलीट (Remove)</button>
           <button class="btn sm w" data-share-links="${p.id}">📲 शेयर लिंक्स</button>
         </div>
       </div>
@@ -76,7 +78,7 @@
 
       <div class="card" style="background:#f8f9fc;border:1px solid #dde2ec;">
         <h3 style="margin:0 0 6px 0;font-size:15px;color:var(--b);">🏢 सभी पेट्रोल पंप की लिस्ट</h3>
-        <div class="mut" style="font-size:12px;margin-bottom:10px;">यहाँ से किसी भी पंप का डेटा देखें, 6-महीने का रियल डेमो भरें या रिसेट करें:</div>
+        <div class="mut" style="font-size:12px;margin-bottom:10px;">यहाँ से किसी भी पंप का डेटा देखें, 6-महीने का रियल डेमो भरें, रीसेट करें या पंप डिलीट करें:</div>
         
         <div class="card" style="margin-bottom:10px;padding:12px;border-left:4px solid #0a7d33;background:#fff;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -112,6 +114,10 @@
 
     document.querySelectorAll('[data-clear]').forEach(b => {
       b.onclick = () => clearAllPumpData(b.dataset.clear);
+    });
+
+    document.querySelectorAll('[data-remove]').forEach(b => {
+      b.onclick = () => removePumpStation(b.dataset.remove);
     });
 
     document.querySelectorAll('[data-share-links]').forEach(b => {
@@ -232,7 +238,7 @@
     };
   }
 
-  // 1-Click 100% Real Demo Data Generator (All Nozzles P1-P4, D1-D4, Ledger Debit/Credit, Bank Deposits, Expenses)
+  // 1-Click 100% Real Demo Data Generator
   async function generateSixMonthDemo(pumpId) {
     if (!confirm(`क्या आप [${pumpId}] के लिए 6 महीने का 100% रियल जैसा डेटा भरना चाहते हैं?\n\nइसमें P1-P4 और D1-D4 सभी 8 नोज़ल, टैंकर डिप, डेबिट-क्रेडिट लेजर, बैंक डिपॉजिट, UPI/Paytm और खर्चे शामिल होंगे!`)) return;
 
@@ -241,20 +247,18 @@
     const pumpRef = rawDb.collection('pumps').doc(pumpId);
 
     try {
-      // 1. Parties with Credit & Debit Balances (CIBIL friendly)
       const demoParties = [
         { id: 'party_rawat', name: 'रावत ब्रदर्स ट्रांसपोर्ट', phone: '9876500001', vehicles: ['UK01CA1122', 'UK01CA3344'], bal: 42500, limit: 100000, portalCode: '100101' },
         { id: 'party_kumaon', name: 'कुमाऊँ मोटर्स कॉर्पोरेशन', phone: '9876500002', vehicles: ['UK04PA5566', 'UK04PA7788'], bal: 68400, limit: 150000, portalCode: '100102' },
         { id: 'party_sharma', name: 'शर्मा ट्रेडर्स & सप्लायर्स', phone: '9876500003', vehicles: ['UK07CB9900'], bal: 15200, limit: 50000, portalCode: '100103' },
         { id: 'party_hill', name: 'हिल रोडवेज लॉजिस्टिक्स', phone: '9876500004', vehicles: ['UK01TA2468', 'UK01TA1357'], bal: 95000, limit: 200000, portalCode: '100104' },
-        { id: 'party_bisht', name: 'बिष्ट जी कॉन्ट्रैक्टर', phone: '9876500005', vehicles: ['UK01EA4321'], bal: -12000, limit: 40000, portalCode: '100105' } // Advance Credit
+        { id: 'party_bisht', name: 'बिष्ट जी कॉन्ट्रैक्टर', phone: '9876500005', vehicles: ['UK01EA4321'], bal: -12000, limit: 40000, portalCode: '100105' }
       ];
 
       for (const p of demoParties) {
         await pumpRef.collection('parties').doc(p.id).set({ ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       }
 
-      // 2. 180 Days of Real Daily Accounts & Ledger Entries
       const today = new Date();
       let mP1 = 150000, mP2 = 220000, mP3 = 90000, mP4 = 110000;
       let mD1 = 450000, mD2 = 380000, mD3 = 290000, mD4 = 310000;
@@ -329,7 +333,6 @@
 
         await pumpRef.collection('days').doc(iso).set(dayRecord);
 
-        // Add Bank Deposit entry matching malikDiya
         if (malikAmt > 0) {
           await pumpRef.collection('bank_deposits').add({
             bank: 'SBI',
@@ -341,7 +344,6 @@
           });
         }
 
-        // Add Ledger Debit & Credit Entries
         const party = demoParties[i % demoParties.length];
         await pumpRef.collection('ledger').add({
           partyId: party.id,
@@ -380,6 +382,7 @@
     }
   }
 
+  // All Clear (Reset Data)
   async function clearAllPumpData(pumpId) {
     if (pumpId === 'mazda') {
       return alert('⚠️ सुरक्षा चेतावनी: माज़दा (Mazda) का ओरिजिनल डेटा ऑल-क्लियर नहीं किया जा सकता!');
@@ -405,6 +408,39 @@
       APP.toast(`✅ [${pumpId}] का सारा डेटा पूरी तरह साफ (Reset) हो गया!`);
     } catch (e) {
       APP.toast('डिलीट एरर: ' + e.message);
+    }
+  }
+
+  // Remove / Delete Pump Station entirely
+  async function removePumpStation(pumpId) {
+    if (pumpId === 'mazda') {
+      return alert('⚠️ सुरक्षा चेतावनी: मुख्य माज़दा पंप को डिलीट नहीं किया जा सकता!');
+    }
+
+    const check = prompt(`⚠️ चेतावनी: आप पेट्रोल पंप [${pumpId}] को हमेशा के लिए डिलीट (Remove) कर रहे हैं!\n\nयह कार्रवाई वापस नहीं आ सकती। कन्फर्म करने के लिए 'DELETE' लिखें:`);
+    if (check !== 'DELETE') return APP.toast('पंप डिलीट कैंसिल किया गया');
+
+    APP.toast('🗑️ पंप हटाया जा रहा है...');
+    const rawDb = firebase.firestore();
+    const pumpRef = rawDb.collection('pumps').doc(pumpId);
+
+    try {
+      // First clear all subcollections
+      const cols = ['days', 'ledger', 'parties', 'shop', 'shop_orders', 'workers', 'attendance', 'tanker_reports', 'cash_galla', 'bank_deposits'];
+      for (const c of cols) {
+        const snap = await pumpRef.collection(c).get();
+        const batch = rawDb.batch();
+        snap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      // Finally delete the pump document itself
+      await pumpRef.delete();
+
+      APP.toast(`✅ पंप [${pumpId}] को सिस्टम से हमेशा के लिए हटा दिया गया!`);
+      setTimeout(() => location.reload(), 1000);
+    } catch (e) {
+      APP.toast('पंप डिलीट एरर: ' + e.message);
     }
   }
 
@@ -443,7 +479,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <b style="color:#f4b41a;font-size:16px;">👑 Super Admin (God Mode)</b>
-          <div style="font-size:11px;opacity:0.85;">नया पंप जोड़ें, 6 महीने का रियल डेमो भरें, ऑल-क्लियर करें</div>
+          <div style="font-size:11px;opacity:0.85;">नया पंप जोड़ें, 6 महीने का रियल डेमो भरें, पंप डिलीट करें</div>
         </div>
         <button class="btn sm g" id="sa-badge-btn" style="background:#f4b41a;color:#000;font-weight:900;">मैनेज करें →</button>
       </div>
@@ -453,5 +489,5 @@
     document.querySelector('#sa-badge-btn').onclick = () => APP.views.super_admin();
   };
 
-  console.log('[SuperAdmin Engine] Updated with custom logo, rates & 100% real demo generator');
+  console.log('[SuperAdmin Engine] Updated with Remove Pump & Security Bypass');
 })();
