@@ -373,7 +373,7 @@
   const pickAmt = o => num(o.amount ?? o.amt ?? o.rakam ?? o.value ?? o.val ?? 0);
   const pickNote = o => String(o.note ?? o.name ?? o.title ?? o.label ?? o.desc ?? 'और खर्चा');
   function extraExpenses(d) {
-    const keys = ['otherExp', 'extraExp', 'extraExpenses', 'aurKharche', 'otherExpenses', 'extras', 'expenses', 'other'];
+    const keys = ['kharchaItems', 'otherExp', 'extraExp', 'extraExpenses', 'aurKharche', 'otherExpenses', 'extras', 'expenses', 'other'];
     for (const k of keys) {
       if (Array.isArray(d[k])) return d[k];
     }
@@ -399,13 +399,14 @@
         pnb: { id: 'bank_pnb', name: 'Punjab National Bank' }
       };
       const want = new Map(); // docId -> entry
-      const add = (id, key, dir, date, time, amount, note, extra = {}) => {
+      // App ka apna format: bank mai jama = + (hara), udhar = - (laal)
+      const add = (id, key, dir, date, time, amount, note, mode = 'bank') => {
         amount = r2(amount);
         if (!(amount > 0) || !date) return;
         want.set(id, {
-          partyId: BANK[key].id, partyName: BANK[key].name, isBank: true,
-          date, time, kind: dir === 'in' ? 'bank_in' : 'bank_out', dir, mode: 'bank',
-          amount, note, createdOn: date, by: 'bank-sync', ...extra
+          partyId: BANK[key].id, partyName: BANK[key].name, date, time,
+          kind: dir === 'in' ? 'jama' : 'udhar', mode, amount, note,
+          autoBankSync: true, createdOn: date, by: 'bank-sync'
         });
       };
 
@@ -413,16 +414,16 @@
       daysSnap.forEach(doc => {
         const d = doc.data() || {};
         const dt = d.date || doc.id;
-        add(`bk_paytm_${dt}`, 'sbi', 'in', dt, '20:00', num(d.paytm), 'Paytm/UPI (दिन का हिसाब)');
-        add(`bk_swipe_${dt}`, 'sbi', 'in', dt, '20:05', num(d.swipe), 'स्वाइप (दिन का हिसाब)');
-        add(`bk_malik_${dt}`, 'sbi', 'in', dt, '18:00', num(d.malikDiya), 'मालिक को दिया - SBI जमा');
-        add(`bk_sbitop_${dt}`, 'sbi', 'in', dt, '18:30', num(d.sbiTopup), 'गल्ले से SBI जमा');
-        add(`bk_pnbtop_${dt}`, 'pnb', 'in', dt, '18:40', num(d.pnbTopup), 'गल्ले से PNB जमा');
-        add(`bk_dg_${dt}`, 'pnb', 'out', dt, '19:30', num(d.kharcha), 'खर्चा DG (जनरेटर)');
-        add(`bk_chai_${dt}`, 'pnb', 'out', dt, '19:35', num(d.chaiKhana), 'चाय-खाना');
-        add(`bk_inaam_${dt}`, 'pnb', 'out', dt, '19:40', num(d.driverInaam), 'ड्राइवर इनाम');
+        add(`bk_paytm_${dt}`, 'sbi', 'in', dt, '20:00', num(d.paytm), 'Paytm/UPI दैनिक बिक्री जमा', 'paytm');
+        add(`bk_swipe_${dt}`, 'sbi', 'in', dt, '20:05', num(d.swipe), 'कार्ड स्वाइप जमा', 'swipe');
+        add(`bk_malik_${dt}`, 'sbi', 'in', dt, '18:00', num(d.malikDiya), 'पंप गल्ले से कैश जमा (SBI)', 'cash');
+        add(`bk_sbitop_${dt}`, 'sbi', 'in', dt, '18:30', num(d.sbiTopup), 'गल्ले से SBI जमा', 'cash');
+        add(`bk_pnbtop_${dt}`, 'pnb', 'in', dt, '18:40', num(d.pnbTopup), 'गल्ले से PNB जमा', 'cash');
+        add(`bk_dg_${dt}`, 'pnb', 'out', dt, '19:30', num(d.kharcha), 'खर्चा DG (जनरेटर)', 'kharcha');
+        add(`bk_chai_${dt}`, 'pnb', 'out', dt, '19:35', num(d.chaiKhana), 'चाय-खाना', 'kharcha');
+        add(`bk_inaam_${dt}`, 'pnb', 'out', dt, '19:40', num(d.driverInaam), 'ड्राइवर इनाम', 'kharcha');
         extraExpenses(d).forEach((x, i) => {
-          add(`bk_xp_${dt}_${i}`, 'pnb', 'out', dt, '19:50', pickAmt(x || {}), pickNote(x || {}));
+          add(`bk_xp_${dt}_${i}`, 'pnb', 'out', dt, '19:50', pickAmt(x || {}), pickNote(x || {}), 'kharcha');
         });
       });
 
@@ -431,28 +432,32 @@
         const d = doc.data() || {};
         const from = String(d.paidFrom || d.bank || 'sbi').toLowerCase();
         add(`bk_tinv_${doc.id}`, from.includes('pnb') ? 'pnb' : 'sbi', 'out', d.date || d.invoiceDate,
-          '19:00', pickAmt(d), `Tanker/Margin bill${d.litre ? ' (' + d.litre + ' L)' : ''}`);
+          '19:00', pickAmt(d), `Tanker/Margin bill${d.litre ? ' (' + d.litre + ' L)' : ''}`, 'tanker');
       });
 
-      // C) Party ke "seedhe bank mai jama" -> bank mai
+      // C) App ke apne bank entries (party ka seedhe bank jama, pump cash deposit etc.) ko CHHUA nahi jata;
+      //    sirf existing map banta hai taaki double na ho aur balance sahi nikle.
       const existing = new Map();
+      const appKeys = new Set();
+      const appBank = [];
       ledSnap.forEach(doc => {
         const d = doc.data() || {};
         if (doc.id.startsWith('bk_')) { existing.set(doc.id, d); return; }
-        if (d.isBank || d.kind !== 'jama') return;
-        const direct = d.where === 'bank' || d.depositTo === 'bank' || d.inBank === true ||
-                       d.mode === 'bank' || d.payTo === 'bank' || d.jamaWhere === 'bank';
-        if (!direct) return;
-        const bankKey = String(d.bank || d.bankId || d.bankName || '').toLowerCase().includes('pnb') ? 'pnb' : 'sbi';
-        add(`bk_pj_${doc.id}`, bankKey, 'in', d.date, d.time || '12:00', pickAmt(d),
-          `${d.partyName || 'पार्टी'} - सीधे बैंक में जमा`, { srcLedger: doc.id });
+        if (d.partyId === 'bank_sbi' || d.partyId === 'bank_pnb') {
+          appBank.push(d);
+          appKeys.add(`${d.partyId}|${d.date}|${d.kind}|${r2(num(d.amount))}`);
+        }
       });
+      // Agar app ne wahi entry (same bank, din, rakam, jama/udhar) pehle hi bana rakhi hai to dobara nahi banate
+      for (const [id, e] of [...want]) {
+        if (appKeys.has(`${e.partyId}|${e.date}|${e.kind}|${e.amount}`)) want.delete(id);
+      }
 
       // D) Write only what changed
       let b = db.batch(), ops = 0, changed = 0;
       const flush = async () => { if (ops > 0) { await b.commit(); b = db.batch(); ops = 0; } };
       const same = (x, y) => x && y && x.amount === y.amount && x.date === y.date &&
-        x.dir === y.dir && x.partyId === y.partyId && x.note === y.note;
+        x.kind === y.kind && x.mode === y.mode && x.partyId === y.partyId && x.note === y.note;
       for (const [id, entry] of want) {
         if (!same(existing.get(id), entry)) { b.set(db.collection('ledger').doc(id), entry); ops++; changed++; }
         if (ops >= 400) await flush();
@@ -462,14 +467,14 @@
         if (ops >= 400) await flush();
       }
 
-      // E) Bank balance = opening + jama - nikasi
+      // E) Bank balance = opening + jama(+) - udhar(-)  (app ke entries bhi gine jate hain)
       const bal = { sbi: num(sbiDoc.data()?.openingBal), pnb: num(pnbDoc.data()?.openingBal) };
-      const tot = { sbi: { in: 0, out: 0 }, pnb: { in: 0, out: 0 } };
-      for (const e of want.values()) {
+      const addBal = e => {
         const k = e.partyId === 'bank_pnb' ? 'pnb' : 'sbi';
-        if (e.dir === 'in') { bal[k] += e.amount; tot[k].in += e.amount; }
-        else { bal[k] -= e.amount; tot[k].out += e.amount; }
-      }
+        bal[k] += (e.kind === 'jama' ? 1 : e.kind === 'udhar' ? -1 : 0) * num(e.amount);
+      };
+      appBank.forEach(addBal);
+      for (const e of want.values()) addBal(e);
       b.set(db.collection('parties').doc('bank_sbi'), { bal: r2(bal.sbi), currentBal: r2(bal.sbi), isBank: true }, { merge: true }); ops++;
       b.set(db.collection('parties').doc('bank_pnb'), { bal: r2(bal.pnb), currentBal: r2(bal.pnb), isBank: true }, { merge: true }); ops++;
       await flush();
