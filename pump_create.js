@@ -150,7 +150,8 @@
     const gen = Array.from({ length: 8 }, (_, i) => ({ id: 'demo_' + i, name: 'डेमो पार्टी ' + (i + 1), phone: '', vehicles: ['DEMO-' + (i + 1) + '01', 'DEMO-' + (i + 1) + '02'] }));
     if (!confirm(`🧪 पंप "${pid}" पर ${startDate} से ${endDate} तक demo data\n\n• इस पंप का मौजूदा हिसाब (days, ledger, parties, tanker) मिट जाएगा\n• सिर्फ़ इसी पंप पर लागू होगा\n\nजारी रखें?`)) return;
     try {
-      const ds = await window.DEMO_CORE.writeDemo({ startDate, endDate, parties: gen });
+      const zeroMeters = { p1: 0, p2: 0, p3: 0, p4: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
+      const ds = await window.DEMO_CORE.writeDemo({ startDate, endDate, meters: zeroMeters, parties: gen });
       alert(`✅ ${ds.days.length} दिन का demo data भर गया।`);
       location.reload();
     } catch (e) { alert('❌ एरर: ' + e.message); }
@@ -203,7 +204,7 @@
 
   function inject() {
     if (document.querySelector('#pump-create-box')) return;
-    const v2 = document.querySelector('#super-admin-v2-panel');
+    const v2 = document.querySelector('#super-admin-panel');
     if (!v2) return;
     const wrap = document.createElement('div');
     wrap.style.cssText = 'background:linear-gradient(135deg,#071329,#0a1f3d);border:2px solid #f4b41a;border-radius:16px;padding:16px;margin:16px;color:#fff;';

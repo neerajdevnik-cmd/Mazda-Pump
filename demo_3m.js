@@ -41,7 +41,7 @@
 
   setInterval(() => {
     if (!isAuthorized() || activePump() !== 'mazda') return;
-    const panel = document.querySelector('#super-admin-v2-panel');
+    const panel = document.querySelector('#super-admin-panel');
     if (!panel || document.querySelector('#btn-demo-mazda-3m')) return;
     const grid = panel.querySelector('div[style*="grid"]');
     if (!grid) return;

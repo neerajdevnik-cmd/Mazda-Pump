@@ -22,7 +22,7 @@
     tankerL: 6000,
     dieselTrigger: 3000,
     capP: 2000, capD: 3000,
-    avg: { p1: 100, p2: 400, p3: 300, p4: 150, d1: 900, d2: 500, d3: 600, d4: 350 },
+    avg: { p1: 105, p2: 420, p3: 300, p4: 150, d1: 900, d2: 500, d3: 600, d4: 350 },
     spread: 0.20,
     stockDiffMax: 20,
     openP: 8000, openD: 9000,
@@ -68,6 +68,23 @@
     let sbi = opts.openSBI ?? R.openSBI, pnb = opts.openPNB ?? R.openPNB;
     const injections = [];
     let jamaRR = 0;
+
+    // Pehle ka din (start se ek din pehle): opening = closing = meter, sale 0, testing 0
+    const KEYS = ['p1','p2','p3','p4','d1','d2','d3','d4'];
+    if (opts.meters) {
+      const prevD = parseD(dates[0]); prevD.setDate(prevD.getDate() - 1);
+      const prev = fmt(prevD);
+      days.push({
+        _id: prev, date: prev, status: 'submitted', testing: 0, rateP: R.rateP, rateD: R.rateD,
+        openCash: 0, paytm: 0, swipe: 0, kharcha: 0, chaiKhana: 0, driverInaam: 0,
+        malikDiya: 0, sbiTopup: 0, pnbTopup: 0, openStockP: stockP, openStockD: stockD, tankerP: 0, tankerD: 0,
+        nz: Object.fromEntries(KEYS.map(k => [k, { o: M[k], c: M[k], t: 0 }])),
+        sum: { sale: 0, litP: 0, litD: 0, close: 0, openCash: 0, actStockP: stockP, actStockD: stockD,
+          expStockP: stockP, expStockD: stockD, diffP: 0, diffD: 0, udhar: 0, totalKharcha: 0, jCash: 0,
+          amtP: 0, amtD: 0, sbiBal: sbi, pnbBal: pnb },
+        by: "demo"
+      });
+    }
 
     dates.forEach((dt, i) => {
       const sale = {}, nz = {};
