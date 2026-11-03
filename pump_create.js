@@ -165,7 +165,7 @@
 
   function panelHTML() {
     return `
-      <details id="pump-create-box" style="margin-top:14px;" open>
+      <details id="pump-create-box" style="margin-top:14px;">
         <summary style="cursor:pointer;font-weight:800;color:#f4b41a;font-size:14px;">🏭 पंप बनाएँ / बदलें (Super Admin)</summary>
         <label style="font-size:11px;color:#cbd5e1;display:block;margin-top:10px;">पंप चुनें
           <select id="pc-select" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;"></select></label>

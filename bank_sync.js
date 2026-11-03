@@ -164,6 +164,8 @@
   function injectPanel() {
     const main = document.querySelector('#main') || document.querySelector('#p-content');
     if (!main || document.querySelector('#super-admin-panel')) return;
+    const onMore = document.querySelector('nav button[data-tab="more"].active');
+    if (!onMore) return;
 
     const panel = document.createElement('div');
     panel.id = 'super-admin-panel';

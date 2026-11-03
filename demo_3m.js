@@ -15,7 +15,7 @@
     { id: 'p_deepak', name: 'दीपक शाह', phone: '9837006270', vehicles: ['0627', 'UK01CA0627'] },
     { id: 'p_kishor', name: 'किशोर उपाध्याय', phone: '8091762889', vehicles: ['3335', '3336'] },
     { id: 'p_madhan', name: 'मदन सिंह अधिकारी', phone: '9412907691', vehicles: ['0769'] },
-    { id: 'p_nanda', name: 'माँ नंदा स्टोन क्रेशर', phone: '9412055111', vehicles: ['800 ली', 'TRUCK'] },
+    { id: 'p_nanda', name: 'माँ नंदा स्टोन क्रेशर', phone: '9412055111', vehicles: ['800 ली'], fixedLitre: 800 },
     { id: 'p_ghanshyam', name: 'घनश्याम तिवारी', phone: '9760008560', vehicles: ['0856'] }
   ];
 

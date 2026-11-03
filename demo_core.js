@@ -56,7 +56,7 @@
     const src = (opts.parties && opts.parties.length) ? opts.parties : [];
     const parties = src.map((p, i) => ({
       id: p.id || ('demo_' + i), name: p.name, phone: p.phone || '',
-      vehicles: (p.vehicles || []).slice(), bal: 0
+      vehicles: (p.vehicles || []).slice(), bal: 0, fixedLitre: p.fixedLitre || 0
     })).filter(p => p.vehicles.length);
     if (!parties.length) parties.push({ id: 'demo_0', name: 'डेमो पार्टी', phone: '', vehicles: ['DEMO0001'], bal: 0 });
 
@@ -68,13 +68,27 @@
     let sbi = opts.openSBI ?? R.openSBI, pnb = opts.openPNB ?? R.openPNB;
     const injections = [];
     let jamaRR = 0;
+    let nextTanker = 2;                                        // tanker ka agla din (random gap 2-5 din)
+    const bulk = parties.find(p => p.fixedLitre) || null;   // pickup party (jaise 800 L wali gaadi)
+    const dipOf = (type, liters) => {                          // app ke dip chart se ulta dip nikalo
+      const DC = root.DipChart; if (!DC || !(liters > 0)) return null;
+      let lo = 0, hi = DC.maxDip(type);
+      if (DC.getLiters(type, hi) < liters) return null;
+      for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (DC.getLiters(type, mid) < liters) lo = mid; else hi = mid; }
+      return Math.round(hi * 100) / 100;
+    };
 
     // Pehle ka din (start se ek din pehle): opening = closing = meter, sale 0, testing 0
     const KEYS = ['p1','p2','p3','p4','d1','d2','d3','d4'];
     if (opts.meters) {
       const prevD = parseD(dates[0]); prevD.setDate(prevD.getDate() - 1);
       const prev = fmt(prevD);
+      // stock ko dip-chart ke liters par snap karo (app dip se hi stock padhta hai)
+      const pdP = dipOf('petrol', stockP), pdD = dipOf('diesel', stockD);
+      if (pdP !== null) stockP = r2(root.DipChart.getLiters('petrol', pdP));
+      if (pdD !== null) stockD = r2(root.DipChart.getLiters('diesel', pdD));
       days.push({
+        dipP: pdP, dipD: pdD,
         _id: prev, date: prev, status: 'submitted', testing: 0, rateP: R.rateP, rateD: R.rateD,
         openCash: 0, paytm: 0, swipe: 0, kharcha: 0, chaiKhana: 0, driverInaam: 0,
         malikDiya: 0, sbiTopup: 0, pnbTopup: 0, openStockP: stockP, openStockD: stockD, tankerP: 0, tankerD: 0,
@@ -88,8 +102,10 @@
 
     dates.forEach((dt, i) => {
       const sale = {}, nz = {};
+      const pickup = !!bulk && i % 3 === 1;                   // har 3rd din bulk pickup; us din diesel sale thoda zyada
       ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'].forEach(k => {
         sale[k] = vary(R.avg[k]);
+        if (pickup && k[0] === 'd') sale[k] = Math.round(sale[k] * 1.05);
         const o = M[k], c = o + sale[k] + R.testing;
         M[k] = c; nz[k] = { o, c, t: R.testing };
       });
@@ -98,11 +114,19 @@
       if (litP > R.capP || litD > R.capD) throw new Error('Cap cross: ' + litP + ' / ' + litD);
 
       const openStockP = stockP, openStockD = stockD;
-      const tanker = (openStockD - litD) < R.dieselTrigger;
-      const tP = tanker ? R.tankerL : 0, tD = tanker ? R.tankerL : 0;
+      // Tanker: random gap (2-5 din), quantity = stock ko random target tak lane ke liye, 1000 ke guna mein
+      const tanker = i >= nextTanker;
+      let tP = 0, tD = 0;
+      if (tanker) {
+        tP = Math.max(1000, Math.round((rInt(8000, 10000) - (openStockP - litP)) / 1000) * 1000);
+        tD = Math.max(1000, Math.round((rInt(12000, 15000) - (openStockD - litD)) / 1000) * 1000);
+        nextTanker = i + rInt(2, 5);
+      }
       const expP = r2(openStockP + tP - litP), expD = r2(openStockD + tD - litD);
       const diffP = rInt(-R.stockDiffMax, R.stockDiffMax), diffD = rInt(-R.stockDiffMax, R.stockDiffMax);
-      const actP = r2(expP + diffP), actD = r2(expD + diffD);
+      // Dip chart ke andar ho to dip ke liters; chart se bahar ho to dip nahi banta -> actual = expected (koi farak nahi)
+      const snap = (type, l, exp) => { const dp = dipOf(type, l); return dp === null ? exp : r2(root.DipChart.getLiters(type, dp)); };
+      const actP = snap('petrol', r2(expP + diffP), expP), actD = snap('diesel', r2(expD + diffD), expD);
       stockP = actP; stockD = actD;
 
       const amtP = r2(litP * R.rateP), amtD = r2(litD * R.rateD);
@@ -110,15 +134,19 @@
 
       let udhar = 0;
       const nU = rInt(2, 5);
+      const entries = [];
+      if (pickup) entries.push({ p: bulk, veh: bulk.vehicles[0], litre: bulk.fixedLitre });
       for (let u = 0; u < nU; u++) {
         const p = parties[(i * 3 + u) % parties.length];
-        const veh = p.vehicles[(i + u) % p.vehicles.length];
-        const litre = r2(rInt(40, 140) + rInt(0, 99) / 100);
+        if (p.fixedLitre) continue;                             // bulk party sirf pickup din aati hai
+        entries.push({ p, veh: p.vehicles[(i + u) % p.vehicles.length], litre: r2(rInt(40, 140) + rInt(0, 99) / 100) });
+      }
+      entries.forEach(({ p, veh, litre }) => {
         const amount = r2(litre * R.rateD);
         udhar = r2(udhar + amount);
         partyBal[p.id] = r2(partyBal[p.id] + amount);
-        ledger.push({ partyId: p.id, partyName: p.name, date: dt, time: `1${u}:${pad(rInt(5, 55))}`, kind: 'udhar', vehicle: veh, fuel: 'diesel', rate: R.rateD, litre, amount, createdOn: dt, by: 'demo' });
-      }
+        ledger.push({ partyId: p.id, partyName: p.name, date: dt, time: `1${rInt(0, 9)}:${pad(rInt(5, 55))}`, kind: 'udhar', vehicle: veh, fuel: 'diesel', rate: R.rateD, litre, amount, createdOn: dt, by: 'demo' });
+      });
 
       const paytm = Math.round(saleAmt * (0.13 + Math.random() * 0.07) / 10) * 10;
       const swipe = Math.round(saleAmt * (0.03 + Math.random() * 0.03) / 10) * 10;
@@ -135,18 +163,23 @@
       pnb = r2(pnb - chai);
       let pnbTopup = 0;
       if (pnb < 5000) { pnbTopup = 20000; pnb = r2(pnb + pnbTopup); }
+      // PNB top-up galla se jata hai: ye ledger mein 'pump cash' jama hai (app ke calc mein bank-out)
+      if (pnbTopup) ledger.push({ partyId: 'bank_pnb', partyName: 'Punjab National Bank', date: dt, time: '18:40', kind: 'jama', mode: 'pump_cash', pumpCashDeposit: true, hisabVerified: true, payId: 'DEP-' + dt.replace(/-/g, '').slice(2) + '-PNB' + i, amount: pnbTopup, note: 'पंप का नकद कैश बैंक में जमा (गल्ला से) · [DEP-' + dt.replace(/-/g, '').slice(2) + '-PNB' + i + ']', createdOn: dt, by: 'demo' });
 
       const openCash = r2(cash);
-      let rem = r2(openCash + (saleAmt - udhar - paytm - swipe) + jCash - pnbTopup);
+      // App ke calc se bilkul match: close = open + sale + jCash - udhar - paytm - swipe - chai - bankOut(malik + pnb top-up)
+      let rem = r2(openCash + saleAmt + jCash - udhar - paytm - swipe - chai - pnbTopup);
 
       let malik = 0;
       if (rem > R.cashMin) { malik = Math.floor((rem - R.cashKeep) / R.malikBlock) * R.malikBlock; rem = r2(rem - malik); }
       sbi = r2(sbi + paytm + swipe + malik);
 
       if (tanker) {
-        const bill = r2(R.tankerL * R.buyP + R.tankerL * R.buyD);
-        invoices.push({ _id: 'inv_' + dt, date: dt, fuel: 'petrol+diesel', litre: R.tankerL * 2, petrolLitre: R.tankerL, dieselLitre: R.tankerL, petrolRate: R.buyP, dieselRate: R.buyD, amount: bill, paidFrom: 'SBI', status: 'paid', by: 'demo' });
-        sbi = r2(sbi - bill);
+        // App ka invoice format: ek fuel = ek bill (margins.js dekhta hai fuelType / litres / purchaseRate / amount)
+        const bp = r2(tP * R.buyP), bd = r2(tD * R.buyD);
+        invoices.push({ _id: 'inv_' + dt + '_p', date: dt, supplier: 'Tanker (Depot)', fuelType: 'petrol', litres: tP, purchaseRate: R.buyP, amount: bp, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
+        invoices.push({ _id: 'inv_' + dt + '_d', date: dt, supplier: 'Tanker (Depot)', fuelType: 'diesel', litres: tD, purchaseRate: R.buyD, amount: bd, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
+        sbi = r2(sbi - bp - bd);
       }
       if (sbi < 50000) {
         const amt = Math.ceil((50000 - sbi) / 100000) * 100000;
@@ -158,7 +191,8 @@
       days.push({
         _id: dt, date: dt, status: 'submitted', testing: R.testing, rateP: R.rateP, rateD: R.rateD,
         openCash, paytm, swipe, kharcha: 0, chaiKhana: chai, driverInaam: 0,
-        malikDiya: malik, sbiTopup: 0, pnbTopup, openStockP, openStockD, tankerP: tP, tankerD: tD,
+        malikDiya: malik, sbiTopup: 0, pnbTopup: 0, openStockP, openStockD, tankerP: tP, tankerD: tD,
+        dipP: dipOf('petrol', actP), dipD: dipOf('diesel', actD),
         nz,
         sum: {
           sale: saleAmt, litP, litD, close: cash, openCash,

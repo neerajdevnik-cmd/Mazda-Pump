@@ -128,7 +128,7 @@
     if (chainErr && !ds.exists) { main.innerHTML = APP.errBox('कल का हिसाब लोड नहीं हुआ: ' + (chainErr.message || chainErr)) + '<div class="btns" style="margin-top:10px"><button class="btn" onclick="APP.dayView(\'' + date + '\')">🔄 दोबारा कोशिश</button></div>'; return; }
 
     let d = ds.exists ? ds.data() : null;
-    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r)).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const rows = rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => !K.isOpening(r) && !r.autoBankSync && !r.linkedPartyId).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     if (!d) d = await newDay(date, ch);
     const frozen = ds.exists && ds.data().status === 'submitted';
     if (S.draft[date]) d = Object.assign({}, d, S.draft[date]);
