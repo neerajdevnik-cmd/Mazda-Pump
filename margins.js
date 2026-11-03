@@ -151,7 +151,7 @@
   /* ============ Invoice list view (viewer: read-only) ============ */
   APP.views.invoices = async function () {
     const main = $('#main'); if (!main) return;
-    if (S.role === 'salesman') return toast('अनुमति नहीं');
+    if (S.role === 'salesman' || S.role === 'manager') return toast('अनुमति नहीं');
     const viewer = APP.isViewer();
     main.innerHTML = '<p class="mut">बिल लोड हो रहा है…</p>';
     const from = shiftDate(today(), -90);
@@ -298,7 +298,7 @@
   const origMore = APP.views.more;
   APP.views.more = async function (arg) {
     if (origMore) await origMore.apply(this, arguments);
-    if (APP.isViewer() || S.role === 'salesman') return;
+    if (APP.isViewer() || S.role === 'salesman' || S.role === 'manager') return;
     const main = $('#main'); if (!main) return;
     if (document.querySelector('#invoices-more-btn')) return;
     const card = main.querySelector('#extra-more-card') || main.querySelector('.card');

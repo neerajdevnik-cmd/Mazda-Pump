@@ -128,7 +128,7 @@
           ${line('Paytm+स्वाइप', pm(num(d.paytm) + num(d.swipe)), { fs: 18 })}
           ${line('उधार दिया', pm(o.udhar), { fs: 18 })}
           ${line('DG/चाय/अन्य', pm(o.totalKharcha), { fs: 18 })}
-          ${line('SBI जमा', pm(d.malikDiya), { fs: 18 })}
+          ${line('मालिक को दिया', pm(d.malikDiya), { fs: 18 })}
           ${line('कुल', pm(gOut), { fs: 21, c: '#991b1b', s: 'font-weight:900;border:0' })}
         </div>
       </div>
@@ -140,7 +140,7 @@
   }
 
   function buildPage2(st, d, o) {
-    const ex = (K.khList ? K.khList(d) : []).concat(num(d.malikDiya) ? [{ label: 'मालिक को दिया (SBI जमा)', amount: num(d.malikDiya) }] : []);
+    const ex = (K.khList ? K.khList(d) : []).concat(num(d.malikDiya) ? [{ label: 'मालिक को दिया', amount: num(d.malikDiya) }] : []);
     
     const th = (t, al, w) => '<th style="padding:4px 5px;color:#fff;text-align:' + al + ';font-weight:700;background:' + NAVY + ';' + (w ? 'width:' + w + ';' : '') + '">' + t + '</th>';
     const tHead = '<tr>' + th('समय', 'left', '60px') + th('पार्टी', 'left') + th('विवरण', 'left', '300px') + th('उधार ₹', 'right', '110px') + th('जमा ₹', 'right', '110px') + '</tr>';

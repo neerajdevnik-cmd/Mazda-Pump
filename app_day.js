@@ -228,7 +228,7 @@
       </div>
       <div class="row">
         <div><div class="lh"><label>चाय-खाना</label>${splitBtn('chaiKhana')}</div>${inp('f-chaiKhana', d.chaiKhana)}</div>
-        <div><div class="lh"><label>मालिक को दिया (SBI जमा)</label></div>${inp('f-malikDiya', d.malikDiya)}</div>
+        <div><div class="lh"><label>मालिक को दिया</label></div>${inp('f-malikDiya', d.malikDiya)}</div>
       </div>
       <div class="lh" style="margin-top:10px"><label>और खर्चे (हर चीज़ अलग लिखें)</label></div>
       <div id="expbox"></div>
@@ -474,7 +474,7 @@
           ${kvEl('Paytm + स्वाइप', money(num(d.paytm) + num(d.swipe)))}
           ${kvEl('उधार दिया', money(o.udhar))}
           ${kvEl('DG/चाय/अन्य', money(o.totalKharcha))}
-          ${kvEl('SBI जमा', money(d.malikDiya))}
+          ${kvEl('मालिक को दिया', money(d.malikDiya))}
           <div class="kv" style="border-top:1px solid #fecaca; margin-top:4px; padding-top:4px; font-weight:bold; color:#991b1b; border-bottom:0;"><span>कुल खर्चा</span><b>${money(gallaOut)}</b></div>
         </div>
       </div>

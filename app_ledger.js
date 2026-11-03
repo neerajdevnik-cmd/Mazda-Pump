@@ -70,6 +70,7 @@
       }
     });
     banks.sort((a, b) => (a.id === 'bank_sbi' ? -1 : 1));
+    if (S.role === 'manager') return others; // manager ko bank ledger nahi dikhega
     return banks.concat(others);
   };
 

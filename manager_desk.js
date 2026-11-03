@@ -64,7 +64,7 @@
         ${kv('+ आज की सेल', money(o.sale))}
         ${kv('- आज का उधार', money(o.udhar))}
         ${kv('- खर्चा (DG/चाय/अन्य)', money(o.totalKharcha))}
-        ${kv('- बैंक/मालिक को दिया', money(d.malikDiya))}
+        ${kv('मालिक को दिया', money(d.malikDiya))}
         <div class="kv" style="border:0; border-top:2px solid #ddd; margin-top:8px; padding-top:8px;">
           <span style="font-weight:bold; font-size:15px;">होना चाहिए (Expected)</span>
           <b style="font-size:18px; color:#0b3d91;">${money(expectedCash)}</b>
@@ -107,7 +107,7 @@
         <h3>💸 कैश गया (Cash Out)</h3>
         ${kv('आज का खर्चा (DG/चाय)', money(o.totalKharcha))}
         ${kv('निजी उधार दिया', money(privRows.filter(r=>r.kind==='udhar').reduce((a,b)=>a+num(b.amount),0)))}
-        ${kv('बैंक जमा', money(d.malikDiya))}
+        ${kv('मालिक को दिया', money(d.malikDiya))}
         <div class="btns">
           <button class="btn w" id="md-add-exp">+ खर्चा</button>
           <button class="btn w" id="md-add-priv">+ निजी उधार</button>
