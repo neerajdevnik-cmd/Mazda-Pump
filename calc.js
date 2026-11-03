@@ -1,4 +1,4 @@
-/* गणितीय गणना व हिसाब इंजन */
+/* गणितीय गणना व हिसाब इंजन (Mazda V2: Bank-as-Party Architecture + Auto SBI/PNB Sync + Chain Engine) */
 (function () {
   'use strict';
   const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
@@ -7,6 +7,9 @@
   const isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
   const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
   const activeNz = () => { const a = (window.CFG || {}).activeNozzles; return (Array.isArray(a) && a.length) ? NZ.filter(k => a.includes(k)) : NZ.slice(); };
+
+  const BANK_IDS = ['bank_sbi', 'bank_pnb'];
+  const isBankParty = p => !!p && (p.isBank === true || BANK_IDS.includes(p.id) || /state bank of india|punjab national bank/i.test(String(p.name || p.partyName || '')));
 
   const KH = { kharcha: 'DG (जनरेटर)', driverInaam: 'ड्राइवर इनाम', chaiKhana: 'चाय-खाना' };
   const KH_NONAME = 'अन्य (नाम नहीं लिखा)';
@@ -21,17 +24,16 @@
     return out;
   }
   const khTotal = d => r2(khList(d).reduce((a, x) => a + x.amount, 0));
-  function khSummary(days, withMalik) {
+  function khSummary(days) {
     const m = {};
     (days || []).forEach(d => {
       khList(d).forEach(x => { const k = x.label.toLowerCase(); (m[k] = m[k] || { label: x.label, amount: 0 }).amount += x.amount; });
-      if (withMalik && num(d.malikDiya)) { const k = 'मालिक को दिया (sbi जमा)'; (m[k] = m[k] || { label: 'मालिक को दिया (SBI जमा)', amount: 0 }).amount += num(d.malikDiya); }
     });
     return Object.keys(m).map(k => ({ label: m[k].label, amount: r2(m[k].amount) })).sort((a, b) => b.amount - a.amount);
   }
 
   function compute(d, rows) {
-    rows = (rows || []).filter(r => !isOpening(r));
+    rows = (rows || []).filter(r => !isOpening(r) && !r.autoBankSync && !r.directBankJama);
     const t = has(d.testing) ? num(d.testing) : 5;
     const rateP = num(d.rateP), rateD = num(d.rateD);
     const nz = {};
@@ -67,9 +69,15 @@
     const amtD = r2(litD * rateD);
     const sale = r2(amtP + amtD);
 
-    let jCash = 0, jPaytm = 0, jSwipe = 0, jBank = 0, udhar = 0;
+    let jCash = 0, jPaytm = 0, jSwipe = 0, jBank = 0, udhar = 0, bankCashDeposit = 0;
     rows.forEach(r => {
       const a = num(r.amount);
+      if (r.pumpCashDeposit || (isBankParty({ id: r.partyId, name: r.partyName }) && r.kind === 'jama' && r.mode === 'pump_cash')) {
+        bankCashDeposit += a;
+        return;
+      }
+      if (isBankParty({ id: r.partyId, name: r.partyName })) return;
+
       if (r.kind === 'jama') {
         if (r.mode === 'cash') jCash += a;
         else if (r.mode === 'paytm') jPaytm += a;
@@ -85,34 +93,33 @@
     const paytm = num(d.paytm);
     const swipe = num(d.swipe);
     const totalKharcha = khTotal(d);
-    const malikDiya = num(d.malikDiya);
+    const bankOut = r2(num(d.malikDiya) + bankCashDeposit);
 
-    const close = r2(kul - paytm - swipe - udhar - totalKharcha - malikDiya);
+    const close = r2(kul - paytm - swipe - udhar - totalKharcha - bankOut);
 
     const openStockP = num(d.openStockP), openStockD = num(d.openStockD);
     const tankerP = num(d.tankerP), tankerD = num(d.tankerD);
-    
+
     const expStockP = r2(openStockP + tankerP - litP);
     const expStockD = r2(openStockD + tankerD - litD);
-    
+
     let actStockP = null, actStockD = null;
     if (window.DipChart) {
-       if (has(d.dipP)) actStockP = r2(window.DipChart.getLiters('petrol', d.dipP));
-       if (has(d.dipD)) actStockD = r2(window.DipChart.getLiters('diesel', d.dipD));
+      if (has(d.dipP)) actStockP = r2(window.DipChart.getLiters('petrol', d.dipP));
+      if (has(d.dipD)) actStockD = r2(window.DipChart.getLiters('diesel', d.dipD));
     }
-    
+
     const diffP = (actStockP !== null && expStockP !== null) ? r2(actStockP - expStockP) : null;
     const diffD = (actStockD !== null && expStockD !== null) ? r2(actStockD - expStockD) : null;
 
     return {
       filled, nz, litP, litD, amtP, amtD, sale,
-      jCash, jPaytm, jSwipe, jBank, udhar,
+      jCash, jPaytm, jSwipe, jBank, udhar, bankCashDeposit: bankOut,
       totalKharcha, kul, close,
       expStockP, expStockD, actStockP, actStockD, diffP, diffD, warn
     };
   }
 
-  /* ---------- पार्टी स्टेटमेंट (FIXED: Opening Balance included in Totals) ---------- */
   function stmt(rows, from, to) {
     rows = (rows || []).slice().sort((a, b) => {
       const da = String(a.date || ''), db = String(b.date || '');
@@ -121,100 +128,39 @@
       if (oa !== ob) return oa - ob;
       return String(a.time || '').localeCompare(String(b.time || ''));
     });
-
-    let open = 0;
-    const inRange = [];
-    let lastJama = null, lastUdhar = null;
-
+    let open = 0, dr = 0, cr = 0, run = 0;
+    const out = [];
     rows.forEach(r => {
-      const d = r.date || '';
-      const a = num(r.amount);
-      const isOp = isOpening(r);
-
-      if (!isOp) {
-        if (r.kind === 'jama') lastJama = r;
-        else if (r.kind === 'udhar') lastUdhar = r;
-      }
-
-      if ((from && d < from) || (from && d === from && isOp)) {
-        if (r.kind === 'udhar') open += a;
-        else if (r.kind === 'jama') open -= a;
-      } else if (!to || d <= to) {
-        if (!from && isOp && inRange.length === 0) {
-          if (r.kind === 'udhar') open += a;
-          else if (r.kind === 'jama') open -= a;
-        } else {
-          inRange.push(r);
-        }
-      }
+      const s = signed(r);
+      if (from && r.date < from) { open = r2(open + s); run = open; return; }
+      if (to && r.date > to) return;
+      run = r2(run + s);
+      if (r.kind === 'udhar') dr = r2(dr + num(r.amount));
+      else cr = r2(cr + num(r.amount));
+      out.push(Object.assign({}, r, { run }));
     });
-
-    let run = open;
-    let totU = open > 0 ? open : 0;
-    let totJ = open < 0 ? Math.abs(open) : 0;
-    let litP = 0, litD = 0;
-    
-    const out = inRange.map(r => {
-      const a = num(r.amount);
-      const l = num(r.litre);
-      if (r.kind === 'udhar') {
-        run += a; totU += a;
-        if (r.fuel === 'petrol') litP += l;
-        else if (r.fuel === 'diesel' || l > 0) litD += l;
-      } else if (r.kind === 'jama') {
-        run -= a; totJ += a;
-      }
-      return Object.assign({}, r, { run: r2(run) });
-    });
-
-    return {
-      open: r2(open),
-      rows: out,
-      totU: r2(totU),
-      totJ: r2(totJ),
-      close: r2(run),
-      litP: r2(litP),
-      litD: r2(litD),
-      totLit: r2(litP + litD),
-      lastJama,
-      lastUdhar
-    };
+    return { open, dr, cr, close: run, rows: out };
   }
 
-  function signed(e) {
-    const a = num(e.amount);
-    return e.kind === 'udhar' ? a : -a;
-  }
-
-  function validate(d, rows, ctx) {
-    ctx = ctx || {};
+  function validate(d, rows, opts) {
+    opts = opts || {};
+    const c = compute(d, rows);
     const errors = [], warns = [];
-    const o = (window.Calc && window.Calc.compute ? window.Calc.compute : compute)(d, rows);
-    activeNz().forEach(k => {
-      const n = (d.nz && d.nz[k]) || {}, L = k.toUpperCase();
-      if (!has(n.o)) errors.push(L + ': ओपनिंग नहीं है (कल की क्लोज़िंग खाली थी?)');
-      else if (!has(n.c)) errors.push(L + ': क्लोज़िंग नहीं भरी — नोज़ल बंद रहा तो ओपनिंग जितनी ही लिखें');
-      else if (!o.nz[k].ok) errors.push(L + ': क्लोज़िंग (' + num(n.c) + ') ओपनिंग (' + num(n.o) + ') से कम है');
-    });
-    if (!(num(d.rateP) > 0) || !(num(d.rateD) > 0)) errors.push('पेट्रोल / डीज़ल का रेट भरें');
-    [['P', 'petrol', 'पेट्रोल'], ['D', 'diesel', 'डीज़ल']].forEach(x => {
-      const dip = d['dip' + x[0]];
-      if (!has(dip) || !(num(dip) > 0)) { errors.push(x[2] + ' की डिप नहीं डाली — स्टॉक का मिलान डिप से ही होता है'); return; }
-      const mx = window.DipChart && window.DipChart.maxDip ? window.DipChart.maxDip(x[1]) : 0;
-      if (mx && num(dip) > mx) errors.push(x[2] + ' डिप ' + num(dip) + ' चार्ट की सीमा (' + mx + ') से ज़्यादा है — दोबारा देखें');
-    });
-    const tol = num((window.CFG || {}).stockTolerance) || 25;
-    [['P', 'पेट्रोल'], ['D', 'डीज़ल']].forEach(x => {
-      const df = o['diff' + x[0]];
-      if (df !== null && Math.abs(df) > tol) warns.push(x[1] + ' स्टॉक में फर्क ' + (df > 0 ? '+' : '') + r2(df) + ' L (सीमा ' + tol + ' L)');
-    });
-    if (o.close < 0) warns.push('आज का बचा कैश माइनस है: ' + o.close);
-    if (!has(d.physicalCash)) warns.push('दराज़ का असली नकद गिनकर नहीं डाला');
-    else { const df = r2(num(d.physicalCash) - o.close); if (Math.abs(df) >= 1) warns.push('असली नकद और हिसाब में ' + (df > 0 ? 'ज़्यादा' : 'कम') + ' ₹' + Math.abs(df)); }
-    if (ctx.prevPending) (ctx.isOwner ? warns : errors).push('पिछला दिन (' + ctx.prevPending + ') अभी जमा नहीं हुआ — पहले उसे जमा करें');
-    if (ctx.gap > 0) warns.push(ctx.prevDate + ' के बाद ' + ctx.gap + ' दिन का हिसाब नहीं बना');
-    return { errors, warns, o };
+    if (c.filled < activeNz().length) errors.push(`सभी ${activeNz().length} नोज़ल की ओपनिंग और क्लोज़िंग भरें (${c.filled} भरे हैं)`);
+    c.warn.forEach(w => errors.push(w));
+    if (!(num(d.rateP) > 0) || !(num(d.rateD) > 0)) errors.push('पेट्रोल और डीज़ल दोनों का रेट भरें');
+    if (!has(d.dipP) || !has(d.dipD)) warns.push('पेट्रोल या डीज़ल की आज की डिप नहीं भरी है');
+    if (opts.prevPending) warns.push(`कल (${opts.prevPending}) का हिसाब अभी लॉक नहीं है`);
+    if (opts.gap > 0) warns.push(`${opts.prevDate} के बाद ${opts.gap} दिन का हिसाब छूटा हुआ है`);
+    return { errors, warns };
   }
 
-  window.Calc = { activeNz, validate, isOpening, num, r2, has, NZ, compute, stmt, signed, KH, khList, khTotal, khSummary };
+  const signed = e => !e ? 0 : (e.kind === 'udhar' ? r2(num(e.amount)) : -r2(num(e.amount)));
+
+  window.Calc = {
+    num, r2, has, isOpening, NZ, activeNz,
+    KH, khList, khTotal, khSummary,
+    compute, stmt, validate, signed,
+    BANK_IDS, isBankParty
+  };
 })();
