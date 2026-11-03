@@ -68,7 +68,7 @@
     let sbi = opts.openSBI ?? R.openSBI, pnb = opts.openPNB ?? R.openPNB;
     const injections = [];
     let jamaRR = 0;
-    let nextTanker = 2;                                        // tanker ka agla din (random gap 2-5 din)
+    let nextTanker = 2, lastT = -10;                                        // tanker ka agla din (random gap 2-5 din)
     const bulk = parties.find(p => p.fixedLitre) || null;   // pickup party (jaise 800 L wali gaadi)
     const dipOf = (type, liters) => {                          // app ke dip chart se ulta dip nikalo
       const DC = root.DipChart; if (!DC || !(liters > 0)) return null;
@@ -84,6 +84,29 @@
       const prevD = parseD(dates[0]); prevD.setDate(prevD.getDate() - 1);
       const prev = fmt(prevD);
       // stock ko dip-chart ke liters par snap karo (app dip se hi stock padhta hai)
+      const roundK = n => Math.round(n / 1000) * 1000;
+      let cashPre = 0;
+      const jamaModes = ['cash', 'neft', 'cheque'];
+      parties.forEach((p, idx) => {
+        const od = roundK(rInt(150000, 300000));                 // pichla baaki (opening)
+        ledger.push({ partyId: p.id, partyName: p.name, date: prev, time: '09:00', kind: 'udhar', opening: true, note: 'Opening Balance', amount: od, createdOn: prev, by: 'demo' });
+        partyBal[p.id] = r2(partyBal[p.id] + od);
+        const amt = roundK(rInt(50000, 100000));                 // is din ka jama
+        const mode = jamaModes[idx % 3];
+        partyBal[p.id] = r2(partyBal[p.id] - amt);
+        if (mode === 'cash') {
+          cashPre = r2(cashPre + amt);
+          ledger.push({ partyId: p.id, partyName: p.name, date: prev, time: '11:00', kind: 'jama', mode: 'cash', amount: amt, note: 'नकद जमा (पंप पर)', createdOn: prev, by: 'demo' });
+        } else {
+          const payMode = mode === 'neft' ? 'NEFT' : 'Cheque';
+          const bankRef = mode === 'cheque' ? 'CHQ-' + rInt(100000, 999999) : '';
+          const payId = 'PAY-' + prev.replace(/-/g, '').slice(2) + '-' + idx + (mode === 'neft' ? 'N' : 'C');
+          // party ka row (app ke "सीधे बैंक में जमा" jaisa) + bank ka mirror row
+          ledger.push({ partyId: p.id, partyName: p.name, date: prev, time: '12:00', kind: 'jama', mode: 'bank', directBankJama: true, bankTarget: 'bank_sbi', bankTargetName: 'State Bank of India', payMode, bankRef, payId, amount: amt, note: `बैंक में जमा (SBI · ${payMode}${bankRef ? ' · ' + bankRef : ''}) · कोड: ${payId}`, createdOn: prev, by: 'demo' });
+          ledger.push({ partyId: 'bank_sbi', partyName: 'State Bank of India', date: prev, time: '12:00', kind: 'jama', mode: 'bank', payMode, bankRef, payId, linkedPartyId: p.id, linkedPartyName: p.name, directBankJama: true, autoBankSync: true, hisabVerified: true, amount: amt, note: `पार्टी जमा: ${p.name} · ${payMode}${bankRef ? ' (' + bankRef + ')' : ''} · कोड: ${payId}`, createdOn: prev, by: 'demo' });
+        }
+      });
+      cash = cashPre;                                            // 1 Aug ki opening cash = 31 July ka cash
       const pdP = dipOf('petrol', stockP), pdD = dipOf('diesel', stockD);
       if (pdP !== null) stockP = r2(root.DipChart.getLiters('petrol', pdP));
       if (pdD !== null) stockD = r2(root.DipChart.getLiters('diesel', pdD));
@@ -93,9 +116,9 @@
         openCash: 0, paytm: 0, swipe: 0, kharcha: 0, chaiKhana: 0, driverInaam: 0,
         malikDiya: 0, sbiTopup: 0, pnbTopup: 0, openStockP: stockP, openStockD: stockD, tankerP: 0, tankerD: 0,
         nz: Object.fromEntries(KEYS.map(k => [k, { o: M[k], c: M[k], t: 0 }])),
-        sum: { sale: 0, litP: 0, litD: 0, close: 0, openCash: 0, actStockP: stockP, actStockD: stockD,
+        sum: { sale: 0, litP: 0, litD: 0, close: cashPre, openCash: 0, actStockP: stockP, actStockD: stockD,
           expStockP: stockP, expStockD: stockD, diffP: 0, diffD: 0, udhar: 0, totalKharcha: 0, jCash: 0,
-          amtP: 0, amtD: 0, sbiBal: sbi, pnbBal: pnb },
+          amtP: 0, amtD: 0, jCash: cashPre, sbiBal: sbi, pnbBal: pnb },
         by: "demo"
       });
     }
@@ -114,13 +137,27 @@
       if (litP > R.capP || litD > R.capD) throw new Error('Cap cross: ' + litP + ' / ' + litD);
 
       const openStockP = stockP, openStockD = stockD;
-      // Tanker: random gap (2-5 din), quantity = stock ko random target tak lane ke liye, 1000 ke guna mein
-      const tanker = i >= nextTanker;
+      // Tanker: ek tanker = 12000 L (3 x 4000 ya 4 x 3000 chamber). Dono configs mein se wo chuno jo
+      // petrol aur diesel ki need se sabse kareeb ho. Gap random 2-5 din.
+      const low = (openStockD - litD) < 4500 || (openStockP - litP) < 2500;   // stock kam: min 2 din baad tanker
+      const gap = i - lastT, totLeft = (openStockP - litP) + (openStockD - litD);
+      // gap 2-5 din; scheduled din par stock bahut bhara ho to 1 din ruk jaata hai (5 din se zyada nahi)
+      const tanker = gap >= 2 && (low || (i >= nextTanker && totLeft <= 14000) || gap >= 5);
       let tP = 0, tD = 0;
       if (tanker) {
-        tP = Math.max(1000, Math.round((rInt(8000, 10000) - (openStockP - litP)) / 1000) * 1000);
-        tD = Math.max(1000, Math.round((rInt(12000, 15000) - (openStockD - litD)) / 1000) * 1000);
-        nextTanker = i + rInt(2, 5);
+        const pNeed = rInt(8000, 10000) - (openStockP - litP);
+        const dNeed = rInt(12000, 15000) - (openStockD - litD);
+        let best = null;
+        [{ n: 3, size: 4000 }, { n: 4, size: 3000 }].forEach(cfg => {
+          for (let cd = 0; cd <= cfg.n; cd++) {               // cd = diesel ke chambers
+            const dq = cd * cfg.size, pq = (cfg.n - cd) * cfg.size;
+            const after = (openStockP - litP + pq) > 12500 || (openStockD - litD + dq) > 19000;   // dip chart ki limit ke andar
+            const score = Math.abs(dNeed - dq) + Math.abs(pNeed - pq) + (after ? 1e6 : 0);
+            if (!best || score < best.score) best = { score, dq, pq };
+          }
+        });
+        tD = best.dq; tP = best.pq;
+        nextTanker = i + rInt(2, 5); lastT = i;
       }
       const expP = r2(openStockP + tP - litP), expD = r2(openStockD + tD - litD);
       const diffP = rInt(-R.stockDiffMax, R.stockDiffMax), diffD = rInt(-R.stockDiffMax, R.stockDiffMax);
@@ -177,8 +214,8 @@
       if (tanker) {
         // App ka invoice format: ek fuel = ek bill (margins.js dekhta hai fuelType / litres / purchaseRate / amount)
         const bp = r2(tP * R.buyP), bd = r2(tD * R.buyD);
-        invoices.push({ _id: 'inv_' + dt + '_p', date: dt, supplier: 'Tanker (Depot)', fuelType: 'petrol', litres: tP, purchaseRate: R.buyP, amount: bp, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
-        invoices.push({ _id: 'inv_' + dt + '_d', date: dt, supplier: 'Tanker (Depot)', fuelType: 'diesel', litres: tD, purchaseRate: R.buyD, amount: bd, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
+        if (tP > 0) invoices.push({ _id: 'inv_' + dt + '_p', date: dt, supplier: 'Tanker (Depot)', fuelType: 'petrol', litres: tP, purchaseRate: R.buyP, amount: bp, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
+        if (tD > 0) invoices.push({ _id: 'inv_' + dt + '_d', date: dt, supplier: 'Tanker (Depot)', fuelType: 'diesel', litres: tD, purchaseRate: R.buyD, amount: bd, tankerNo: '', invoiceNo: '', paidFrom: 'SBI', by: 'demo' });
         sbi = r2(sbi - bp - bd);
       }
       if (sbi < 50000) {
