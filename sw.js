@@ -1,4 +1,4 @@
-const V = 'mazda-v110';
+const V = 'mazda-v111';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js', 'assistant.js', 'assistant_brain.js',
@@ -19,7 +19,7 @@ const SHELL = [
   'features_core.js', 'features_utils.js', 'features_custom.js',
 
   // 👑 Multi-Pump SaaS, Super Admin & PRO Features Files
-  'multi_pump.js', 'super_admin.js', 'pro_features.js'
+  'multi_pump.js', 'super_admin.js', 'pro_features.js', 'super_admin_v2.js', 
 ];
 
 self.addEventListener('install', e => {
