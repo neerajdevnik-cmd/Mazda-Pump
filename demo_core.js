@@ -536,7 +536,7 @@
   }
 
   setInterval(() => {
-    if (isAuthorized()) { injectPanel(); startBankAutoSync(); }
+    if (isAuthorized()) { injectPanel(); }   // auto-listener band: har change par poori collections padhta tha (read quota)
   }, 1000);
 
   console.log('[BankSync] Super Admin panel & bank sync loaded ✓');
