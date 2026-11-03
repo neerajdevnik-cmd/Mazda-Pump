@@ -1,8 +1,8 @@
 /* =========================================================================
-   SUPER_ADMIN.JS - COMPLETE VERSION (3-IN-1 MASTER CONTROL)
-   1. 🔄 Auto-Fix & Sync All Days Hisab (Purani entry badalne par 1 click me sab sahi kare)
-   2. 🚀 Realistic Demo Data Generator (1 June se Aaj tak - Register Match)
-   3. ⚠️ Clear Pump Data (Factory Reset - Zero Ledger, Bank, Stock & Delete Private Parties)
+   SUPER_ADMIN.JS - ULTIMATE ACCURATE ENGINE (SBI / PNB COMPLETE SYNC)
+   1. 🔄 Auto-Fix & Sync All Days Hisab (Chain Sync + Full Bank Re-ledgering)
+   2. 🚀 Realistic Demo Data Generator (Paytm/Swipe/Cash -> SBI | Kharcha -> PNB)
+   3. ⚠️ Clear Pump Data (Zero All, Delete Private Parties, Reset SBI/PNB)
    ========================================================================= */
 (function () {
   'use strict';
@@ -41,12 +41,12 @@
   }
 
   // =========================================================================
-  // BUTTON 1: AUTO-FIX & SYNC ALL DAYS HISAB (CHAIN ENGINE)
+  // BUTTON 1: AUTO-FIX & SYNC ALL DAYS (INCLUDING SBI & PNB COMPLETE AUDIT)
   // =========================================================================
   async function autoFixAllDaysChain() {
-    if (!confirm('🔄 क्या आप शुरू से आज तक का पूरा हिसाब (पिछला कैश AD, मीटर रीडिंग, स्टॉक और पार्टी बैलेंस) एक साथ ऑटो-फिक्स और सिंक करना चाहते हैं?')) return;
+    if (!confirm('🔄 क्या आप शुरू से आज तक का पूरा हिसाब (AD कैश, मीटर, स्टॉक, पार्टी खाता और SBI/PNB बैंक लेजर) सिंक व ऑटो-फिक्स करना चाहते हैं?')) return;
 
-    const prog = showProgress('⏳ हिसाब ऑटो-फिक्स हो रहा है...', 'कृपया प्रतीक्षा करें, शुरू से आज तक की चेन मिलाई जा रही है...');
+    const prog = showProgress('⏳ पूरा हिसाब व बैंक सिंक हो रहा है...', 'SBI और PNB के लेजर व दिनों की चेन मिलाई जा रही है...');
     const db = getDB();
     const APP = window.APP || {};
 
@@ -69,12 +69,19 @@
         if (r.date) {
           (rowsByDate[r.date] = rowsByDate[r.date] || []).push(r);
         }
-        if (r.partyId && !r.autoBankSync) {
+        if (r.partyId) {
           const amt = num(r.amount);
-          if (r.kind === 'udhar' || r.opening === true) {
-            partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) + amt);
-          } else if (r.kind === 'jama') {
-            partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) - amt);
+          if (r.partyId === 'bank_sbi' || r.partyId === 'bank_pnb') {
+            // Bank balances: jama increases bank balance (+), udhar/kharcha decreases (-)
+            if (r.kind === 'jama') partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) + amt);
+            else if (r.kind === 'udhar') partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) - amt);
+          } else {
+            // Customer Party balances: udhar increases customer debt (+), jama decreases (-)
+            if (r.kind === 'udhar' || r.opening === true) {
+              partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) + amt);
+            } else if (r.kind === 'jama') {
+              partyBalMap[r.partyId] = r2((partyBalMap[r.partyId] || 0) - amt);
+            }
           }
         }
       });
@@ -194,10 +201,9 @@
         if (ops >= 350) await commitBatch();
       }
 
-      // Sync all party balances accurately
+      // Update parties & bank balances
       partiesSnap.docs.forEach(pDoc => {
         const pid = pDoc.id;
-        if (pid === 'bank_sbi' || pid === 'bank_pnb') return;
         const newBal = r2(partyBalMap[pid] || 0);
         batch.update(pDoc.ref, { bal: newBal });
         ops++;
@@ -205,7 +211,7 @@
 
       await commitBatch();
       prog.close();
-      alert('✅ पूरा हिसाब (शुरू से आज तक के सारे दिन, कैश, मीटर, स्टॉक और पार्टी खाता) 100% ऑटो-फिक्स हो गया है!');
+      alert('✅ हिसाब, मीटर, स्टॉक, पार्टियां और SBI/PNB बैंक लेजर 100% सिंक हो चुके हैं!');
       location.reload();
     } catch (e) {
       prog.close();
@@ -216,22 +222,22 @@
   }
 
   // =========================================================================
-  // BUTTON 2: CLEAR PUMP DATA (ZERO ALL & DELETE PRIVATE PARTIES)
+  // BUTTON 2: CLEAR PUMP DATA (RESET EVERYTHING TO ZERO)
   // =========================================================================
   async function clearPumpData() {
     const code = prompt(
       '⚠️ सावधान: क्या आप पंप का सारा डेटा ZERO करना चाहते हैं?\n\n' +
-      '• सारे दिनों का हिसाब, लेजर और बैंक जमा जीरो हो जाएंगे।\n' +
-      '• निजी (Private) पार्टियाँ हमेशा के लिए डिलीट हो जाएंगी।\n' +
-      '• मुख्य पार्टियाँ वैसी ही रहेंगी, बस उनका बैलेंस 0 हो जाएगा।\n\n' +
+      '• सारे दिनों का हिसाब, लेजर, खर्चे और SBI/PNB बैंक एंट्री जीरो हो जाएंगे।\n' +
+      '• निजी (Private) पार्टियाँ हमेशा के लिए हट जाएंगी।\n' +
+      '• मुख्य पार्टियाँ सुरक्षित रहेंगी और उनका बैलेंस 0 हो जाएगा।\n\n' +
       'कन्फर्म करने के लिए बड़े अक्षरों में लिखें: RESET'
     );
     if (code !== 'RESET') {
-      if (code !== null) alert('रीसेट रद्द कर दिया गया (आपने RESET नहीं लिखा)।');
+      if (code !== null) alert('रीसेट रद्द कर दिया गया।');
       return;
     }
 
-    const prog = showProgress('⏳ पंप डेटा Zero हो रहा है...', 'पुराना लेजर, हिसाब और बैंक साफ किए जा रहे हैं...');
+    const prog = showProgress('⏳ पंप डेटा Zero हो रहा है...', 'पुराना लेजर, हिसाब, बैंक और खर्चे साफ किए जा रहे हैं...');
     const db = getDB();
     const APP = window.APP || {};
 
@@ -259,7 +265,6 @@
         }
       }
 
-      // Private parties delete & main parties balance = 0
       const pSnap = await db.collection('parties').get();
       let pb = db.batch(), pCount = 0;
       for (const doc of pSnap.docs) {
@@ -274,12 +279,12 @@
       }
       if (pCount > 0) await pb.commit();
 
-      // Ensure SBI & PNB are at 0
+      // Banks Reset to 0
       await db.collection('parties').doc('bank_sbi').set({ name: 'State Bank of India', isBank: true, pinned: true, bankCode: 'SBI', bal: 0 }, { merge: true });
       await db.collection('parties').doc('bank_pnb').set({ name: 'Punjab National Bank', isBank: true, pinned: true, bankCode: 'PNB', bal: 0 }, { merge: true });
 
       prog.close();
-      alert('✅ पंप का सारा डेटा Zero हो चुका है! सभी मुख्य पार्टियाँ सुरक्षित हैं और उनका बैलेंस ₹0 से शुरू हो गया है।');
+      alert('✅ पंप का सारा डेटा Zero हो चुका है!');
       location.reload();
     } catch (e) {
       prog.close();
@@ -290,19 +295,19 @@
   }
 
   // =========================================================================
-  // BUTTON 3: REALISTIC DEMO DATA (1 JUNE 2026 SE AAJ TAK)
+  // BUTTON 3: REALISTIC DEMO DATA (FULL SBI & PNB LEDGER AUTOMATION)
   // =========================================================================
   async function generateRealisticData() {
     if (!confirm(
-      '🚀 क्या आप 1 जून से आज तक का बिल्कुल असली रजिस्टर जैसा डेटा भरना चाहते हैं?\n\n' +
-      '• June-July रेट: P ₹100.27 | D ₹95.70\n' +
-      '• Aug-Sep रेट: P ₹100.20 | D ₹95.66\n' +
-      '• Oct-Nov रेट: P ₹100.23 | D ₹96.68\n' +
-      '• टैंकर नियम: एक बार में कुल 12,000 लीटर\n' +
-      '• बिना रुपये टूटे 100% सटीक हिसाब!'
+      '🚀 क्या आप 1 जून से आज तक का 100% सटीक डेटा भरना चाहते हैं?\n\n' +
+      '• Paytm & Swipe -> सीधा SBI बैंक खाते में जमा होगा\n' +
+      '• गल्ला से SBI खैरना बैंक जमा -> गल्ले से माइनस + SBI में जमा एंट्री\n' +
+      '• पार्टी बैंक ट्रांसफर (NEFT) -> SBI में जमा एंट्री\n' +
+      '• DG जनरेटर, चाय-खाना, ड्राइवर इनाम -> PNB बैंक खर्चे में दर्ज होगा\n' +
+      '• 2-महीने वाले रेट और 12,000L टैंकर नियम सहित बिना पैसे टूटे!'
     )) return;
 
-    const prog = showProgress('⏳ 1 जून से आज तक का डेटा बन रहा है...', 'रजिस्टर के हिसाब से एंट्री हो रही है...');
+    const prog = showProgress('⏳ 1 जून से आज तक का डेटा बन रहा है...', 'रजिस्टर, गल्ला, पार्टी व SBI/PNB बैंक लेजर लिखे जा रहे हैं...');
     const db = getDB();
     const APP = window.APP || {};
 
@@ -322,7 +327,7 @@
         if (count > 0) await b.commit();
       }
 
-      // 2. Register ki Asli Parties banayein
+      // 2. Asli Parties + Pinned SBI & PNB
       const realParties = [
         { id: 'p_pappu', name: 'पप्पू सिंह अधिकारी', phone: '9412097690', vehicles: ['9769', '6637', '0783'], bal: 0 },
         { id: 'p_paras', name: 'पारस सती', phone: '9758200211', vehicles: ['2002 CB', '2002 CC'], bal: 0 },
@@ -341,11 +346,16 @@
         partyBal[p.id] = 0;
         bP.set(db.collection('parties').doc(p.id), { ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       });
+
+      // SBI and PNB initial balance
+      let sbiBal = 0;
+      let pnbBal = 0;
+
       bP.set(db.collection('parties').doc('bank_sbi'), { name: 'State Bank of India', isBank: true, pinned: true, bankCode: 'SBI', bal: 0 });
       bP.set(db.collection('parties').doc('bank_pnb'), { name: 'Punjab National Bank', isBank: true, pinned: true, bankCode: 'PNB', bal: 0 });
       await bP.commit();
 
-      // 3. Rate History save karein
+      // 3. Rate History save
       let bH = db.batch();
       bH.set(db.collection('rate_history').doc('2026-06-01'), { date: '2026-06-01', rateP: 100.27, rateD: 95.70 });
       bH.set(db.collection('rate_history').doc('2026-08-01'), { date: '2026-08-01', rateP: 100.20, rateD: 95.66 });
@@ -353,7 +363,7 @@
       bH.set(db.collection('config').doc('rates'), { petrol: 100.23, diesel: 96.68, date: '2026-10-01' }, { merge: true });
       await bH.commit();
 
-      // 4. 1 June 2026 se Aaj ki tarikh tak list banayein
+      // 4. Date range: 1 June 2026 se Aaj tak
       const startDate = new Date('2026-06-01T12:00:00');
       const now = new Date();
       const todayISO = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -367,7 +377,6 @@
         allDates.push(`${yy}-${mm}-${dd}`);
       }
 
-      // Initial Meter & Stock (Register ke mutabik)
       let mP1 = 264100, mP2 = 168200, mP3 = 204500, mP4 = 43800;
       let mD1 = 374500, mD2 = 215200, mD3 = 154800, mD4 = 77900;
       let prevCloseCash = 245800.00;
@@ -387,7 +396,7 @@
         const dateStr = allDates[i];
         const mNum = parseInt(dateStr.slice(5, 7), 10);
 
-        // Exact Rates as requested
+        // Rates
         let rateP = 100.23, rateD = 96.68;
         if (mNum === 6 || mNum === 7) {
           rateP = 100.27; rateD = 95.70;
@@ -395,7 +404,7 @@
           rateP = 100.20; rateD = 95.66;
         }
 
-        // Nozzle Daily Sale (Register Average: P1/P2/P3 main, P4 small; D1 highest, D2/D3 medium, D4 low/medium)
+        // Daily Nozzle Sale (Register Averages)
         const netP1 = rand(380, 950);
         const netP2 = rand(280, 560);
         const netP3 = rand(350, 780);
@@ -423,7 +432,7 @@
         const amtD = r2(litD * rateD);
         const totalSale = r2(amtP + amtD);
 
-        // Party Udhar (Whole Rupee amounts like ₹4400, ₹4600, ₹5300, ₹7700, ₹8500 - paise nahi tootenge!)
+        // Party Udhar Entries (Exact Rupee Values)
         let dayUdhar = 0;
         const numUdhars = rand(5, 8);
         const wholeRupeeAmounts = [2000, 2600, 3150, 3446, 3810, 4200, 4400, 4500, 4600, 4950, 5300, 5500, 6100, 6891, 7700, 8035, 8500, 9760, 10500];
@@ -431,7 +440,7 @@
         for (let u = 0; u < numUdhars; u++) {
           let p = realParties[(i + u * 2) % realParties.length];
           if (p.id === 'p_nanda' && !(i % 12 === 0 && u === 0)) {
-            p = realParties[(i + u + 1) % 7]; // Nanda Crusher takes 800L bulk every 12 days
+            p = realParties[(i + u + 1) % 7];
           }
 
           const veh = p.vehicles[(i + u) % p.vehicles.length];
@@ -439,7 +448,7 @@
 
           if (p.id === 'p_nanda') {
             lQty = 800;
-            amt = Math.round(lQty * fRate); // Whole rupees
+            amt = Math.round(lQty * fRate);
             lQty = r2(amt / fRate);
           } else {
             const isPetrol = (u === 4);
@@ -452,8 +461,7 @@
           dayUdhar = r2(dayUdhar + amt);
           partyBal[p.id] = r2(partyBal[p.id] + amt);
 
-          const lRef = db.collection('ledger').doc();
-          b.set(lRef, {
+          b.set(db.collection('ledger').doc(), {
             partyId: p.id, partyName: p.name, date: dateStr,
             time: `1${u}:20`, kind: 'udhar', vehicle: veh,
             fuel, rate: fRate, litre: lQty, amount: amt,
@@ -462,7 +470,7 @@
           ops++;
         }
 
-        // Party Cash Jama on Pump (Register style: ₹25000, ₹44700, ₹50890, ₹87500)
+        // Party Cash Jama
         let jCash = 0;
         if (i % 2 === 0) {
           const p = realParties[(i * 2) % 7];
@@ -476,72 +484,130 @@
           ops++;
         }
 
-        // Direct Bank Jama by Party (Cheque / NEFT: ₹50,000 or ₹1,00,000)
+        // Party Direct Bank Transfer -> SBI Bank Jama
         let jBank = 0;
         if (i % 4 === 1) {
           const p = realParties[(i + 3) % realParties.length];
           jBank = [50000, 75000, 100000][i % 3];
           partyBal[p.id] = r2(partyBal[p.id] - jBank);
+          sbiBal = r2(sbiBal + jBank);
+
           const payId = `PAY-${dateStr.replace(/-/g, '').slice(2)}`;
           const bRef = db.collection('bank_deposits').doc();
           b.set(bRef, {
             bank: 'SBI', date: dateStr, amount: jBank, mode: 'neft',
             partyId: p.id, partyName: p.name, direct: true, payId,
-            note: `${p.name} बैंक खाते में जमा`, by: 'neeraj@mazda-pump.in'
+            note: `${p.name} बैंक खाते में NEFT जमा`, by: 'neeraj@mazda-pump.in'
           });
+
+          // Party Ledger Entry
           b.set(db.collection('ledger').doc(), {
             partyId: p.id, partyName: p.name, date: dateStr,
             time: '16:00', kind: 'jama', mode: 'bank', payMode: 'neft',
             amount: jBank, bankId: bRef.id, payId, directBankJama: true,
             createdOn: dateStr, by: 'neeraj@mazda-pump.in'
           });
-          ops += 2;
+
+          // SBI Bank Ledger Entry
+          b.set(db.collection('ledger').doc(), {
+            partyId: 'bank_sbi', partyName: 'State Bank of India', date: dateStr,
+            time: '16:00', kind: 'jama', mode: 'bank', amount: jBank,
+            note: `पार्टी जमा: ${p.name} (NEFT)`, autoBankSync: true,
+            createdOn: dateStr, by: 'neeraj@mazda-pump.in'
+          });
+          ops += 3;
         }
 
-        // Paytm & Swipe (Register Realistic Averages)
+        // Paytm / UPI & Card Swipe
         const paytm = rand(125000, 275000);
         const swipe = (i % 3 === 0) ? 0 : [10700, 14500, 18200, 22955, 30563][i % 5];
 
-        // Kharcha (Generator 5L or 10L + Chai Khana ₹170 + Driver Inaam ₹200)
+        // 1. PAYTM -> SBI LEDGER MEIN JAMA ENTRY
+        if (paytm > 0) {
+          sbiBal = r2(sbiBal + paytm);
+          b.set(db.collection('ledger').doc(), {
+            partyId: 'bank_sbi', partyName: 'State Bank of India', date: dateStr,
+            time: '21:05', kind: 'jama', mode: 'paytm', amount: paytm,
+            note: 'Paytm/UPI दैनिक बिक्री सेटलमेंट जमा', autoBankSync: true,
+            createdOn: dateStr, by: 'neeraj@mazda-pump.in'
+          });
+          ops++;
+        }
+
+        // 2. SWIPE -> SBI LEDGER MEIN JAMA ENTRY
+        if (swipe > 0) {
+          sbiBal = r2(sbiBal + swipe);
+          b.set(db.collection('ledger').doc(), {
+            partyId: 'bank_sbi', partyName: 'State Bank of India', date: dateStr,
+            time: '21:10', kind: 'jama', mode: 'swipe', amount: swipe,
+            note: 'कार्ड स्वाइप (Pine Labs / EDC) जमा', autoBankSync: true,
+            createdOn: dateStr, by: 'neeraj@mazda-pump.in'
+          });
+          ops++;
+        }
+
+        // Daily Kharcha
         const dgLit = (i % 5 === 0) ? 10 : 5;
-        const kharchaDG = Math.round(dgLit * rateD); // e.g., 470, 478, 956
+        const kharchaDG = Math.round(dgLit * rateD);
         const chaiKhana = (i % 2 === 0) ? 170 : 220;
         const driverInaam = (i % 3 === 0) ? 200 : 0;
         const totalKharcha = r2(kharchaDG + chaiKhana + driverInaam);
 
-        // Galla & SBI Khairna Bank Deposit
+        // 3. KHARCHE (DG, CHAI-KHANA, INAAM) -> PNB BANK LEDGER ENTRY (UDHAR / EXPENSE)
+        if (totalKharcha > 0) {
+          pnbBal = r2(pnbBal - totalKharcha);
+          b.set(db.collection('ledger').doc(), {
+            partyId: 'bank_pnb', partyName: 'Punjab National Bank', date: dateStr,
+            time: '20:30', kind: 'udhar', amount: totalKharcha,
+            note: `दैनिक पंप खर्चा (DG: ₹${kharchaDG}, चाय-खाना: ₹${chaiKhana}${driverInaam ? ', इनाम: ₹' + driverInaam : ''})`,
+            autoBankSync: true, createdOn: dateStr, by: 'neeraj@mazda-pump.in'
+          });
+          ops++;
+        }
+
+        // Galla & Cash Flow
         const openCash = prevCloseCash;
         const kulGalla = r2(totalSale + openCash + jCash);
         const availableCash = r2(kulGalla - paytm - swipe - dayUdhar - totalKharcha);
 
+        // 4. GALLE SE CASH JAMA -> SBI KHAIRNA (GALLE SE MINUS + SBI MEIN JAMA ENTRY)
         let malikDiya = 0;
         if (availableCash > 450000) {
-          malikDiya = Math.floor((availableCash - 130000) / 10000) * 10000; // e.g., 370000, 478000, 480000
+          malikDiya = Math.floor((availableCash - 130000) / 10000) * 10000;
+          sbiBal = r2(sbiBal + malikDiya);
+
           b.set(db.collection('bank_deposits').doc(`sbi_${dateStr}`), {
             bank: 'SBI', date: dateStr, amount: malikDiya, mode: 'cash',
             payId: `PAY-SBI-${dateStr.slice(2)}`, note: 'बैंक जमा S.B.I खैरना', by: 'neeraj@mazda-pump.in'
           });
-          ops++;
+
+          // SBI Bank Ledger Entry
+          b.set(db.collection('ledger').doc(), {
+            partyId: 'bank_sbi', partyName: 'State Bank of India', date: dateStr,
+            time: '14:30', kind: 'jama', mode: 'cash', amount: malikDiya,
+            note: 'पंप गल्ले से कैश जमा (S.B.I खैरना शाखा)', autoBankSync: true,
+            createdOn: dateStr, by: 'neeraj@mazda-pump.in'
+          });
+          ops += 2;
         }
 
         const closeCash = r2(availableCash - malikDiya);
         prevCloseCash = closeCash;
 
-        // TANKER RULE: Total 12,000L in a single tanker!
-        // Compartments: (4000L P + 8000L D = 12000L) OR (6000L P + 6000L D = 12000L) OR (0L P + 12000L D = 12000L)
+        // Tanker Rule: 12,000L in a single tanker
         let tankerP = 0, tankerD = 0;
         const remP = prevStockP - litP;
         const remD = prevStockD - litD;
 
         if (remP < 3200 && remD < 5500) {
-          tankerP = 4000; tankerD = 8000; // Total = 12,000 L
+          tankerP = 4000; tankerD = 8000;
         } else if (remP < 2500) {
-          tankerP = 6000; tankerD = 6000; // Total = 12,000 L
+          tankerP = 6000; tankerD = 6000;
         } else if (remD < 3800) {
           if (remP < 5500) {
-            tankerP = 4000; tankerD = 8000; // Total = 12,000 L
+            tankerP = 4000; tankerD = 8000;
           } else {
-            tankerP = 0; tankerD = 12000; // Total = 12,000 L
+            tankerP = 0; tankerD = 12000;
           }
         }
 
@@ -550,7 +616,6 @@
         const expP = r2(openStockP + tankerP - litP);
         const expD = r2(openStockD + tankerD - litD);
 
-        // Realistic Stock Diff (Not too high, not zero: -2L to -14L)
         const diffP = -rand(2, 9);
         const diffD = -rand(4, 14);
         const actP = r2(expP + diffP);
@@ -559,24 +624,14 @@
         prevStockP = actP;
         prevStockD = actD;
 
+        // Day Document
         const dayDoc = {
           date: dateStr,
           status: dateStr === todayISO ? 'open' : 'submitted',
-          testing: 5,
-          rateP,
-          rateD,
-          openCash,
-          paytm,
-          swipe,
-          kharcha: kharchaDG,
-          chaiKhana,
-          driverInaam,
-          kharchaItems: [],
-          malikDiya,
-          openStockP,
-          openStockD,
-          tankerP,
-          tankerD,
+          testing: 5, rateP, rateD, openCash,
+          paytm, swipe, kharcha: kharchaDG, chaiKhana, driverInaam,
+          kharchaItems: [], malikDiya, openStockP, openStockD,
+          tankerP, tankerD,
           dipP: r2(Math.max(35, Math.min(185, actP / 82))),
           dipD: r2(Math.max(35, Math.min(185, actD / 98))),
           nz: {
@@ -586,10 +641,8 @@
           sum: {
             sale: totalSale, litP, litD, amtP, amtD,
             openCash, close: closeCash,
-            actStockP: actP, actStockD: actD,
-            expStockP: expP, expStockD: expD,
-            diffP, diffD,
-            udhar: dayUdhar, totalKharcha, jCash, jBank
+            actStockP: actP, actStockD: actD, expStockP: expP, expStockD: expD,
+            diffP, diffD, udhar: dayUdhar, totalKharcha, jCash, jBank
           },
           by: 'neeraj@mazda-pump.in'
         };
@@ -603,14 +656,20 @@
         }
       }
 
+      // Party Balances Update
       for (const p of realParties) {
         b.update(db.collection('parties').doc(p.id), { bal: r2(partyBal[p.id]) });
         ops++;
       }
 
+      // SBI and PNB Final Balances Update
+      b.update(db.collection('parties').doc('bank_sbi'), { bal: r2(sbiBal) });
+      b.update(db.collection('parties').doc('bank_pnb'), { bal: r2(pnbBal) });
+      ops += 2;
+
       await commitBatch();
       prog.close();
-      alert(`✅ 1 जून से आज (${todayISO}) तक के ${allDates.length} दिनों का 100% सटीक डेटा सफलतापूर्वक भर दिया गया है!`);
+      alert(`✅ 1 जून से आज (${todayISO}) तक का 100% सटीक डेटा भर गया है!\n\n• Paytm, Swipe व SBI नकद जमा SBI बैंक खाते में जुड़ चुके हैं।\n• DG व दैनिक खर्चे PNB बैंक खाते में दर्ज हो चुके हैं।`);
       location.reload();
     } catch (e) {
       prog.close();
@@ -621,7 +680,7 @@
   }
 
   // =========================================================================
-  // UI RENDERING: MAIN APP (index.html) & OWNER PORTAL (owner.html)
+  // UI PANEL INJECTION
   // =========================================================================
   function getControlCardsHTML() {
     return `
@@ -629,15 +688,15 @@
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
           <span style="font-size:26px;">👑</span>
           <div>
-            <h3 style="color:#f4b41a;margin:0;font-size:17px;">Super Owner Control</h3>
-            <div style="color:#94a3b8;font-size:11px;">माज़दा पंप मास्टर टूल्स (Auto-Fix, Demo & Reset)</div>
+            <h3 style="color:#f4b41a;margin:0;font-size:17px;">Super Owner Control (Full Bank Sync)</h3>
+            <div style="color:#94a3b8;font-size:11px;">माज़दा पंप मास्टर टूल्स (SBI/PNB Auto Sync, Demo & Reset)</div>
           </div>
         </div>
 
         <!-- 1. AUTO FIX CHAIN BUTTON -->
         <div style="background:rgba(37,99,235,0.18);border:1px solid #3b82f6;border-radius:12px;padding:12px;margin-bottom:12px;">
-          <b style="color:#93c5fd;font-size:14px;display:block;margin-bottom:4px;">1. 🔄 पूरा हिसाब ऑटो-फिक्स करें (Chain Sync)</b>
-          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">अगर आपने 2 या 5 महीने पहले की कोई एंट्री बदली है, तो यह बटन दबाते ही शुरू से आज तक के सारे दिन (AD कैश, मीटर, स्टॉक) अपने-आप जुड़ जाएंगे।</div>
+          <b style="color:#93c5fd;font-size:14px;display:block;margin-bottom:4px;">1. 🔄 पूरा हिसाब व बैंक ऑटो-फिक्स करें (Chain Sync)</b>
+          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">शुरू से आज तक के सारे दिन (AD कैश, मीटर, स्टॉक, पार्टी खाता और SBI/PNB बैंक लेजर) 1 क्लिक में सिंक करें।</div>
           <button id="btn-sa-autofix" class="btn full" style="background:#2563eb;color:#fff;border:none;padding:12px;border-radius:10px;font-weight:800;font-size:14px;width:100%;cursor:pointer;">
             🔄 Auto-Fix & Sync All Days Hisab
           </button>
@@ -646,7 +705,7 @@
         <!-- 2. DEMO DATA GENERATOR BUTTON -->
         <div style="background:rgba(16,185,129,0.15);border:1px solid #10b981;border-radius:12px;padding:12px;margin-bottom:12px;">
           <b style="color:#6ee7b7;font-size:14px;display:block;margin-bottom:4px;">2. 🚀 1 जून से आज तक का Demo Data भरें</b>
-          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">रजिस्टर के औसत नोज़ल, 2 महीने वाले रेट, 12,000L टैंकर नियम और बिना पैसे टूटे 100% असली लगने वाला डेटा ऑटो-फिल करें।</div>
+          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">Paytm, Swipe, SBI नकद जमा SBI बैंक खाते में और DG, चाय-खाना खर्चे PNB बैंक खाते में ऑटोमेटिक जुड़ेंगे।</div>
           <button id="btn-sa-demo" class="btn full" style="background:#059669;color:#fff;border:none;padding:12px;border-radius:10px;font-weight:800;font-size:14px;width:100%;cursor:pointer;">
             🚀 Auto-Fill Demo Data (1 June - Today)
           </button>
@@ -655,7 +714,7 @@
         <!-- 3. CLEAR PUMP DATA BUTTON -->
         <div style="background:rgba(220,38,38,0.15);border:1px solid #ef4444;border-radius:12px;padding:12px;">
           <b style="color:#fca5a5;font-size:14px;display:block;margin-bottom:4px;">3. ⚠️ Clear Pump Data (सब कुछ Zero करें)</b>
-          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">पंप का सारा हिसाब, लेजर, मीटर, बैंक ₹0 हो जाएगा और निजी पार्टियाँ डिलीट हो जाएंगी (मुख्य पार्टियाँ वैसी ही रहेंगी, बस बैलेंस 0 होगा)।</div>
+          <div style="color:#cbd5e1;font-size:11px;margin-bottom:10px;">हिसाब, लेजर, मीटर, SBI और PNB बैंक ₹0 हो जाएंगे और निजी पार्टियाँ हट जाएंगी (मुख्य पार्टियाँ वैसी ही रहेंगी)।</div>
           <button id="btn-sa-clear" class="btn full" style="background:#dc2626;color:#fff;border:none;padding:12px;border-radius:10px;font-weight:800;font-size:14px;width:100%;cursor:pointer;">
             ⚠️ Clear Pump Data (Zero All)
           </button>
@@ -673,7 +732,6 @@
     if (bClear) bClear.onclick = clearPumpData;
   }
 
-  // Expose globally
   window.autoFixAllDaysChain = autoFixAllDaysChain;
   window.clearPumpData = clearPumpData;
   window.generateRealisticData = generateRealisticData;
@@ -704,7 +762,6 @@
     };
   }
 
-  // Auto-inject into owner.html ("और" tab) if opened in Owner Portal
   setInterval(() => {
     const ownerContent = document.querySelector('#p-content');
     const activeMoreTab = document.querySelector('.p-nav button[data-tab="more"].active');
@@ -716,5 +773,5 @@
     }
   }, 600);
 
-  console.log('[Mazda SuperAdmin v2] 3-in-1 Control Panel Loaded ✓');
+  console.log('[Mazda SuperAdmin v2.1] Full SBI/PNB Bank Sync Engine Loaded ✓');
 })();
