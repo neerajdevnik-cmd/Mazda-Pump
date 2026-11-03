@@ -27,6 +27,8 @@
     try {
       firebase.initializeApp(window.CFG.firebase);
       auth = firebase.auth(); db = firebase.firestore();
+      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) db = window.PUMP_SYSTEM.wrapFirestore(db);
+      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.initBranding) window.PUMP_SYSTEM.initBranding(db);
       auth.onAuthStateChanged(u => {
         const saved = localStorage.getItem('mazda_party');
         if (saved) {

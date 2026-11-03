@@ -14,7 +14,7 @@
     bpcl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%23003399"/><circle cx="50" cy="50" r="40" fill="%23fdb813"/><path d="M50 20 C40 38 35 48 35 60 C35 72 41 78 50 78 C59 78 65 72 65 60 C65 48 60 38 50 20 Z" fill="%23003399"/><circle cx="50" cy="62" r="7" fill="%23fdb813"/></svg>`,
     hpcl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%230b3d91"/><circle cx="50" cy="50" r="40" fill="%23ffffff"/><circle cx="50" cy="50" r="34" fill="%23e11d48"/><circle cx="50" cy="50" r="24" fill="%230b3d91"/><text x="50" y="58" font-size="22" font-weight="900" fill="%23ffffff" text-anchor="middle" font-family="sans-serif">HP</text></svg>`,
     iocl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%23f97316"/><circle cx="50" cy="50" r="40" fill="%230a2f6b"/><rect x="20" y="42" width="60" height="16" fill="%23f97316"/><text x="50" y="55" font-size="10" font-weight="900" fill="%23ffffff" text-anchor="middle" font-family="sans-serif">INDIANOIL</text></svg>`,
-    custom: `./logo.png`
+    custom: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%23f4b41a"/><path d="M50 22 C40 40 34 50 34 62 C34 73 41 78 50 78 C59 78 66 73 66 62 C66 50 60 40 50 22 Z" fill="%23111827"/></svg>`
   };
 
   // 2. Identify Current Active Pump
@@ -61,6 +61,9 @@
         nameEn: C.pump?.nameEn || "Mazda Oil Company",
         brand: "bpcl",
         dealer: C.pump?.dealer || "Bharat Petroleum Dealer",
+        roCode: C.pump?.roCode || "",
+        gstin: C.pump?.gstin || "",
+        fssai: C.pump?.fssai || "",
         address: C.pump?.address || "बमस्यूँ, रानीखेत रोड, अल्मोड़ा (263645)",
         addressEn: C.pump?.addressEn || "Bamsyun, Ranikhet Road, Almora",
         phone: C.pump?.phone || "8077083874",
@@ -74,10 +77,12 @@
       };
     } else {
       // Setup dynamic logo if standard brand chosen
-      if (cfg.brand && PS.LOGOS[cfg.brand]) {
+      if (cfg.logoData) {
+        cfg.logo = cfg.logoData;   // pump ka apna uploaded logo
+      } else if (cfg.brand && PS.LOGOS[cfg.brand]) {
         cfg.logo = PS.LOGOS[cfg.brand];
       } else if (!cfg.logo) {
-        cfg.logo = './logo.png';
+        cfg.logo = PS.LOGOS.custom;
       }
     }
 
@@ -93,6 +98,10 @@
       window.CFG.pump.phone = cfg.phone;
       window.CFG.pump.upi = cfg.upi;
       window.CFG.pump.upiName = cfg.upiName || cfg.name;
+      window.CFG.pump.dealer = cfg.dealer || '';
+      window.CFG.pump.roCode = cfg.roCode || '';
+      window.CFG.pump.gstin = cfg.gstin || '';
+      window.CFG.pump.fssai = cfg.fssai || '';
       if (cfg.ownerPin) window.CFG.ownerPin = cfg.ownerPin;
       if (cfg.activeNozzles) window.CFG.activeNozzles = cfg.activeNozzles;
       if (cfg.rates) {

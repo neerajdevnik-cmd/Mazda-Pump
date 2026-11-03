@@ -47,8 +47,13 @@
     try {
       firebase.initializeApp(window.CFG.firebase);
       auth = firebase.auth(); db = firebase.firestore();
-      const saved = localStorage.getItem('mazda_owner');
-      if (saved === 'yes') { loadApp(); } else { renderLogin(); }
+      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) db = window.PUMP_SYSTEM.wrapFirestore(db);
+      const bootOwner = () => {
+        const saved = localStorage.getItem('mazda_owner');
+        if (saved === 'yes') { loadApp(); } else { renderLogin(); }
+      };
+      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.initBranding) window.PUMP_SYSTEM.initBranding(db).then(bootOwner, bootOwner);
+      else bootOwner();
     } catch (e) { $('#app').innerHTML = '<div style="padding:20px;color:red">Firebase Error: ' + e.message + '</div>'; }
   });
 
