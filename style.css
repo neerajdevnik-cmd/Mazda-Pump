@@ -419,3 +419,18 @@ body.dark .veh-pill.active{background:linear-gradient(180deg,#134aa6,#0a2f6b)}
 body.dark .search,
 body.dark #cq,
 body.dark #vpq{background-color:#0f172a}
+
+/* ===== UI FIX (v128): buttons ki rows stable grid mein; More menu compact ===== */
+#main .btns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch;margin-top:10px}
+#main .btns .btn{flex:none;min-width:0;min-height:44px;padding:10px 6px;font-size:14px;line-height:1.25;text-align:center;white-space:normal;justify-content:center}
+#main .btns > .btn:only-child{grid-column:1/-1}
+#extra-more-card .btns{grid-template-columns:repeat(3,minmax(0,1fr))}
+#extra-more-card .btns .btn{font-size:13px;padding:10px 4px;min-height:52px}
+
+/* ===== v129: hisab page chhota — cards kam jagah, stock cards collapsible ===== */
+#main .card{padding:12px;margin:0 0 10px}
+details.cfold>summary{list-style:none;cursor:pointer}
+details.cfold>summary::-webkit-details-marker{display:none}
+details.cfold>summary h3{margin:0}
+details.cfold[open]>summary h3{margin-bottom:8px}
+.fold-hint{font-size:12px;color:var(--m);font-weight:400;margin-left:6px}

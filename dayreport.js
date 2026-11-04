@@ -181,7 +181,7 @@
 
   APP.shareCompactDayReport = async function (st, d) {
     if (typeof html2canvas !== 'function') return APP.toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
-    APP.toast('रिपोर्ट तैयार हो रही है…');
+    APP.toast('साफ़ हिसाब फोटो बन रही है… (कुछ सेकंड)');
     
     const o = K.compute(d, st.rows);
     const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1';

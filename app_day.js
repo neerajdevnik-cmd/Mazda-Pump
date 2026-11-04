@@ -190,7 +190,7 @@
       </div>` : ''}
     </div>
 
-    <div class="card"><h3>🛢️ पेट्रोल स्टॉक (लीटर)</h3>
+    <details class="card cfold"><summary><h3>🛢️ पेट्रोल स्टॉक (लीटर) <span class="fold-hint">खोलें ▾</span></h3></summary>
       <div class="row">
         <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockP" inputmode="decimal" ${stkRO(d.openStockP)} value="${esc(d.openStockP || '')}" ${dis}></div>
         <div><label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}</div>
@@ -200,9 +200,9 @@
         <div><label>डिप के हिसाब से (L)</label><input id="f-actStockP" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
       </div>
       <div id="stkP" style="margin-top:8px"></div>
-    </div>
+    </details>
 
-    <div class="card"><h3>🛢️ डीज़ल स्टॉक (लीटर)</h3>
+    <details class="card cfold"><summary><h3>🛢️ डीज़ल स्टॉक (लीटर) <span class="fold-hint">खोलें ▾</span></h3></summary>
       <div class="row">
         <div><label>ओपनिंग स्टॉक (L)</label><input id="f-openStockD" inputmode="decimal" ${stkRO(d.openStockD)} value="${esc(d.openStockD || '')}" ${dis}></div>
         <div><label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}</div>
@@ -212,7 +212,7 @@
         <div><label>डिप के हिसाब से (L)</label><input id="f-actStockD" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
       </div>
       <div id="stkD" style="margin-top:8px"></div>
-    </div>
+    </details>
 
     <div class="card"><h3>पार्टी उधार / जमा (आज)</h3>
       <div id="rowsbox"></div>
@@ -241,7 +241,7 @@
       ${locked ? '' : '<button class="btn w" data-do="save">💾 सेव</button>'}
       ${locked ? '' : '<button class="btn g" data-do="submit">✅ जमा करें (लॉक)</button>'}
       ${APP.isOwner() && d.status === 'submitted' ? '<button class="btn o" data-do="unlock">🔓 अनलॉक</button>' : ''}
-      <button class="btn" data-do="report">📤 कॉम्पैक्ट रिपोर्ट</button>
+      <button class="btn" data-do="report">🖼️ साफ़ हिसाब फोटो</button>
       ${locked ? '' : '<button class="btn o" data-do="importShifts">📥 शिफ्ट से भरें</button>'}
       ${locked ? '' : '<button class="btn w" data-do="scan">📷 AI रजिस्टर स्कैन</button>'}
     </div>`;
