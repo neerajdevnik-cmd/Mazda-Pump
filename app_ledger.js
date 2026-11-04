@@ -94,6 +94,18 @@
       ]);
       const days = ds.docs.map(x => ({ id: x.id, ...x.data() })).sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
       const allRows = ls.docs.map(x => ({ id: x.id, ...x.data() }));
+      // Pehle ka saved data: sirf badle hue din hi likhein (writes bachane ke liye)
+      const origById = {};
+      ds.docs.forEach(x => { origById[x.id] = x.data(); });
+      const deepEq = (a, b) => {
+        if (a === b) return true;
+        if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+        const ka = Object.keys(a).filter(k => a[k] !== undefined);
+        const kb = Object.keys(b).filter(k => b[k] !== undefined);
+        if (ka.length !== kb.length) return false;
+        return ka.every(k => deepEq(a[k], b[k]));
+      };
+      let skipped = 0;
 
       const rowsByDate = {};
       allRows.forEach(r => {
@@ -155,6 +167,9 @@
         prevNz = d.nz;
         prevDate = dt;
 
+        const { id: _ignoreId, ...dataNoId } = d;
+        const before = origById[dt];
+        if (before && deepEq(before, dataNoId)) { skipped++; continue; }
         batch.set(db().collection('days').doc(dt), d, { merge: true });
         cnt++;
         if (cnt >= 350) {
@@ -165,6 +180,7 @@
       }
       if (cnt > 0) await batch.commit();
       if (APP.Rules) APP.Rules.sys = false;
+      console.info(`Chain sync: ${days.length} din check, ${days.length - skipped} likhe, ${skipped} pehle se sahi`);
       return days.length;
     } catch (e) {
       if (APP.Rules) APP.Rules.sys = false;

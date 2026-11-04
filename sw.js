@@ -14,7 +14,7 @@ const SHELL = [
   'owner.html', 'owner_portal.js', 'owner_manifest.json', 'rules.js',
 
   // 🔥 Nayi Split Files
-  'app_core.js', 'ai_core.js', 'app_day.js', 'app_ledger.js',
+  'read_cache.js', 'app_core.js', 'ai_core.js', 'app_day.js', 'app_ledger.js',
   'views2_core.js', 'views2_utils.js',
   'features_core.js', 'features_utils.js', 'features_custom.js',
 

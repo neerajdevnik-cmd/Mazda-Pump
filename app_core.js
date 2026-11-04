@@ -304,6 +304,8 @@
       }
       auth = firebase.auth(); db = firebase.firestore(); FV = firebase.firestore.FieldValue;
       try { db.settings({ ignoreUndefinedProperties: true }); } catch(e) { console.log('Settings error', e); }
+      // Offline storage: jo writes server tak nahi gaye wo phone/browser mein save rahenge, aur net/quota aate hi apne-aap chale jaayenge
+      try { db.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('Persistence off:', e && e.code)); } catch(e) { console.log('Persistence error', e); }
 
       // Multi-Pump Multi-Tenant Routing & Branding Hook
       if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) {
