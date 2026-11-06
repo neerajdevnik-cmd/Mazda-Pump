@@ -1,7 +1,7 @@
 {
-  "name": "mazda-pump-app",
+  "name": "pump-app",
   "version": "3.0.0",
-  "description": "Mazda Oil Company Petrol Pump Management App",
+  "description": "Petrol Pump Management App",
   "scripts": {
     "build": "echo 'Deploying static files & functions'"
   },

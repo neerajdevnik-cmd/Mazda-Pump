@@ -28,13 +28,13 @@
       firebase.initializeApp(window.CFG.firebase);
       auth = firebase.auth(); db = firebase.firestore();
       if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) db = window.PUMP_SYSTEM.wrapFirestore(db);
-      if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.initBranding) window.PUMP_SYSTEM.initBranding(db);
-      auth.onAuthStateChanged(u => {
+      const brandReady = (window.PUMP_SYSTEM && window.PUMP_SYSTEM.initBranding) ? window.PUMP_SYSTEM.initBranding(db).catch(() => { }) : Promise.resolve();
+      brandReady.then(() => auth.onAuthStateChanged(u => {
         const saved = localStorage.getItem('mazda_party');
         if (saved) {
           try { S.party = JSON.parse(saved); loadApp(); } catch(e) { localStorage.removeItem('mazda_party'); renderLogin(); }
         } else { renderLogin(); }
-      });
+      }));
     } catch (e) { $('#app').innerHTML = '<div style="padding:20px;color:red">Firebase Init Error: ' + e.message + '</div>'; }
   });
 
@@ -42,7 +42,7 @@
     $('#app').innerHTML = `
       <div class="login-screen fade-in">
         <img src="./logo.png" class="login-logo" alt="Logo">
-        <h2 style="text-align:center;font-size:24px;">माज़दा पोर्टल</h2>
+        <h2 style="text-align:center;font-size:24px;">पार्टी पोर्टल</h2>
         <p class="text-mut" style="text-align:center;margin-bottom:30px;">अपना हिसाब देखने के लिए कोड डालें</p>
         <div class="glass-card" style="margin:0;">
           <label class="text-mut" style="display:block;text-align:center;margin-bottom:10px;">6-अंकों का पार्टी कोड</label>
@@ -395,7 +395,7 @@
     }
 
     c.innerHTML = `
-      <div style="padding:16px 16px 0;"><h2 style="font-size:18px;margin-bottom:12px;">🛍️ माज़दा शॉप</h2></div>
+      <div style="padding:16px 16px 0;"><h2 style="font-size:18px;margin-bottom:12px;">🛍️ शॉप</h2></div>
       <div style="padding:0 16px; display:grid; gap:12px;">
         ${S.shop.map(p => `
           <div class="glass-card" style="margin:0;display:flex;gap:12px;align-items:center;padding:12px;">
@@ -417,7 +417,7 @@
     const p = S.shop.find(x => x.id === pid);
     if (!p || !(p.stock > 0)) return toast('आउट ऑफ स्टॉक');
     
-    const upiNote = `Mazda ${p.name} buy`;
+    const upiNote = `${(window.PUMP_SYSTEM && PUMP_SYSTEM.currentConfig && PUMP_SYSTEM.currentConfig.name) || 'पंप'} ${p.name} buy`;
     const upiId = window.CFG.pump.upi;
     const upiName = window.CFG.pump.upiName;
     const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${p.rate}&tn=${encodeURIComponent(upiNote)}&cu=INR`;

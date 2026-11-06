@@ -21,6 +21,7 @@
   const rawDb = () => firebase.firestore();
   const base = () => location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/') + 1);
   const activePump = () => (window.PUMP_SYSTEM && window.PUMP_SYSTEM.activePumpId) || 'mazda';
+  const PS_hash = (pid, id, pw) => (window.PUMP_SYSTEM && PUMP_SYSTEM.hashLogin ? PUMP_SYSTEM.hashLogin(pid, id, pw) : Promise.reject(new Error('pump_login.js load nahi hua')));
   const randPin = () => String(1000 + Math.floor(Math.random() * 9000));
   const isAuthorized = () => {
     const A = window.APP || {};
@@ -54,6 +55,8 @@
     const f = {};
     FIELDS.forEach(([k]) => f[k] = v('pc-' + k));
     f.brand = root.querySelector('#pc-brand').value;
+    f.loginId = v('pc-loginId');
+    f.loginPw = (root.querySelector('#pc-loginPw') || { value: '' }).value;
     f.pid = v('pc-pid').toLowerCase();
     return f;
   }
@@ -71,6 +74,10 @@
     const snap = await ref.get();
     if (!editing && snap.exists) return alert('यह Pump ID पहले से है: ' + id);
     if (editing && !snap.exists) return alert('यह पंप नहीं मिला');
+    const prev = snap.exists ? snap.data() : {};
+    if (!f.loginId || f.loginId.length < 4) return alert('Login ID कम से कम 4 अक्षर की लिखें');
+    if (f.loginPw && f.loginPw.length < 6) return alert('Password कम से कम 6 अक्षर का हो');
+    if (!prev.loginHash && !f.loginPw) return alert('Password लिखें (कम से कम 6 अक्षर)');
 
     const data = {
       name: f.name, nameEn: f.nameEn || f.name, brand: f.brand, dealer: f.dealer, roCode: f.roCode,
@@ -79,6 +86,8 @@
       rates: { petrol: Number(f.rateP) || 100.23, diesel: Number(f.rateD) || 95.68 },
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+    data.loginId = f.loginId;
+    data.loginHash = f.loginPw ? await PS_hash(id, f.loginId, f.loginPw) : prev.loginHash;
     if (logoData) data.logoData = logoData;
     if (!editing) {
       data.id = id;
@@ -97,6 +106,7 @@
       <div style="background:#052e16;border:1px solid #16a34a;border-radius:12px;padding:12px;font-size:12px;line-height:1.7;">
         <b style="color:#86efac;font-size:14px;">✅ "${esc(data.name)}" ${editing ? 'अपडेट हो गया' : 'बन गया'}</b><br>
         Pump ID: <b>${esc(id)}</b> &nbsp; Owner PIN: <b>${esc(f.ownerPin)}</b><br>
+        🔐 Login ID: <b>${esc(f.loginId)}</b> &nbsp; Password: <b>${esc(f.loginPw || '(पहले से सेट)')}</b><br>
         👑 Owner: <a href="${ownerLink}" target="_blank" style="color:#fbbf24;">${ownerLink}</a><br>
         🚚 Party: <a href="${partyLink}" target="_blank" style="color:#fbbf24;">${partyLink}</a><br>
         🏠 Main: <a href="${appLink}" target="_blank" style="color:#fbbf24;">${appLink}</a>
@@ -117,6 +127,8 @@
         ${editing ? `<div style="grid-column:span 2;font-size:12px;color:#94a3b8;">Pump ID: <b style="color:#fff;">${esc(pid)}</b></div>`
           : `<label style="font-size:11px;color:#cbd5e1;grid-column:span 2;">Pump ID (link के लिए, जैसे sharma-pump)<input id="pc-pid" value="" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;box-sizing:border-box;"></label>`}
         ${FIELDS.map(([k, l]) => fieldHTML(k, l, vals[k] ?? '')).join('')}
+        <label style="font-size:11px;color:#f4b41a;grid-column:span 2;">🔐 पंप का Login ID (मालिक/स्टाफ़ के लिए, कम से कम 4 अक्षर)<input id="pc-loginId" value="${esc(d.loginId || '')}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;box-sizing:border-box;"></label>
+        <label style="font-size:11px;color:#f4b41a;grid-column:span 2;">🔐 Password ${editing ? '(खाली छोड़ें तो वही रहेगा)' : '(कम से कम 6 अक्षर)'}<input id="pc-loginPw" value="" type="text" autocomplete="off" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;box-sizing:border-box;"></label>
         <label style="font-size:11px;color:#cbd5e1;">Brand
           <select id="pc-brand" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;">
             ${['custom', 'bpcl', 'hpcl', 'iocl'].map(b => `<option value="${b}" ${(d.brand || 'custom') === b ? 'selected' : ''}>${b.toUpperCase()}</option>`).join('')}

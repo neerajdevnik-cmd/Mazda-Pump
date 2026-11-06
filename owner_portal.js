@@ -50,7 +50,9 @@
       if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.wrapFirestore) db = window.PUMP_SYSTEM.wrapFirestore(db);
       const bootOwner = () => {
         const saved = localStorage.getItem('mazda_owner');
-        if (saved === 'yes') { loadApp(); } else { renderLogin(); }
+        const PS = window.PUMP_SYSTEM || {};
+        const pumpOk = PS.isCustomPump && PS.isCustomPump() && localStorage.getItem('mazda_pump_unlock') === 'yes';
+        if (saved === 'yes' || pumpOk) { loadApp(); } else { renderLogin(); }
       };
       if (window.PUMP_SYSTEM && window.PUMP_SYSTEM.initBranding) window.PUMP_SYSTEM.initBranding(db).then(bootOwner, bootOwner);
       else bootOwner();

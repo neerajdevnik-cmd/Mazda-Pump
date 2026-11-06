@@ -39,8 +39,7 @@
       const p = new URLSearchParams(window.location.search), q = p.get('pump') || p.get('p');
       if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''); if (c) { try { localStorage.setItem('mazda_active_pump', c); } catch (e) { } return c; } }
     } catch (e) { }
-    try { const s = localStorage.getItem('mazda_active_pump'); if (s) return s.toLowerCase().trim(); } catch (e) { }
-    return MAZDA;
+    return MAZDA;   // पंप ID सिर्फ़ URL (?p=) से; पुरानी localStorage से कभी नहीं
   }
   PS.activePumpId = requestedPumpId();
   PS.currentConfig = null;
@@ -123,6 +122,9 @@
       const sd = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
       if (sd && sd.set) Object.defineProperty(HTMLImageElement.prototype, 'src', { get: sd.get, set: function (v) { sd.set.call(this, brandize(v)); }, configurable: true });
       const sa = Element.prototype.setAttribute; Element.prototype.setAttribute = function (n, v) { return sa.call(this, n, (n === 'src' || n === 'href' || n === 'srcdoc') && typeof v === 'string' ? brandize(v) : v); };
+      const tcd = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+      if (tcd && tcd.set) Object.defineProperty(Node.prototype, 'textContent', { get: tcd.get, set: function (v) { tcd.set.call(this, typeof v === 'string' ? brandize(v) : v); }, configurable: true });
+      ['alert', 'confirm', 'prompt'].forEach(fn => { const o = window[fn]; window[fn] = function (m) { const a = Array.prototype.slice.call(arguments); if (typeof a[0] === 'string') a[0] = brandize(a[0]); return o.apply(window, a); }; });
       const wo = window.open;                           // स्टेटमेंट / प्रिंट वाली नई विंडो में भी वही पंप
       window.open = function () {
         const w = wo.apply(window, arguments);
