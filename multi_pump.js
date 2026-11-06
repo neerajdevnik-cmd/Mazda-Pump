@@ -71,9 +71,17 @@
     const pid = PS.activePumpId, C = window.CFG || {};
     let cfg = null;
     if (pid !== MAZDA && db) {
-      try { const snap = await db.collection('pumps').doc(pid).get(); if (snap.exists) cfg = normalize(pid, snap.data()); else PS.missing = true; }
-      catch (e) { console.warn('[MultiPump] पंप की सेटिंग नहीं मिली:', e); }
+      const readPump = () => db.collection('pumps').doc(pid).get();
+      let snap = null;
+      try { snap = await readPump(); }
+      catch (e) {                                   // Firestore rules: pehle sign-in chahiye
+        try { const A = firebase.auth(); if (!A.currentUser) await A.signInAnonymously(); snap = await readPump(); }
+        catch (e2) { console.warn('[MultiPump] पंप की सेटिंग नहीं पढ़ी जा सकी:', e2); }
+      }
+      if (snap && snap.exists) cfg = normalize(pid, snap.data());
+      else if (snap) PS.missing = true;
     }
+    if (!cfg && pid !== MAZDA) cfg = normalize(pid, { name: 'पंप', nameEn: 'Pump' });   // कभी भी Mazda का नाम नहीं
     if (!cfg) {
       const p = C.pump || {};
       cfg = { id: MAZDA, isMain: true, name: p.name || 'माज़दा ऑयल कंपनी', nameEn: p.nameEn || 'Mazda Oil Company', brand: 'bpcl', dealer: p.dealer || 'Bharat Petroleum Dealer', address: p.address || '', addressEn: p.addressEn || '', phone: p.phone || '', upi: p.upi || '', upiName: p.upiName || '', ownerEmail: C.ownerEmail, ownerPin: C.ownerPin, activeNozzles: C.activeNozzles || ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'], rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, logo: './logo.png' };

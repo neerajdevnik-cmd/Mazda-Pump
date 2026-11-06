@@ -65,6 +65,7 @@
       if (!id || !pw) return err('Login ID और password दोनों लिखें');
       go.disabled = true; err('');
       try {
+        await ensureSignedIn();
         const snap = await db.collection('pumps').doc(pid).get();
         const d = snap.exists ? snap.data() : null;
         if (!d) { go.disabled = false; return err('यह पंप सिस्टम में नहीं है'); }
@@ -74,7 +75,7 @@
         if (!auth.currentUser) await auth.signInAnonymously();
         localStorage.setItem('mazda_pump_unlock', 'yes');
         location.reload();
-      } catch (e) { go.disabled = false; err('नेटवर्क एरर: ' + e.message); }
+      } catch (e) { go.disabled = false; err('कनेक्शन एरर, दोबारा कोशिश करें (' + (e.code || e.message) + ')'); }
     };
   }
 
@@ -82,10 +83,12 @@
     await waitFor(() => window.firebase && firebase.apps && firebase.apps.length, 15000);
     if (!(window.firebase && firebase.apps && firebase.apps.length)) return;
     const auth = firebase.auth(), db = firebase.firestore();
+    const ensureSignedIn = async () => { if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { } } };
 
     // superadmin / manager ka पुराना session इस पंप पर नहीं चलेगा
     const first = await new Promise(res => { const off = auth.onAuthStateChanged(u => { off(); res(u); }); });
     if (first && !first.isAnonymous) { try { await auth.signOut(); } catch (e) { } }
+    await ensureSignedIn();
 
     if (window.PUMP_NO_GATE) return;   // party portal: gate nahi (party apna code se login karta hai)
     if (localStorage.getItem('mazda_pump_unlock') === 'yes') {
@@ -93,7 +96,8 @@
       return;
     }
     await waitFor(() => PS.currentConfig, 10000);
-    const name = PS.missing ? 'पंप नहीं मिला' : ((PS.currentConfig && PS.currentConfig.name) || 'पंप');
+    const cfg = PS.currentConfig;
+    const name = PS.missing ? 'पंप नहीं मिला' : ((cfg && cfg.id === pid && cfg.name) || 'पंप लॉगिन');
     const show = () => showGate(name, db, auth);
     if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
   })();
