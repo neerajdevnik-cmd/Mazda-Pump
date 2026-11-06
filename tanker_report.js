@@ -8,6 +8,45 @@
   const db = () => APP.db;
   const today = () => APP.todayISO();
 
+  /* ---- Batch 1: dip (cm) → litre, testing minus hata, farak sirf dip + tanker + meter se ---- */
+  const DT = { P: 'petrol', D: 'diesel' };
+  const MAXDIP = { petrol: 160, diesel: 210 };
+  // dip cm ho to DipChart se litre; agar value pehle se litre jaisi (max dip se badi) ho to wahi litre maano
+  const toLitre = (fuel, v) => {
+    const x = num(v); if (!(x > 0)) return 0;
+    if (x > MAXDIP[fuel]) return r2(x);
+    return (window.DipChart && window.DipChart.getLiters) ? r2(window.DipChart.getLiters(fuel, x)) : r2(x);
+  };
+  // nz = { p1..p4 , d1..d4 } meter readings (before/after). Testing ka koi minus nahi.
+  function tankerCalc(pre, before, after, received, dipB, dipA) {
+    const k = pre.toLowerCase(); let sale = 0;
+    ['1', '2', '3', '4'].forEach(n => {
+      const key = k + n, b = num(before.nz[key]), a = num(after.nz[key]);
+      if (a > b) sale += (a - b);
+    });
+    sale = r2(sale);
+    const B = toLitre(DT[pre], dipB), A = toLitre(DT[pre], dipA), rec = r2(num(received));
+    const expected = r2(B + rec - sale);
+    return { sale, before: B, after: A, received: rec, expected, diff: r2(A - expected) };
+  }
+  APP.tankerCalc = tankerCalc;
+
+  // उस दिन की सब टैंकर रिपोर्ट का कुल (जोड़ कर) → हिसाब के "टैंकर आया"। दो टैंकर हों तो overwrite नहीं, जोड़ होगा।
+  async function syncDayTanker(date) {
+    if (!date) return 'none';
+    try {
+      const snap = await db().collection('tanker_reports').where('date', '==', date).get();
+      let P = 0, D = 0;
+      snap.docs.forEach(d => { const x = d.data(); P += num(x.received && x.received.p); D += num(x.received && x.received.d); });
+      const ref = db().collection('days').doc(date), ds = await ref.get();
+      if (!ds.exists) return 'noday';
+      if (ds.data().status === 'submitted') return 'frozen';
+      await ref.update({ tankerP: r2(P), tankerD: r2(D) });
+      return 'ok';
+    } catch (e) { console.log('tanker→day sync failed', e); return 'err'; }
+  }
+  APP.syncDayTanker = syncDayTanker;
+
   APP.views = APP.views || {};
 
   async function getReport(id) {
@@ -30,8 +69,8 @@
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       
       let listHtml = list.map(r => {
-        const pDiff = r.result ? r.result.diffP : null;
-        const dDiff = r.result ? r.result.diffD : null;
+        const pDiff = r.result && r.result.petrol ? r.result.petrol.diff : null;
+        const dDiff = r.result && r.result.diesel ? r.result.diesel.diff : null;
         
         const badge = (diff) => {
           if (diff === null) return '<span class="chip w">?</span>';
@@ -99,10 +138,10 @@
             ${rows}
           </table>
           <div class="kv" style="padding:4px 0;"><span>मीटर से बिक्री</span><b>${lit(res.sale)}</b></div>
-          <div class="kv" style="padding:4px 0;"><span>पहले Dip</span><b>${lit(r.before['dip'+pre])}</b></div>
+          <div class="kv" style="padding:4px 0;"><span>पहले Dip</span><b>${lit(res.before)} <small>(${esc(String(r.before['dip'+pre]||'-'))} cm)</small></b></div>
           <div class="kv" style="padding:4px 0;"><span>+ टैंकर आया</span><b>${lit(r.received[pre.toLowerCase()])}</b></div>
           <div class="kv" style="padding:4px 0;"><span>= होना चाहिए</span><b>${lit(res.expected)}</b></div>
-          <div class="kv" style="padding:4px 0;"><span>बाद में Dip (असली)</span><b>${lit(r.after['dip'+pre])}</b></div>
+          <div class="kv" style="padding:4px 0;"><span>बाद में Dip (असली)</span><b>${lit(res.after)} <small>(${esc(String(r.after['dip'+pre]||'-'))} cm)</small></b></div>
           <div class="kv" style="padding:6px 0; border-top:2px solid #eee; border-bottom:0;"><span style="font-weight:bold;">फर्क (Frak)</span>
             <b class="${res.diff > 0 ? 'pos' : (res.diff < 0 ? 'neg' : '')}" style="font-size:16px;">${res.diff > 0 ? '+' : ''}${r2(res.diff)} L</b>
           </div>
@@ -110,19 +149,32 @@
       `;
     };
 
+    const recalc = pre => (r.result && r.result[pre === 'P' ? 'petrol' : 'diesel'] && r.before && r.after) ? tankerCalc(pre, r.before, r.after, r.received[pre.toLowerCase()], r.before['dip' + pre], r.after['dip' + pre]) : null;
     const m = modal(`
       <h3>🚛 टैंकर रिपोर्ट</h3>
       <div class="mut" style="margin-bottom:12px;">${dmy(r.date)} | ${r.startTime} - ${r.endTime} | ${esc(r.tankerNo||'')} | ${esc(r.driverName||'')}</div>
-      ${buildFuel('पेट्रोल', 'P', r.result.petrol)}
-      ${buildFuel('डीज़ल', 'D', r.result.diesel)}
+      ${buildFuel('पेट्रोल', 'P', recalc('P'))}
+      ${buildFuel('डीज़ल', 'D', recalc('D'))}
       
       <div class="btns" style="margin-top:16px;">
         <button class="btn g" id="tr-share">📤 WhatsApp भेजें</button>
+        <button class="btn o" id="tr-edit">✏️ सुधारें</button>
+        <button class="btn r" id="tr-del">🗑 हटाएँ</button>
         <button class="btn w" id="tr-close">बंद करें</button>
       </div>
     `);
     
     $('#tr-close', m).onclick = () => m.close();
+    $('#tr-edit', m).onclick = () => { m.close(); openAddModal(r); };
+    $('#tr-del', m).onclick = async () => {
+      if (!confirm('यह टैंकर रिपोर्ट हमेशा के लिए हटाएँ?')) return;
+      try {
+        await db().collection('tanker_reports').doc(id).delete();
+        APP.audit && APP.audit('tanker_report_delete', { id, date: r.date, tankerNo: r.tankerNo || '' });
+        await syncDayTanker(r.date);
+        m.close(); toast('रिपोर्ट हट गई ✔'); APP.views.tanker_report('list');
+      } catch (e) { toast('हटा नहीं पाया: ' + e.message); }
+    };
     $('#tr-share', m).onclick = () => {
       const pDiff = r.result.petrol ? r.result.petrol.diff : 0;
       const dDiff = r.result.diesel ? r.result.diesel.diff : 0;
@@ -131,8 +183,9 @@
     };
   }
 
-  async function openAddModal() {
-    const date = today();
+  async function openAddModal(editRec) {
+    const editId = editRec && editRec.id;
+    const date = editRec && editRec.date ? editRec.date : today();
     let dayData = null;
     try {
       const ds = await db().collection('days').doc(date).get();
@@ -140,7 +193,7 @@
     } catch(e) {}
 
     const m = modal(`
-      <h3>नई टैंकर रिपोर्ट</h3>
+      <h3>${editId ? 'टैंकर रिपोर्ट सुधारें' : 'नई टैंकर रिपोर्ट'}</h3>
       <p class="mut" style="font-size:12px;margin-bottom:10px;">टैंकर unloading से पहले और बाद का मीटर व डिप भरें।</p>
       
       <div class="row">
@@ -233,14 +286,11 @@
           after[k] = gv('tr-ao-'+k);
           if (after[k] > before[k]) sale += (after[k] - before[k]);
         });
-        sale = Math.max(0, sale - 5);
         const dipB = gv('tr-bdip'+pre);
         const dipA = gv('tr-adip'+pre);
         const rec = gv('tr-rec'+pre);
         if (!dipB || !dipA || !rec) return null;
-        const exp = dipB + rec - sale;
-        const diff = dipA - exp;
-        return { sale: r2(sale), expected: r2(exp), diff: r2(diff) };
+        return tankerCalc(pre, { nz: before }, { nz: after }, rec, dipB, dipA);
       };
       
       const p = calcFuel('P', 'tr-recP');
@@ -258,7 +308,20 @@
       </div>`;
     };
 
+    if (editRec) {
+      const set = (id, v) => { const e = q(id); if (e && v !== undefined && v !== null) e.value = v; };
+      set('tr-no', editRec.tankerNo || ''); set('tr-driver', editRec.driverName || '');
+      set('tr-st', editRec.startTime || ''); set('tr-et', editRec.endTime || '');
+      set('tr-bdipP', editRec.before && editRec.before.dipP); set('tr-bdipD', editRec.before && editRec.before.dipD);
+      set('tr-adipP', editRec.after && editRec.after.dipP); set('tr-adipD', editRec.after && editRec.after.dipD);
+      ['p1','p2','p3','p4','d1','d2','d3','d4'].forEach(k => {
+        set('tr-bo-' + k, editRec.before && editRec.before.nz && editRec.before.nz[k]);
+        set('tr-ao-' + k, editRec.after && editRec.after.nz && editRec.after.nz[k]);
+      });
+      set('tr-recP', editRec.received && editRec.received.p); set('tr-recD', editRec.received && editRec.received.d);
+    }
     $$('input', m).forEach(i => i.addEventListener('input', calc));
+    if (editRec) calc();
 
     q('tr-cancel').onclick = () => m.close();
     
@@ -279,9 +342,7 @@
         ['p1','p2','p3','p4','d1','d2','d3','d4'].filter(k=>k.startsWith(pre.toLowerCase())).forEach(k => {
           if (after.nz[k] > before.nz[k]) sale += (after.nz[k] - before.nz[k]);
         });
-        sale = Math.max(0, sale - 5);
-        const exp = before['dip'+pre] + received[pre.toLowerCase()] - sale;
-        return { sale: r2(sale), expected: r2(exp), diff: r2(after['dip'+pre] - exp) };
+        return tankerCalc(pre, before, after, received[pre.toLowerCase()], before['dip'+pre], after['dip'+pre]);
       };
 
       const result = { petrol: calcFuel('P'), diesel: calcFuel('D') };
@@ -289,7 +350,7 @@
       const btn = q('tr-save'); btn.disabled = true; btn.textContent = 'सेव हो रहा है...';
       
       try {
-        await db().collection('tanker_reports').add({
+        const payload = {
           date: dStr,
           tankerNo: q('tr-no').value.trim().toUpperCase(),
           driverName: q('tr-driver').value.trim(),
@@ -298,20 +359,14 @@
           before, after, received, result,
           createdAt: APP.FV.serverTimestamp(),
           createdBy: S.user ? S.user.email : 'Manager'
-        });
+        };
+        if (editId) await db().collection('tanker_reports').doc(editId).update(payload);
+        else await db().collection('tanker_reports').add(payload);
         
-        try {
-          const dayRef = db().collection('days').doc(dStr);
-          const daySnap = await dayRef.get();
-          if (daySnap.exists) {
-            await dayRef.update({
-              tankerP: received.p,
-              tankerD: received.d
-            });
-          }
-        } catch(e) { console.log('Day auto update failed', e); }
-
-        APP.audit('tanker_report_add', { date: dStr, tankerNo: q('tr-no').value, pDiff: result.petrol.diff, dDiff: result.diesel.diff });
+        if (editId && editRec.date && editRec.date !== dStr) await syncDayTanker(editRec.date);
+        const syncSt = await syncDayTanker(dStr);
+        if (syncSt === 'frozen') toast('⚠ इस दिन का हिसाब जमा है — हिसाब में टैंकर लीटर खुद बदलें');
+        APP.audit(editId ? 'tanker_report_edit' : 'tanker_report_add', { id: editId || '', date: dStr, tankerNo: q('tr-no').value, pDiff: result.petrol.diff, dDiff: result.diesel.diff });
         
         m.close(); toast('सेव हो गया ✔'); APP.views.tanker_report('list');
       } catch (e) {

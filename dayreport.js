@@ -39,7 +39,25 @@
   window.addEventListener('load', () => setTimeout(() => { const m = $('#main'); if (m) new MutationObserver(() => setTimeout(inject, 120)).observe(m, { childList: true }); }, 1300));
 
   /* ---------- 2. दैनिक हिसाब रिपोर्ट (Multi-page, Fit Size) ---------- */
-  const W = 750;
+  let W = 750, FK = 1;                             /* साइज़ का चुनाव share के समय होता है */
+  /* ---- फोटो का साइज़ और फॉन्ट: ऐप में ही चुनें, पसंद याद रहती है ---- */
+  const STYLE_K = 'mazda_rep_style';
+  const SIZES = { sm: { label: 'छोटा फॉन्ट', k: 0.9, w: 750 }, md: { label: 'सामान्य (अभी वाला)', k: 1, w: 750 }, lg: { label: 'बड़ा फॉन्ट', k: 1.15, w: 780 }, xl: { label: 'सबसे बड़ा फॉन्ट', k: 1.3, w: 800 } };
+  const getStyle = () => { try { const v = JSON.parse(localStorage.getItem(STYLE_K) || 'null'); return v && SIZES[v.size] ? v.size : 'md'; } catch (e) { return 'md'; } };
+  const setStyle = size => { try { localStorage.setItem(STYLE_K, JSON.stringify({ size })); } catch (e) { } };
+  // inline font-size px ko scale karo (layout wahi rahe, sirf akshar bade/chhote)
+  const scaleFonts = html => html.replace(/font-size:(\d+(?:\.\d+)?)px/g, (m, n) => 'font-size:' + (Math.round(parseFloat(n) * FK * 10) / 10) + 'px');
+  function pickStyle() {
+    return new Promise(res => {
+      const cur = getStyle();
+      const m = APP.modal('<h3>📐 फोटो का साइज़ और फॉन्ट</h3>' +
+        '<p class="mut" style="font-size:12.5px;margin:0 0 10px">अक्षर कितने बड़े हों? आपकी पसंद अगली बार भी यही रहेगी।</p>' +
+        Object.keys(SIZES).map(k => '<label style="display:flex;align-items:center;gap:8px;padding:10px;border:2px solid ' + (k === cur ? '#0a2f6b' : '#dbe4f5') + ';border-radius:12px;margin:6px 0;font-size:16px"><input type="radio" name="rs" value="' + k + '" ' + (k === cur ? 'checked' : '') + ' style="width:auto"> ' + SIZES[k].label + '</label>').join('') +
+        '<div class="btns" style="margin-top:12px"><button class="btn g" id="rs-ok">📸 फोटो बनाओ</button><button class="btn w" id="rs-no">रद्द</button></div>');
+      m.querySelector('#rs-no').onclick = () => { m.close(); res(null); };
+      m.querySelector('#rs-ok').onclick = () => { const v = (m.querySelector('input[name="rs"]:checked') || {}).value || 'md'; setStyle(v); m.close(); res(v); };
+    });
+  }
   const NAVY = '#0a2f6b', INK = '#111827', MUT = '#4b5563', LINE = '#c9d3e6', RED = '#b91c1c', GRN = '#15803d', AMB = '#b45309';
   const FM = "system-ui,-apple-system,'Noto Sans Devanagari','Segoe UI',sans-serif";
   const fmt = (x, d) => r2(num(x)).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: 2 });
@@ -125,7 +143,8 @@
         </div>
         <div style="flex:1;min-width:0;border:2px solid #fca5a5;background:#fef2f2;border-radius:12px;padding:8px 12px">
           <div style="font-size:20px;font-weight:800;color:#991b1b">खर्चा — गया</div>
-          ${line('Paytm+स्वाइप', pm(num(d.paytm) + num(d.swipe)), { fs: 18 })}
+          ${line('Paytm / UPI', pm(num(d.paytm)), { fs: 18 })}
+          ${line('स्वाइप (कार्ड)', pm(num(d.swipe)), { fs: 18 })}
           ${line('उधार दिया', pm(o.udhar), { fs: 18 })}
           ${line('DG/चाय/अन्य', pm(o.totalKharcha), { fs: 18 })}
           ${line('मालिक को दिया', pm(d.malikDiya), { fs: 18 })}
@@ -146,7 +165,7 @@
     const tHead = '<tr>' + th('समय', 'left', '60px') + th('पार्टी', 'left') + th('विवरण', 'left', '300px') + th('उधार ₹', 'right', '110px') + th('जमा ₹', 'right', '110px') + '</tr>';
     const FL = f => f === 'petrol' ? 'M.S.' : f === 'diesel' ? 'HSD' : '';
     const detail = r => r.kind === 'udhar'
-      ? esc(r.vehicle || '') + (r.fuel ? ' · ' + (FL(r.fuel) || '') + ' ' + fmt(r.litre, 2) + ' L' : '')
+      ? esc(r.vehicle || '') + (r.fuel ? ' · <b style="color:' + NAVY + '">' + (FL(r.fuel) || '') + ' ' + fmt(r.litre, 2) + ' L</b>' + (num(r.rate) > 0 ? ' × ₹' + fmt(r.rate, 2) : '') : '')
       : 'जमा · ' + esc((APP.MODE && APP.MODE[r.mode]) || 'नकद') + (r.note && !APP.AUTO_NOTES.includes(r.note) ? ' · ' + esc(r.note) : '');
     
     let totU = 0, totJ = 0;
@@ -181,6 +200,8 @@
 
   APP.shareCompactDayReport = async function (st, d) {
     if (typeof html2canvas !== 'function') return APP.toast('html2canvas लोड नहीं हुआ — नेट चेक करें');
+    const pick = await pickStyle(); if (!pick) return;
+    W = SIZES[pick].w; FK = SIZES[pick].k;
     APP.toast('साफ़ हिसाब फोटो बन रही है… (कुछ सेकंड)');
     
     const o = K.compute(d, st.rows);
@@ -190,7 +211,7 @@
     const p1 = document.createElement('div');
     p1.className = 'dr-page';
     p1.style.cssText = 'width:' + W + 'px; background:#fff; color:' + INK + '; font-family:' + FM + '; padding:22px 22px 16px; box-sizing:border-box; line-height:1.3;';
-    p1.innerHTML = buildPage1(st, d, o);
+    p1.innerHTML = scaleFonts(buildPage1(st, d, o));
     wrap.appendChild(p1);
 
     // Page 2+ (Expenses + Entries)
@@ -200,7 +221,7 @@
       p2.style.cssText = 'width:' + W + 'px; background:#fff; color:' + INK + '; font-family:' + FM + '; padding:22px 22px 16px; box-sizing:border-box; line-height:1.3;';
       
       const miniHdr = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ' + NAVY + ';padding-bottom:8px;margin-bottom:12px"><div style="font-size:20px;font-weight:900;color:' + NAVY + '">' + esc(C.pump.name) + '</div><div style="font-size:16px;font-weight:700">' + dmy(st.date) + ' (जारी)</div></div>';
-      p2.innerHTML = miniHdr + buildPage2(st, d, o);
+      p2.innerHTML = scaleFonts(miniHdr + buildPage2(st, d, o));
       
       // Footer for page 1
       const f1 = document.createElement('div');

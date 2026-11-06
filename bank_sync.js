@@ -72,12 +72,9 @@
         add(`bk_malik_${dt}`, 'sbi', 'in', dt, '18:00', num(d.malikDiya), 'पंप गल्ले से कैश जमा (SBI)', 'cash');
         add(`bk_sbitop_${dt}`, 'sbi', 'in', dt, '18:30', num(d.sbiTopup), 'गल्ले से SBI जमा', 'cash');
         add(`bk_pnbtop_${dt}`, 'pnb', 'in', dt, '18:40', num(d.pnbTopup), 'गल्ले से PNB जमा', 'cash');
-        add(`bk_dg_${dt}`, 'pnb', 'out', dt, '19:30', num(d.kharcha), 'खर्चा DG (जनरेटर)', 'kharcha');
-        add(`bk_chai_${dt}`, 'pnb', 'out', dt, '19:35', num(d.chaiKhana), 'चाय-खाना', 'kharcha');
-        add(`bk_inaam_${dt}`, 'pnb', 'out', dt, '19:40', num(d.driverInaam), 'ड्राइवर इनाम', 'kharcha');
-        extraExpenses(d).forEach((x, i) => {
-          add(`bk_xp_${dt}_${i}`, 'pnb', 'out', dt, '19:50', pickAmt(x || {}), pickNote(x || {}), 'kharcha');
-        });
+        // खर्चे (DG, चाय-खाना, ड्राइवर इनाम, अन्य) बैंक में नहीं जाते — ये सिर्फ़ हिसाब/गल्ले में रहते हैं
+        //   और मासिक रिपोर्ट में इन्हीं दिन के फ़ील्ड से जुड़ते हैं। पुरानी bk_dg/bk_chai/bk_inaam/bk_xp
+        //   entries अगले सिंक में अपने-आप हट जाती हैं (नीचे "stale" delete वाला हिस्सा)।
       });
 
       // B) Tanker / margin bill -> SBI se katega

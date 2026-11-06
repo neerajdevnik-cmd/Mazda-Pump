@@ -515,7 +515,7 @@
 
       <div id="blkU">
         <label>गाड़ी नंबर</label><select id="e-veh"></select><input id="e-vehx" placeholder="गाड़ी नंबर टाइप करें" style="display:none;margin-top:6px">
-        <div class="row"><div><label>तेल</label><select id="e-fuel"><option value="petrol">पेट्रोल</option><option value="diesel" selected>डीज़ल</option></select></div>
+        <div class="row"><div><label>तेल</label><select id="e-fuel"><option value="petrol">पेट्रोल</option><option value="diesel" selected>डीज़ल</option></select></div><div id="e-fuel-lock" class="mut" style="font-size:12px;margin-top:4px"></div><button type="button" class="btn sm w" id="e-fuel-unlock" style="display:none;margin-top:4px">🔓 तेल बदलें (मालिक)</button>
         <div><label>रेट (Locked) 🔒</label><input id="e-rate" readonly style="background:#f0f0f0;color:#555;font-weight:bold"></div></div>
         <div class="row"><div><label>लीटर</label><input id="e-lit" inputmode="decimal"></div><div><label>रुपये</label><input id="e-amtU" inputmode="decimal"></div></div>
       </div>
@@ -624,6 +624,7 @@
     q('e-bank-paymode').onchange = syncNote;
     $$('.seg button[data-k]', m).forEach(b => b.onclick = () => { kind = b.dataset.k; showKind(); });
 
+    let fuelLockHook = () => {};
     const fillVeh = () => {
       const p = APP.partyById(priv, q('e-party').value) || {};
       const vs = p.vehicles || [];
@@ -632,11 +633,33 @@
       q('e-veh').innerHTML = h;
       if (cur && !vs.includes(cur)) { q('e-veh').value = '__x'; q('e-vehx').value = cur; }
       q('e-vehx').style.display = q('e-veh').value === '__x' ? '' : 'none';
+      fuelLockHook();
     };
-    q('e-veh').onchange = () => { q('e-vehx').style.display = q('e-veh').value === '__x' ? '' : 'none'; };
+    q('e-veh').onchange = () => { q('e-vehx').style.display = q('e-veh').value === '__x' ? '' : 'none'; applyFuelLock(); };
+    q('e-vehx').oninput = () => applyFuelLock();
     q('e-party').onchange = fillVeh; fillVeh();
 
     const setRate = () => { q('e-rate').value = rates[q('e-fuel').value] || ''; };
+    /* ---- गाड़ी का तेल लॉक: जिस गाड़ी का तेल पहली बार दर्ज हुआ, वही हमेशा ----
+       बदलने के लिए सिर्फ़ मालिक (🔓 बटन), और वो भी पुष्टि के साथ। */
+    let fuelUnlocked = false;
+    const curVeh = () => q('e-veh').value === '__x' ? q('e-vehx').value.trim().toUpperCase() : q('e-veh').value;
+    const lockedFuel = veh => { if (!veh) return ''; const p = APP.partyById(priv, q('e-party').value) || {}; return (p.vehicleFuel || {})[veh] || ''; };
+    const FN2 = f => f === 'diesel' ? 'डीज़ल' : 'पेट्रोल';
+    const applyFuelLock = () => {
+      const veh = curVeh(), lf = lockedFuel(veh), isUd = kind === 'udhar';
+      const lock = !!lf && isUd && !fuelUnlocked;
+      if (lf && isUd && !e && !fuelUnlocked) { q('e-fuel').value = lf; setRate(); }
+      q('e-fuel').disabled = lock;
+      q('e-fuel-lock').textContent = lf ? (lock ? '🔒 इस गाड़ी का तेल ' + FN2(lf) + ' लॉक है' : '🔓 तेल अनलॉक है (' + FN2(lf) + ' की गाड़ी)') : '';
+      const ub = q('e-fuel-unlock');
+      ub.style.display = (lf && lock && (APP.isTrueOwner ? APP.isTrueOwner() : APP.isOwner())) ? '' : 'none';
+    };
+    fuelLockHook = applyFuelLock;
+    q('e-fuel-unlock').onclick = () => {
+      if (!confirm('इस गाड़ी का तेल बदलना है? (पुष्टि करें — ये गाड़ी का स्थायी तेल बदल देगा)')) return;
+      fuelUnlocked = true; applyFuelLock(); toast('🔓 तेल बदला जा सकता है');
+    };
     const calcA = () => { const r = num(q('e-rate').value), l = num(q('e-lit').value); q('e-amtU').value = r && l ? r2(r * l) : ''; };
     const calcL = () => { const r = num(q('e-rate').value), a = num(q('e-amtU').value); q('e-lit').value = r && a ? r2(a / r) : ''; };
 
@@ -730,6 +753,15 @@
         data.vehicle = q('e-veh').value === '__x' ? q('e-vehx').value.trim().toUpperCase() : q('e-veh').value;
         data.fuel = q('e-fuel').value; data.rate = num(q('e-rate').value); data.litre = num(q('e-lit').value); data.amount = num(q('e-amtU').value);
         if (!(data.amount > 0)) return toast('रुपये भरें');
+        const lf = lockedFuel(data.vehicle);
+        if (lf && data.fuel !== lf && !fuelUnlocked) return toast('🔒 यह गाड़ी ' + FN2(lf) + ' की है — तेल नहीं बदल सकते');
+        if (data.vehicle && data.fuel && !lf && !priv) {       // पहली बार: इस गाड़ी का तेल याद रखो
+          try {
+            const coll = priv ? 'priv_parties' : 'parties';
+            await APP.db.collection(coll).doc(partyId).update({ ['vehicleFuel.' + data.vehicle]: data.fuel });
+            APP.S.parties = null;
+          } catch (err) { console.warn('vehicleFuel save failed', err); }
+        }
         if (!priv) {
           if (!data.vehicle) return toast('गाड़ी नंबर लिखें');
           if (!(data.litre > 0)) return toast('लीटर भरें');

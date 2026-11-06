@@ -201,48 +201,76 @@
  b.update(db.collection('parties').doc(p.partyId), { bal: FV.increment(-p.amount) });  
  await b.commit(); return payId;  
  }  
- function parseNote(text) {  
- const out = []; String(text || '').split(/\n|;/).forEach(l => { const m = l.match(/SBI\s*\+\s*([\d,]+(?:\.\d+)?)\s*[-–]\s*(.+?)\s*\(\s*([A-Za-z]+)\s*\)/i); if (m) out.push({ amount: num(m[1].replace(/,/g, '')), party: m[2].trim(), mode: m[3].toLowerCase().replace('rtgs', 'rtgs') }); });  
- return out;  
- }  
- async function bankNote() {  
- const note = (document.getElementById('f-note') || {}).value || '';  
- const items = parseNote(note); if (!items.length) return APP.toast('नोट में "SBI + रकम - पार्टी (Cheque)" वाली लाइन नहीं मिली');  
- const parties = await APP.getParties(false, true), nk = s => String(s).toLowerCase().replace(/[\s.\-_()]+/g, ''), date = (S.cur && S.cur.date) || today();  
- const rows = items.map(it => ({ it, p: parties.find(x => nk(x.name) === nk(it.party)) || parties.find(x => nk(x.name).includes(nk(it.party)) || nk(it.party).includes(nk(x.name))) || null, mode: MODES.some(m => m[0] === it.mode) ? it.mode : 'other' }));  
- const opt = (arr, sel) => arr.map(a => '<option value="' + a[0] + '"' + (a[0] === sel ? ' selected' : '') + '>' + APP.esc(a[1]) + '</option>').join('');  
- const m = APP.modal('<h3>🏦 नोट से बैंक एंट्री — जाँच लें</h3><p class="mut" style="font-size:12px;margin:2px 0 8px">तारीख <b>' + dmy(date) + '</b> · ये पार्टी के ledger में <b>जमा</b> और बैंक में जुड़ेंगी, <b>आज के गल्ले/हिसाब में नहीं</b>।</p>  
- rows.map((r, k) => '<div style="border:1px solid #e3e8f2;border-radius:10px;padding:8px;margin-bottom:8px"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-i="' + k + '" class="bn-c" style="width:auto"' + (r.p ? ' checked' : '') + '> <b>नोट: ' + APP.esc(r.it.party) + '</b></label>  
- <select class="bn-p" data-i="' + k + '" style="margin-top:6px"><option value="">— पार्टी चुनें —</option>' + opt(parties.map(p => [p.id, p.name]), r.p && r.p.id) + '</select>  
- <div class="row" style="margin-top:6px"><div><input class="bn-a" data-i="' + k + '" inputmode="decimal" value="' + r.it.amount + '"></div><div><select class="bn-m" data-i="' + k + '">' + opt(MODES, r.mode) + '</select></div></div>' + (r.p ? '' : '<div class="warn" style="margin-top:6px">पार्टी नहीं मिली — ऊपर से चुनें, वरना छोड़ दी जाएगी</div>') + '</div>').join('') +  
- '<div class="btns" style="margin-top:6px"><button class="btn g" id="bn-ok">✅ सेव करो</button><button class="btn w" id="bn-no">रद्द</button></div>');  
- m.querySelector('#bn-no').onclick = () => m.close();  
- m.querySelector('#bn-ok').onclick = async () => {  
- let ok = 0; const bad = [];  
- for (let k = 0; k < rows.length; k++) {  
- if (!m.querySelector('.bn-c[data-i="' + k + '"] caricature')?.checked && !m.querySelector('.bn-c[data-i="' + k + '"]').checked) continue;  
- const pid = m.querySelector('.bn-p[data-i="' + k + '"]').value, p = parties.find(x => x.id === pid), amt = num(m.querySelector('.bn-a[data-i="' + k + '"]').value), mode = m.querySelector('.bn-m[data-i="' + k + '"]').value;  
- if (!p || !(amt > 0)) { bad.push(rows[k].it.party); continue; }  
- try { if (await saveBankParty({ partyId: p.id, partyName: p.name, amount: amt, mode, date, note: 'नोट से' })) ok++; } catch (e) { bad.push(rows[k].it.party + ' (' + (e.message || '').split('\n')[0].slice(0, 60) + ')'); }  
- }  
- APP.S.parties = null; m.close(); APP.toast(ok + ' बैंक एंट्री बनीं' + (bad.length ? ' · नहीं बनीं: ' + bad.join(', ') : ''));  
- };  
- }  
- async function bankModal() {  
- const ps = await APP.getParties(false, true);  
- const m = APP.modal('<h3>🏦 पार्टी का बैंक जमा</h3><p class="mut" style="font-size:12px">पार्टी ने सीधे पंप के बैंक खाते में पैसा डाला। ये सिर्फ़ ledger और बैंक में जुड़ेगा, आज के गल्ले/हिसाब में नहीं।</p>' +  
- '<label>पार्टी</label><select id="bp-p">' + ps.map(p => '<option value="' + p.id + '">' + APP.esc(p.name) + '</option>').join('') + '</select>' +  
- '<div class="row"><div><label>रकम (₹)</label><input id="bp-a" inputmode="decimal"></div><div><label>तारीख</label><input type="date" id="bp-d" value="' + today() + '" max="' + today() + '"></div></div>' +  
- '<label>तरीका</label><select id="bp-m">' + MODES.map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select>' +  
- '<label>चेक/UTR नंबर (हो तो)</label><input id="bp-r"><label>नोट</label><input id="bp-n">' +  
- '<div class="btns" style="margin-top:12px"><button class="btn g" id="bp-ok">💾 सेव</button><button class="btn w" id="bp-no">रद्द</button></div>');  
- m.querySelector('#bp-no').onclick = () => m.close();  
- m.querySelector('#bp-ok').onclick = async () => {  
- const g = i => m.querySelector('#' + i).value, pid = g('bp-p'), party = ps.find(x => x.id === pid), amount = num(g('bp-a'));  
- if (!party || !(amount > 0)) return APP.toast('पार्टी और रकम भरें');  
- try { const id = await saveBankParty({ partyId: pid, partyName: party.name, amount, date: g('bp-d'), mode: g('bp-m'), ref: g('bp-r'), note: g('bp-n') }); if (id) { m.close(); APP.S.parties = null; APP.toast('बैंक जमा दर्ज ✔ ' + id); } } catch (e) { }  
- };  
- }  
+  function parseNote(text) {
+    const out = [];
+    String(text || '').split(/\n|;/).forEach(l => {
+      const m = l.match(/SBI\s*\+\s*([\d,]+(?:\.\d+)?)\s*[-–]\s*(.+?)\s*\(\s*([A-Za-z]+)\s*\)/i);
+      if (m) out.push({ amount: Number(m[1].replace(/,/g, '')), party: m[2].trim(), mode: m[3].toLowerCase() });
+    });
+    return out;
+  }
+  async function bankNote() {
+    const note = (document.getElementById('f-note') || {}).value || '';
+    const items = parseNote(note);
+    if (!items.length) return APP.toast('नोट में "SBI + रकम - पार्टी (Cheque)" वाली लाइन नहीं मिली');
+    const parties = await APP.getParties(false, true);
+    const nk = s => String(s).toLowerCase().replace(/[\s.\-_()]+/g, '');
+    const date = (S.cur && S.cur.date) || today();
+    const rows = items.map(it => ({
+      it,
+      p: parties.find(x => nk(x.name) === nk(it.party)) ||
+         parties.find(x => nk(x.name).includes(nk(it.party)) || nk(it.party).includes(nk(x.name))) || null
+    }));
+    const opt = (arr, sel) => arr.map(a => '<option value="' + a[0] + '"' + (a[0] === sel ? ' selected' : '') + '>' + APP.esc(a[1]) + '</option>').join('');
+    const body = rows.map((r, k) =>
+      '<div style="border:1px solid #e3e8f2;border-radius:10px;padding:8px;margin-bottom:8px">' +
+      '<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-i="' + k + '" class="bn-c" ' + (r.p ? 'checked' : '') + ' style="width:auto"> ' + APP.esc(r.it.party) + '</label>' +
+      '<select class="bn-p" data-i="' + k + '" style="margin-top:6px"><option value="">— पार्टी चुनें —</option>' + opt(parties.map(p => [p.id, p.name]), r.p && r.p.id) + '</select>' +
+      '<div class="row" style="margin-top:6px"><div><input class="bn-a" data-i="' + k + '" inputmode="decimal" value="' + r.it.amount + '"></div>' +
+      '<div><select class="bn-m" data-i="' + k + '">' + opt(MODES, r.it.mode) + '</select></div></div></div>'
+    ).join('');
+    const m = APP.modal('<h3>🏦 नोट से बैंक एंट्री — जाँच लें</h3>' +
+      '<p class="mut" style="font-size:12px;margin:2px 0 8px">तारीख <b>' + dmy(date) + '</b> · ये पार्टी के ledger में <b>जमा</b> और बैंक में जुड़ेंगी, <b>आज के गल्ले/हिसाब में नहीं</b>।</p>' +
+      body +
+      '<div class="btns" style="margin-top:6px"><button class="btn g" id="bn-ok">✅ सेव करो</button><button class="btn w" id="bn-no">रद्द</button></div>');
+    m.querySelector('#bn-no').onclick = () => m.close();
+    m.querySelector('#bn-ok').onclick = async () => {
+      let ok = 0; const bad = [];
+      for (let k = 0; k < rows.length; k++) {
+        const chk = m.querySelector('.bn-c[data-i="' + k + '"]');
+        if (chk && !chk.checked) continue;
+        const pid = m.querySelector('.bn-p[data-i="' + k + '"]').value;
+        const p = parties.find(x => x.id === pid);
+        const amt = num(m.querySelector('.bn-a[data-i="' + k + '"]').value);
+        const mode = m.querySelector('.bn-m[data-i="' + k + '"]').value;
+        if (!p || !(amt > 0)) { bad.push(rows[k].it.party); continue; }
+        try { if (await saveBankParty({ partyId: p.id, partyName: p.name, amount: amt, mode, date, note: 'नोट से' })) ok++; }
+        catch (e) { bad.push(rows[k].it.party); }
+      }
+      APP.S.parties = null; m.close();
+      APP.toast(ok + ' बैंक एंट्री बनीं' + (bad.length ? ' · नहीं बनीं: ' + bad.join(', ') : ''));
+    };
+  }
+  async function bankModal() {
+    const ps = await APP.getParties(false, true);
+    const m = APP.modal('<h3>🏦 पार्टी का बैंक जमा</h3><p class="mut" style="font-size:12px">पार्टी ने सीधे पंप के बैंक खाते में पैसा डाला हो तो यहाँ दर्ज करें।</p>' +
+      '<label>पार्टी</label><select id="bp-p">' + ps.map(p => '<option value="' + p.id + '">' + APP.esc(p.name) + '</option>').join('') + '</select>' +
+      '<div class="row"><div><label>रकम (₹)</label><input id="bp-a" inputmode="decimal"></div><div><label>तारीख</label><input type="date" id="bp-d" value="' + today() + '"></div></div>' +
+      '<label>तरीका</label><select id="bp-m">' + MODES.map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select>' +
+      '<label>चेक/UTR नंबर (हो तो)</label><input id="bp-r"><label>नोट</label><input id="bp-n">' +
+      '<div class="btns" style="margin-top:12px"><button class="btn g" id="bp-ok">💾 सेव</button><button class="btn w" id="bp-no">रद्द</button></div>');
+    m.querySelector('#bp-no').onclick = () => m.close();
+    m.querySelector('#bp-ok').onclick = async () => {
+      const g = i => m.querySelector('#' + i).value;
+      const pid = g('bp-p'), party = ps.find(x => x.id === pid), amount = num(g('bp-a'));
+      if (!party || !(amount > 0)) return APP.toast('पार्टी और रकम भरें');
+      try {
+        await saveBankParty({ partyId: pid, partyName: party.name, amount, date: g('bp-d'), mode: g('bp-m'), ref: g('bp-r'), note: g('bp-n') });
+        APP.S.parties = null; m.close(); APP.toast('बैंक जमा दर्ज हुआ ✔');
+        if (APP.views && APP.views.bank) APP.views.bank();
+      } catch (e) { APP.toast('सेव नहीं हुआ: ' + e.message); }
+    };
+  }
  async function auditModal() {  
  const m = APP.modal('<h3>🔍 नियम जाँच</h3><p class="mut">जाँच चल रही है…</p>');  
  try {  
