@@ -50,6 +50,10 @@
       </div>`;
   }
 
+  async function ensureSignedIn(auth) {
+    if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { } }
+  }
+
   function showGate(name, db, auth) {
     if (document.getElementById('pl-gate')) return;
     const g = document.createElement('div');
@@ -65,14 +69,28 @@
       if (!id || !pw) return err('Login ID और password दोनों लिखें');
       go.disabled = true; err('');
       try {
-        await ensureSignedIn();
+        await ensureSignedIn(auth);
+        // 1) link wala pump
+        let target = null, d = null;
         const snap = await db.collection('pumps').doc(pid).get();
-        const d = snap.exists ? snap.data() : null;
-        if (!d) { go.disabled = false; return err('यह पंप सिस्टम में नहीं है'); }
-        if (!d.loginHash) { go.disabled = false; return err('इस पंप का login अभी सेट नहीं है — Super Admin से बनवाएँ'); }
-        const h = await PS.hashLogin(pid, id, pw);
-        if (id !== d.loginId || h !== d.loginHash) { go.disabled = false; return err('Login ID या password गलत है'); }
-        if (!auth.currentUser) await auth.signInAnonymously();
+        if (snap.exists) { d = snap.data(); target = pid; }
+        // 2) link ka pump nahi / login match nahi -> Login ID se pump dhoondho
+        const tryMatch = async (pumpId, data) => data && data.loginHash && id === data.loginId &&
+          (await PS.hashLogin(pumpId, id, pw)) === data.loginHash;
+        if (!(await tryMatch(target, d))) {
+          const q = await db.collection('pumps').where('loginId', '==', id).limit(1).get();
+          if (!q.empty) {
+            const doc = q.docs[0];
+            if (await tryMatch(doc.id, doc.data())) {
+              if (doc.id !== pid) {          // sahi pump ka link: wahi page, sahi ?p= ke saath
+                const page = location.pathname.split('/').pop() || 'index.html';
+                return location.replace(page + '?p=' + encodeURIComponent(doc.id));
+              }
+              target = doc.id; d = doc.data();
+            }
+          }
+          if (!(await tryMatch(target, d))) { go.disabled = false; return err('Login ID या password गलत है'); }
+        }
         localStorage.setItem('mazda_pump_unlock', 'yes');
         location.reload();
       } catch (e) { go.disabled = false; err('कनेक्शन एरर, दोबारा कोशिश करें (' + (e.code || e.message) + ')'); }
@@ -83,12 +101,11 @@
     await waitFor(() => window.firebase && firebase.apps && firebase.apps.length, 15000);
     if (!(window.firebase && firebase.apps && firebase.apps.length)) return;
     const auth = firebase.auth(), db = firebase.firestore();
-    const ensureSignedIn = async () => { if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { } } };
 
     // superadmin / manager ka पुराना session इस पंप पर नहीं चलेगा
     const first = await new Promise(res => { const off = auth.onAuthStateChanged(u => { off(); res(u); }); });
     if (first && !first.isAnonymous) { try { await auth.signOut(); } catch (e) { } }
-    await ensureSignedIn();
+    await ensureSignedIn(auth);
 
     if (window.PUMP_NO_GATE) return;   // party portal: gate nahi (party apna code se login karta hai)
     if (localStorage.getItem('mazda_pump_unlock') === 'yes') {
@@ -97,7 +114,7 @@
     }
     await waitFor(() => PS.currentConfig, 10000);
     const cfg = PS.currentConfig;
-    const name = PS.missing ? 'पंप नहीं मिला' : ((cfg && cfg.id === pid && cfg.name) || 'पंप लॉगिन');
+    const name = (cfg && cfg.id === pid && !PS.missing && cfg.name) || 'पंप लॉगिन';
     const show = () => showGate(name, db, auth);
     if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
   })();

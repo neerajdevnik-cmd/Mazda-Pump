@@ -75,6 +75,8 @@
     if (!editing && snap.exists) return alert('यह Pump ID पहले से है: ' + id);
     if (editing && !snap.exists) return alert('यह पंप नहीं मिला');
     const prev = snap.exists ? snap.data() : {};
+    const dupQ = await rawDb().collection('pumps').where('loginId', '==', f.loginId).limit(1).get();
+    if (dupQ.docs.some(x => x.id !== id)) return alert('यह Login ID पहले से किसी दूसरे पंप में है, नई ID लिखें');
     if (!f.loginId || f.loginId.length < 4) return alert('Login ID कम से कम 4 अक्षर की लिखें');
     if (f.loginPw && f.loginPw.length < 6) return alert('Password कम से कम 6 अक्षर का हो');
     if (!prev.loginHash && !f.loginPw) return alert('Password लिखें (कम से कम 6 अक्षर)');
