@@ -85,9 +85,10 @@
     // पंप की पहचान सिर्फ़ URL से (?p=ID). कोई ID नहीं → माज़दा. कभी किसी पुराने ID को याद नहीं रखते.
     try {
       const p = new URLSearchParams(window.location.search), q = p.get('pump') || p.get('p');
-      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) { if (isStandalone()) try { localStorage.setItem('mazda_home_pump', c); } catch (e) { } return c; } }
-      /* Home Screen वाला ऐप बिना ?p= के खुले तो उसी पंप पर जाए जो install के समय खोला गया था */
-      if (isStandalone()) { const h = localStorage.getItem('mazda_home_pump'); if (h) return h; }
+      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) { if (isStandalone()) try { localStorage.setItem('pp_home_pump', c); } catch (e) { } return c; } }
+      /* Home Screen वाला ऐप बिना ?p= के खुले तो उसी पंप पर जाए जो install के समय खोला गया था.
+         Key 'pp_' से शुरू होनी चाहिए — 'mazda_' वाली keys पंप के हिसाब से बदल जाती हैं (ऊपर देखें) */
+      if (isStandalone()) { const h = localStorage.getItem('pp_home_pump'); if (h) return h; }
     } catch (e) { }
     return MAZDA;
   }

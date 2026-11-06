@@ -1,7 +1,7 @@
 {
   "name": "माज़दा ऑयल - पार्टी खाता",
   "short_name": "माज़दा खाता",
-  "start_url": "./party.html",
+  "start_url": "./party.html?p=mazda",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0a2f6b",

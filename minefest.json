@@ -1,7 +1,7 @@
 {
   "name": "माज़दा पंप हिसाब",
   "short_name": "पंप हिसाब",
-  "start_url": "./index.html",
+  "start_url": "./index.html?p=mazda",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f6fa",
