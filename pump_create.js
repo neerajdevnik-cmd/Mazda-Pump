@@ -26,6 +26,7 @@
   const randPin = () => String(1000 + Math.floor(Math.random() * 9000));
   const isAuthorized = () => {
     const A = window.APP || {};
+    if (window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump()) return false;  // दूसरे पंप पर नहीं
     const email = ((A.S && A.S.user && A.S.user.email) || '').toLowerCase();
     return email.includes('neeraj') || (A.isTrueOwner && A.isTrueOwner()) || localStorage.getItem('mazda_owner') === 'yes';
   };

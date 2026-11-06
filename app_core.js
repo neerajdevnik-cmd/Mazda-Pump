@@ -189,6 +189,13 @@
   Object.assign(APP, { getParties, partyById });
 
   function loginView(msg) {
+    const PS0 = window.PUMP_SYSTEM;
+    const custom0 = !!(PS0 && PS0.isCustomPump && PS0.isCustomPump());
+    if (custom0 && PS0.ready && !PS0.isReady) {   // पंप की सेटिंग आने तक लॉगिन फ़ॉर्म नहीं (वरना खाली/माज़दा डेटा दिखता था)
+      $('#app').innerHTML = '<div class="login"><p class="mut" style="text-align:center;margin-top:40vh">⏳ पंप लोड हो रहा है…</p></div>';
+      PS0.ready.then(() => loginView(msg));
+      return;
+    }
     const logoSrc = (window.PUMP_SYSTEM && window.PUMP_SYSTEM.currentConfig && window.PUMP_SYSTEM.currentConfig.logo) || './logo.png';
     $('#app').innerHTML = `
       <div class="login">
@@ -197,15 +204,15 @@
         <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
         
         <div class="seg" style="margin:16px 0">
-          <button id="tab-man" class="on">मालिक</button>
+          <button id="tab-man" class="on">${custom0 ? 'मैनेजर' : 'मालिक'}</button>
           <button id="tab-sm">सेल्समैन</button>
           <button id="tab-vw">मालिक-व्यू</button>
         </div>
 
         <div id="form-man">
-          <label>यूज़रनेम (ईमेल)</label>
-          <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">
-          <label>पासवर्ड</label>
+          ${custom0 ? '<input id="em" type="hidden" value="">' : `<label>यूज़रनेम (ईमेल)</label>
+          <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">`}
+          <label>${custom0 ? 'मैनेजर पासवर्ड' : 'पासवर्ड'}</label>
           <input id="pw" type="password" autocomplete="current-password">
           <div class="btns" style="margin-top:14px"><button class="btn full" id="go-btn">लॉगिन करें</button></div>
         </div>
@@ -359,6 +366,12 @@
 
     auth.onAuthStateChanged(u => {
       if (isViewer()) return;
+      const PSa = window.PUMP_SYSTEM;
+      if (u && !u.isAnonymous && PSa && PSa.isCustomPump && PSa.isCustomPump()) {
+        // दूसरे पंप पर माज़दा/Super Admin का पुराना login कभी नहीं चलेगा
+        auth.signOut().catch(() => { });
+        return;
+      }
       if (u && u.isAnonymous) { if (!S.role && !S.salesman) loginView(); return; }
       if (!u) {
         if (!S.salesman) { S.user = null; return loginView(); }

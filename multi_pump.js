@@ -89,6 +89,10 @@
     return MAZDA;
   }
   PS.activePumpId = requestedPumpId();
+  /* PS.ready: पंप की सेटिंग लोड होने (या फ़ेल होने) पर resolve. लॉगिन इसके बाद ही चलेगा */
+  PS.isReady = false; PS.loadError = null;
+  PS.ready = new Promise(res => { PS._resolveReady = () => { PS.isReady = true; res(); }; });
+  setTimeout(() => { if (!PS.isReady) { PS.loadError = PS.loadError || 'timeout'; PS._resolveReady(); } }, 20000);
   PS.currentConfig = null;
   PS.isCustomPump = () => PS.activePumpId !== MAZDA;
 
@@ -117,9 +121,30 @@
   PS.initBranding = async function (db) {
     const pid = PS.activePumpId, C = window.CFG || {};
     let cfg = null;
-    if (pid !== MAZDA && db) {
-      try { const snap = await db.collection('pumps').doc(pid).get(); if (snap.exists) cfg = normalize(pid, snap.data()); else PS.missing = true; }
-      catch (e) { console.warn('[MultiPump] पंप की सेटिंग नहीं मिली:', e); }
+    try {
+      if (pid !== MAZDA && db) {
+        /* नया पंप: पहले पुराना (super admin / माज़दा) login हटाओ, फिर anonymous से पंप की सेटिंग पढ़ो */
+        const auth = firebase.auth();
+        try {
+          if (auth.currentUser && !auth.currentUser.isAnonymous) await auth.signOut();
+          if (!auth.currentUser) await auth.signInAnonymously();
+        } catch (e) { PS.loadError = 'auth:' + (e.code || e.message); console.warn('[MultiPump] anonymous login fail', e); }
+        for (let i = 0; i < 3 && !cfg && !PS.missing; i++) {
+          try {
+            const snap = await db.collection('pumps').doc(pid).get({ source: 'server' });
+            if (snap.exists) { cfg = normalize(pid, snap.data()); PS.loadError = null; } else PS.missing = true;
+          } catch (e) { PS.loadError = PS.loadError || ('read:' + (e.code || e.message)); console.warn('[MultiPump] पंप की सेटिंग नहीं मिली:', e); await new Promise(r => setTimeout(r, 800)); }
+        }
+        /* सर्वर न मिले तो फ़ोन में रखी कॉपी */
+        if (!cfg && !PS.missing) {
+          try { const snap = await db.collection('pumps').doc(pid).get(); if (snap.exists) { cfg = normalize(pid, snap.data()); } } catch (e) { }
+        }
+      }
+    } catch (e) { console.warn('[MultiPump] initBranding', e); }
+    if (!cfg && pid !== MAZDA) {
+      /* ❗ दूसरे पंप के लिए कभी माज़दा की सेटिंग नहीं — खाली/न्यूट्रल ढाँचा */
+      cfg = { id: pid, isMain: false, name: 'पेट्रोल पंप', nameEn: 'Petrol Pump', brand: 'bpcl', dealer: '', address: '', addressEn: '', phone: '', upi: '', upiName: '', gstin: '', fssai: '', roCode: '', activeNozzles: ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'], rates: { petrol: Number(C.defaultRateP) || 0, diesel: Number(C.defaultRateD) || 0 }, salesmen: [], logo: PS.LOGOS.bpcl, loadFailed: true };
+      if (!PS.loadError && !PS.missing) PS.loadError = 'unknown';
     }
     if (!cfg) {
       const p = C.pump || {};
@@ -130,7 +155,7 @@
     if (PS.isCustomPump() && window.CFG) {           // माज़दा के पुराने डेटा कभी दूसरे पंप में न दिखें
       const P = window.CFG.pump = Object.assign({}, window.CFG.pump, { name: cfg.name, nameEn: cfg.nameEn, dealer: cfg.dealer, address: cfg.address, addressEn: cfg.addressEn, phone: cfg.phone || '', upi: cfg.upi || '', upiName: cfg.upiName || cfg.nameEn, roCode: cfg.roCode || '', gstin: cfg.gstin || '', fssai: cfg.fssai || '', logo: cfg.logo });
       if (!cfg.upi) P.merchant = {};
-      window.CFG.ownerPin = cfg.ownerPin || '9999';
+      window.CFG.ownerPin = cfg.ownerPin || '';
       window.CFG.activeNozzles = cfg.activeNozzles;
       window.CFG.salesmen = Array.isArray(cfg.salesmen) ? cfg.salesmen : [];
       if (cfg.rates.petrol > 0) { window.CFG.defaultRateP = cfg.rates.petrol; window.CFG.defaultRateD = cfg.rates.diesel; }
@@ -138,8 +163,9 @@
       installPatches();
     } else if (window.CFG) { window.CFG.pump = Object.assign({}, window.CFG.pump, { logo: './logo.png' }); }
     document.title = cfg.name + ' - स्मार्ट पंप पोर्टल';
-    PS.applyDOMBranding(); PS.updateIcons();
+    try { PS.applyDOMBranding(); } catch (e) { } try { PS.updateIcons(); } catch (e) { }
     if (PS.missing) PS.banner('⚠️ पंप कोड [' + pid + '] सिस्टम में नहीं मिला — Super Admin से बनाएँ।');
+    PS._resolveReady();
     return cfg;
   };
 
@@ -232,6 +258,7 @@
 
   /* ---------- 7v. व्यू (मालिक-व्यू) कोड: नए पंप पर उसी पंप का अपना कोड ---------- */
   PS.verifyViewer = async function (code) {
+    await PS.ready;
     const cfg = PS.currentConfig;
     if (!cfg || !cfg.viewerHash || !cfg.viewerSalt || !code) return false;
     return (await PS.sha256Hex(cfg.viewerSalt + '|' + code)) === cfg.viewerHash;
@@ -242,7 +269,10 @@
     return Array.from(new Uint8Array(dig)).map(b => b.toString(16).padStart(2, '0')).join('');
   };
   PS.verifyManager = async function (pass) {
+    await PS.ready;
     const cfg = PS.currentConfig;
+    if (PS.missing) return { ok: false, msg: 'यह पंप सिस्टम में नहीं मिला — लिंक जाँचें या Super Admin से पंप बनवाएँ' };
+    if (PS.loadError && cfg && cfg.loadFailed) return { ok: false, msg: 'पंप की सेटिंग सर्वर से नहीं आई (इंटरनेट/Firebase जाँचें) — कोड: ' + PS.loadError };
     if (!cfg || !cfg.managerHash || !cfg.managerSalt) return { ok: false, msg: 'इस पंप का मैनेजर पासवर्ड सेट नहीं है — Super Admin से सेट करवाएँ' };
     if (!pass) return { ok: false, msg: 'पासवर्ड भरें' };
     const h = await PS.sha256Hex(cfg.managerSalt + '|' + pass);
@@ -251,6 +281,7 @@
 
   /* ---------- 7y. सेल्समैन (नए पंप): PIN ऐप में hash होकर पंप के record में ---------- */
   PS.verifySalesman = async function (smId, pin) {
+    await PS.ready;
     const list = (PS.currentConfig && PS.currentConfig.salesmen) || [];
     const s2 = list.find(x => x.id === smId && x.active !== false);
     if (!s2 || !s2.pinHash || !s2.pinSalt) return null;

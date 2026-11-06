@@ -22,6 +22,7 @@
   }
   function isAuthorized() {
     const APP = window.APP || {};
+    if (window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump()) return false;  // दूसरे पंप पर Super Admin पैनल नहीं
     const email = ((APP.S && APP.S.user && APP.S.user.email) || '').toLowerCase();
     return email.includes('neeraj') || (APP.isTrueOwner && APP.isTrueOwner()) || localStorage.getItem('mazda_owner') === 'yes';
   }
@@ -44,7 +45,7 @@
     if (bankSyncing) return;
     bankSyncing = true;
     const APP = window.APP || {};
-    const db = firebase.firestore();
+    const db = dbOf();
     try {
       if (APP.Rules) APP.Rules.sys = true;
       const [daysSnap, ledSnap, invSnap, sbiDoc, pnbDoc] = await Promise.all([
@@ -155,7 +156,7 @@
   function startBankAutoSync() {
     if (autoSyncStarted || typeof firebase === 'undefined' || !firebase.apps?.length) return;
     autoSyncStarted = true;
-    const db = firebase.firestore();
+    const db = dbOf();
     const kick = () => { clearTimeout(autoTimer); autoTimer = setTimeout(() => syncBankFromDays({ auto: true }), 3000); };
     db.collection('days').onSnapshot(kick, () => {});
     db.collection('tanker_invoices').onSnapshot(kick, () => {});

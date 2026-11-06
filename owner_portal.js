@@ -71,7 +71,10 @@
       </div>`;
     $('#btn-login').onclick = async () => {
       const pin = $('#o-pin').value.trim();
-      const ownerPin = window.CFG.ownerPin || '9999';
+      const PSo = window.PUMP_SYSTEM, customO = !!(PSo && PSo.isCustomPump && PSo.isCustomPump());
+      if (customO && PSo.missing) return toast('यह पंप सिस्टम में नहीं मिला');
+      if (customO && !window.CFG.ownerPin) return toast('इस पंप का Owner PIN सेट नहीं है — Super Admin से सेट करवाएँ');
+      const ownerPin = customO ? window.CFG.ownerPin : (window.CFG.ownerPin || '9999');
       if (pin === ownerPin) {
         const btn = $('#btn-login'); btn.disabled = true; btn.textContent = 'चेक कर रहे हैं...';
         try {
