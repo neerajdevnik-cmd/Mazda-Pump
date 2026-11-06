@@ -244,10 +244,6 @@
     (document.body || document.documentElement).appendChild(b);
   };
 
-  /* होम-स्क्रीन लिंक: पंप ID URL के रास्ते में (जैसे /gurunanak) — iOS/Android इसे हमेशा सही खोलते हैं */
-  PS.rootUrl = function () { const p = location.pathname, i = p.indexOf('/' + PS.activePumpId); let b = i >= 0 ? p.slice(0, i) : p.replace(/[^\/]*$/, ''); if (!b.endsWith('/')) b += '/'; return location.origin + b; };
-  PS.pageSuffix = function () { const f = (location.pathname.split('/').pop() || '').toLowerCase(); return f === 'owner.html' ? '/owner' : (f === 'party.html' ? '/party' : ''); };
-  PS.startUrl = function () { return PS.rootUrl() + encodeURIComponent(PS.activePumpId) + PS.pageSuffix(); };
 
   /* फ़ेविकॉन / होम-स्क्रीन आइकन / इंस्टॉल का नाम — उसी पंप का */
   PS.updateIcons = function () {
@@ -259,7 +255,7 @@
       try {
         const i192 = mk(192), i512 = mk(512);
         setLink('icon', i192, { type: 'image/png' }); setLink('apple-touch-icon', mk(180));
-        const man = { name: cfg.name, short_name: cfg.name.slice(0, 14), start_url: PS.startUrl(), scope: new URL(location.pathname.replace(/[^\/]*$/, ''), location.origin).href, display: 'standalone', orientation: 'portrait', background_color: '#ffffff', theme_color: (PS.BRANDS[cfg.brand] || PS.BRANDS.bpcl).color, icons: [{ src: i192, sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: i512, sizes: '512x512', type: 'image/png', purpose: 'any' }] };
+        const man = { name: cfg.name, short_name: cfg.name.slice(0, 14), start_url: new URL(location.pathname + '?p=' + PS.activePumpId, location.origin).href, scope: new URL(location.pathname.replace(/[^\/]*$/, ''), location.origin).href, display: 'standalone', orientation: 'portrait', background_color: '#ffffff', theme_color: (PS.BRANDS[cfg.brand] || PS.BRANDS.bpcl).color, icons: [{ src: i192, sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: i512, sizes: '512x512', type: 'image/png', purpose: 'any' }] };
         setLink('manifest', URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' })));
         const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = man.theme_color;
       } catch (e) { }
@@ -273,7 +269,7 @@
     const card = document.querySelector('.login, .login-screen, .glass-card'); if (!card) return;
     const pid = PS.activePumpId, cfg = PS.currentConfig || { name: 'पेट्रोल पंप' };
     const base = location.origin + location.pathname.substring(0, location.pathname.lastIndexOf('/') + 1);
-    const ownerLink = PS.rootUrl() + encodeURIComponent(pid) + '/owner', partyLink = PS.rootUrl() + encodeURIComponent(pid) + '/party';
+    const ownerLink = base + 'owner.html?p=' + encodeURIComponent(pid), partyLink = base + 'party.html?p=' + encodeURIComponent(pid);
     const w = document.createElement('div'); w.id = 'ps-share-wrap';
     w.style.cssText = 'margin:16px 0;padding:12px;background:rgba(10,42,102,.06);border:1px dashed rgba(10,42,102,.25);border-radius:14px;text-align:center;font-size:12px;';
     w.innerHTML = '<div style="font-weight:700;margin-bottom:8px;color:#0a2a66">📲 ' + cfg.name + ' — शेयर ऐप लिंक</div><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button id="btn-share-owner-link" style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;border:none;background:#f4b41a;color:#000;font-weight:bold;cursor:pointer;font-size:11px">👑 मालिक ऐप भेजें</button><button id="btn-share-party-link" style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;border:none;background:#25D366;color:#fff;font-weight:bold;cursor:pointer;font-size:11px">🚚 पार्टी ऐप भेजें</button></div>';
