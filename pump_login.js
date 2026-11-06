@@ -51,7 +51,7 @@
   }
 
   async function ensureSignedIn(auth) {
-    if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { } }
+    if (!auth.currentUser) await auth.signInAnonymously();   // fail ho to error upar tak jaaye
   }
 
   function showGate(name, db, auth) {
@@ -93,7 +93,7 @@
         }
         localStorage.setItem('mazda_pump_unlock', 'yes');
         location.reload();
-      } catch (e) { go.disabled = false; err('कनेक्शन एरर, दोबारा कोशिश करें (' + (e.code || e.message) + ')'); }
+      } catch (e) { go.disabled = false; err('लॉगिन नहीं हो पाया: ' + (e.code || '') + ' ' + (e.message || '')); }
     };
   }
 
@@ -105,7 +105,7 @@
     // superadmin / manager ka पुराना session इस पंप पर नहीं चलेगा
     const first = await new Promise(res => { const off = auth.onAuthStateChanged(u => { off(); res(u); }); });
     if (first && !first.isAnonymous) { try { await auth.signOut(); } catch (e) { } }
-    await ensureSignedIn(auth);
+    try { await ensureSignedIn(auth); } catch (e) { console.warn('[PumpLogin] anonymous sign-in fail:', e.code, e.message); }
 
     if (window.PUMP_NO_GATE) return;   // party portal: gate nahi (party apna code se login karta hai)
     if (localStorage.getItem('mazda_pump_unlock') === 'yes') {
