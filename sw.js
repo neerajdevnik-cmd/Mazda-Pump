@@ -1,4 +1,4 @@
-const V = 'pump-v133';
+const V = 'pump-v134';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js', 'assistant.js', 'assistant_brain.js',
