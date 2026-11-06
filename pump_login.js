@@ -82,7 +82,8 @@
           if (!q.empty) {
             const doc = q.docs[0];
             if (await tryMatch(doc.id, doc.data())) {
-              if (doc.id !== pid) {          // sahi pump ka link: wahi page, sahi ?p= ke saath
+              if (doc.id !== pid) {          // sahi pump ka link: us pump ke liye unlock save karke wahi page
+                sI.call(window.localStorage, 'mazda_pump_unlock::' + doc.id, 'yes');
                 const page = location.pathname.split('/').pop() || 'index.html';
                 return location.replace(page + '?p=' + encodeURIComponent(doc.id));
               }
