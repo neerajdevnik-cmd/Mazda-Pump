@@ -1104,7 +1104,7 @@
         ${mode === 'active' ? `
           <button class="btn o" id="bU">+ उधार</button>
           <button class="btn g" id="bJ">+ जमा (Pump / Bank)</button>
-          ${APP.isOwner() ? '<button class="btn w" id="bP">+ नई पार्टी</button>' : ''}
+          ${APP.isOwner() ? '<button class="btn w" id="bP">+ नई पार्टी</button><button class="btn g" onclick="window.PARTY_IMPORT&&window.PARTY_IMPORT()">📥 CSV से पार्टी लोड</button>' : ''}
           ${APP.isOwner() ? '<button class="btn w" id="bBulk">📥 लिस्ट से जोड़ें</button>' : ''}
         ` : ''}
       </div>`;
