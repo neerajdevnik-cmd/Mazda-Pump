@@ -108,15 +108,6 @@
     if (first && !first.isAnonymous) { try { await auth.signOut(); } catch (e) { } }
     try { await ensureSignedIn(auth); } catch (e) { console.warn('[PumpLogin] anonymous sign-in fail:', e.code, e.message); }
 
-    if (window.PUMP_NO_GATE) return;   // party portal: gate nahi (party apna code se login karta hai)
-    if (localStorage.getItem('mazda_pump_unlock') === 'yes') {
-      if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { } }
-      return;
-    }
-    await waitFor(() => PS.currentConfig, 10000);
-    const cfg = PS.currentConfig;
-    const name = (cfg && cfg.id === pid && !PS.missing && cfg.name) || 'पंप लॉगिन';
-    const show = () => showGate(name, db, auth);
-    if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+    // Login ID/password gate hata diya gaya hai. Owner PIN (Super Admin mein set) hi login hai.
   })();
 })();
