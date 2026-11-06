@@ -1,0 +1,4 @@
+# होम-स्क्रीन / शेयर लिंक: https://site/गुरुनानक  →  उसी पंप का ऐप (ID URL के रास्ते में)
+/:pump/owner  /owner.html?p=:pump  200
+/:pump/party  /party.html?p=:pump  200
+/:pump        /index.html?p=:pump  200

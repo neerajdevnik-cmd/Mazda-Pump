@@ -259,9 +259,9 @@
     main.innerHTML = `
       <div class="card">
         <div style="text-align:center;padding:12px 0 6px 0;">
-          ${MOC_BPCL_LOGO}
-          <b style="font-size:16px;">माज़दा ऑयल कंपनी</b><br>
-          <small class="mut">Bharat Petroleum Corporation Limited</small>
+          ${(() => { const PSm = window.PUMP_SYSTEM, cm = (PSm && PSm.currentConfig) || {}, cust = !!(PSm && PSm.isCustomPump && PSm.isCustomPump()); return cust ? '<img src="' + esc(cm.logo || './logo.png') + '" alt="" width="64" height="64" style="border-radius:50%">' : MOC_BPCL_LOGO; })()}
+          <b style="font-size:16px;">${esc((() => { const PSm = window.PUMP_SYSTEM; return (PSm && PSm.isCustomPump && PSm.isCustomPump() && PSm.currentConfig) ? PSm.currentConfig.name : 'माज़दा ऑयल कंपनी'; })())}</b><br>
+          <small class="mut">${esc((() => { const PSm = window.PUMP_SYSTEM; if (!(PSm && PSm.isCustomPump && PSm.isCustomPump())) return 'Bharat Petroleum Corporation Limited'; const cm = PSm.currentConfig || {}, br = (PSm.BRANDS || {})[cm.brand]; return (br && br.label) || cm.dealer || ''; })())}</small>
         </div>
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0;">
         ${kv('लॉगिन', esc(S.user ? S.user.email : 'Salesman'))}

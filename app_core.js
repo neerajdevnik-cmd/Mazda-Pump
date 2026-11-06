@@ -352,6 +352,7 @@
       if (err) { err.style.display = 'block'; err.innerText = 'Firebase init error: ' + e.message; }
     }
 
+    const restoreAndListen = () => {
     // दूसरे पंप का मालिक/मैनेजर: refresh या ऐप बंद होने के बाद फिर login न माँगे (सिर्फ़ उसी पंप के लिए)
   try {
     const sx = JSON.parse(localStorage.getItem('mazda_sess') || 'null');
@@ -396,6 +397,10 @@
         }).catch(() => { });
       }
     });
+    };
+    const PSr = window.PUMP_SYSTEM;
+    // दूसरे पंप पर पहले उसकी सेटिंग (नोज़ल, टैंक, डिप चार्ट) आए, फिर स्क्रीन — वरना माज़दा के default दिखते हैं
+    if (PSr && PSr.ready && !PSr.isReady) PSr.ready.then(restoreAndListen); else restoreAndListen();
   }
 
   function shell() {
