@@ -4,7 +4,7 @@
    - pump ka logo change karna (image upload)
    - pump ka 3 mahine ka rules-wala demo (wahi pump kholkar; Mazda nahi)
    Links: owner.html?p=ID | party.html?p=ID | index.html?p=ID
-   Engine: demo_core.js
+   
    ========================================================================= */
 (function () {
   'use strict';
@@ -12,6 +12,8 @@
   const FIELDS = [
     ['name', 'पंप का नाम (हिंदी)'], ['nameEn', 'Pump name (English)'], ['ownerEmail', 'Owner email (जानकारी)'],
     ['ownerPin', 'Owner PIN (4 अंक)'], ['phone', 'फ़ोन'], ['address', 'पता (हिंदी)'], ['addressEn', 'Address (English)'],
+    ['managerPass', 'मैनेजर लॉगिन पासवर्ड (कम से कम 6 अक्षर)'],
+    ['viewerPass', 'मालिक-व्यू कोड (4+ अक्षर, वैकल्पिक)'],
     ['upi', 'UPI ID'], ['upiName', 'UPI नाम'], ['dealer', 'Dealer / कंपनी'], ['roCode', 'RO Code'],
     ['gstin', 'GSTIN'], ['fssai', 'FSSAI'], ['rateP', 'Petrol रेट'], ['rateD', 'Diesel रेट']
   ];
@@ -58,6 +60,13 @@
     return f;
   }
 
+  // पासवर्ड कभी सादा टेक्स्ट में नहीं: SHA-256(salt + पासवर्ड). salt हर पंप का अलग.
+  async function hashPass(pass, salt) {
+    const buf = new TextEncoder().encode(salt + '|' + pass);
+    const dig = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(dig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   async function savePump(f, editing, logoData, out) {
     const id = f.pid;
     if (!editing) {
@@ -80,6 +89,20 @@
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (logoData) data.logoData = logoData;
+    if (f.managerPass) {
+      if (f.managerPass.length < 6) return alert('मैनेजर पासवर्ड कम से कम 6 अक्षर का हो');
+      const salt = id + '-' + Math.random().toString(36).slice(2, 10);
+      data.managerSalt = salt;
+      data.managerHash = await hashPass(f.managerPass, salt);
+    } else if (!editing) {
+      return alert('मैनेजर लॉगिन पासवर्ड भरें (मैनेजर इसी से लॉगिन करेगा)');
+    }
+    if (f.viewerPass) {
+      if (f.viewerPass.length < 4) return alert('मालिक-व्यू कोड कम से कम 4 अक्षर का हो');
+      const vs = id + '-v-' + Math.random().toString(36).slice(2, 8);
+      data.viewerSalt = vs;
+      data.viewerHash = await hashPass(f.viewerPass, vs);
+    }
     if (!editing) {
       data.id = id;
       data.activeNozzles = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
@@ -105,6 +128,7 @@
   }
 
   function fieldHTML(k, label, val) {
+    if (k === 'managerPass' || k === 'viewerPass') return `<label style="font-size:11px;color:#cbd5e1;grid-column:span 2;">${label}<input id="pc-${k}" type="password" autocomplete="new-password" value="" placeholder="${val ? 'बदलना हो तो नया लिखें, वरना खाली छोड़ें' : ''}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;"></label>`;
     return `<label style="font-size:11px;color:#cbd5e1;">${label}<input id="pc-${k}" value="${esc(val)}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;box-sizing:border-box;"></label>`;
   }
 
@@ -129,33 +153,6 @@
       <div id="pc-out" style="margin-top:10px;"></div>`;
   }
 
-  function demoHTML() {
-    const pid = activePump();
-    if (pid === 'mazda') {
-      return `<div style="font-size:12px;color:#fbbf24;margin-top:8px;">Demo: नया पंप खोलें (index.html?p=ID) तो यहीं demo बटन आएगा। Mazda का demo अलग है।</div>`;
-    }
-    return `
-      <div style="margin-top:12px;border-top:1px dashed #334155;padding-top:10px;">
-        <div style="font-size:12px;color:#cbd5e1;margin-bottom:6px;">🧪 इस पंप (<b>${esc(pid)}</b>) का 3 महीने का demo</div>
-        <button id="pc-demo" style="width:100%;background:#7c3aed;color:#fff;border:none;padding:12px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">🧪 3 महीने का Demo Data भरें</button>
-      </div>`;
-  }
-
-  async function runPumpDemo() {
-    const pid = activePump();
-    const today = new Date();
-    const s = new Date(today); s.setMonth(s.getMonth() - 3); s.setDate(s.getDate() + 1);
-    const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const startDate = fmt(s), endDate = fmt(today);
-    const gen = Array.from({ length: 8 }, (_, i) => ({ id: 'demo_' + i, name: 'डेमो पार्टी ' + (i + 1), phone: '', vehicles: ['DEMO-' + (i + 1) + '01', 'DEMO-' + (i + 1) + '02'] }));
-    if (!confirm(`🧪 पंप "${pid}" पर ${startDate} से ${endDate} तक demo data\n\n• इस पंप का मौजूदा हिसाब (days, ledger, parties, tanker) मिट जाएगा\n• सिर्फ़ इसी पंप पर लागू होगा\n\nजारी रखें?`)) return;
-    try {
-      const zeroMeters = { p1: 0, p2: 0, p3: 0, p4: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
-      const ds = await window.DEMO_CORE.writeDemo({ startDate, endDate, meters: zeroMeters, parties: gen });
-      alert(`✅ ${ds.days.length} दिन का demo data भर गया।`);
-      location.reload();
-    } catch (e) { alert('❌ एरर: ' + e.message); }
-  }
 
   async function loadList(sel) {
     const snap = await rawDb().collection('pumps').get();
@@ -170,7 +167,6 @@
         <label style="font-size:11px;color:#cbd5e1;display:block;margin-top:10px;">पंप चुनें
           <select id="pc-select" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;"></select></label>
         <div id="pc-form" style="margin-top:10px;"></div>
-        <div id="pc-demo-wrap"></div>
       </details>`;
   }
 
@@ -183,9 +179,6 @@
     }
     const form = wrap.querySelector('#pc-form');
     form.innerHTML = formHTML(pid, data, !!pid);
-    wrap.querySelector('#pc-demo-wrap').innerHTML = demoHTML();
-    const demoBtn = wrap.querySelector('#pc-demo');
-    if (demoBtn) demoBtn.onclick = runPumpDemo;
 
     const submit = form.querySelector('#pc-submit');
     submit.onclick = async () => {

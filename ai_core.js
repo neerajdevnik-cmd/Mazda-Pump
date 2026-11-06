@@ -5,10 +5,13 @@
   'use strict';
   const APP = window.APP = window.APP || {};
 
-  const KEYS_LS = 'mazda_gemini_keys';      // JSON array
-  const OLD_LS = 'mazda_gemini_key';        // पुराना single key (compat)
-  const PTR_LS = 'mazda_gemini_ptr';        // अगली बार कौन सी key से शुरू करना है
-  const MODELS_LS = 'mazda_ai_models';      // {t, list}
+  const PK_ID = (window.PUMP_SYSTEM && window.PUMP_SYSTEM.activePumpId) || 'mazda';
+// माज़दा की keys पुराने नाम पर ही रहती हैं; दूसरे पंप की keys उसके अपने नाम पर (एक फ़ोन पर भी मिलें नहीं)
+const PK = s => (PK_ID === 'mazda' ? s : s + '_' + PK_ID);
+const KEYS_LS = PK('mazda_gemini_keys');      // JSON array
+  const OLD_LS = PK('mazda_gemini_key');        // पुराना single key (compat)
+  const PTR_LS = PK('mazda_gemini_ptr');        // अगली बार कौन सी key से शुरू करना है
+  const MODELS_LS = PK('mazda_ai_models');      // {t, list}
   const MODELS_TTL = 12 * 3600 * 1000;
   const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
   const BASE = 'https://generativelanguage.googleapis.com/v1beta/';

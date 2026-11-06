@@ -1,6 +1,6 @@
 {
-  "name": "पार्टी खाता",
-  "short_name": "पार्टी खाता",
+  "name": "माज़दा ऑयल - पार्टी खाता",
+  "short_name": "माज़दा खाता",
   "start_url": "./party.html",
   "scope": "./",
   "display": "standalone",

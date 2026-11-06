@@ -844,6 +844,25 @@
         }
       }
 
+      /* ---- उधार सीमा (limit): 80% पर चेतावनी, सीमा पार → रोक (मालिक चाहे तो पुष्टि कर सकता है) ---- */
+      // verify ke baad party cache khaali ho sakti hai — tab taaza data lo, warna limit check chupchaap skip ho jaayega
+      let partyNow = APP.partyById(priv, partyId);
+      if (!partyNow) { try { const all = await APP.getParties(priv, true); partyNow = (all || []).find(x => x.id === partyId); } catch (er) { } }
+      partyNow = partyNow || {};
+      const curBal = num(partyNow.bal), limit = num(partyNow.limit);
+      if (!priv && data.kind === 'udhar' && !e && limit > 0) {
+        const after = r2(curBal + num(data.amount));
+        if (after > limit) {
+          const isOwnerNow = APP.isOwner && APP.isOwner();
+          if (!(isOwnerNow && confirm('🚫 ' + partyNow.name + ' की उधार सीमा ' + money(limit) + ' पार हो जाएगी (अभी बाकी ' + money(curBal) + ' + नया ' + money(data.amount) + ' = ' + money(after) + ').\n\nमालिक के तौर पर फिर भी दर्ज करें?'))) {
+            return toast('🚫 उधार सीमा पार — पहले सीमा बढ़ाएँ या मालिक की मंज़ूरी लें');
+          }
+        } else if (after > limit * 0.8) {
+          toast('⚠️ ' + partyNow.name + ': सीमा का ' + Math.round(after / limit * 100) + '% बाकी हो गया');
+        }
+      }
+      const zeroHit = !priv && data.kind === 'jama' && curBal > 0 && r2(curBal - num(data.amount)) <= 0;
+
       sbtn.disabled = true;
       const col = priv ? 'priv_ledger' : 'ledger', pcol = priv ? 'priv_parties' : 'parties';
       const ref = e ? db().collection(col).doc(e.id) : db().collection(col).doc();
@@ -897,6 +916,7 @@
         try { await APP.commit(b.commit()); } finally { if (APP.Rules) APP.Rules.sys = false; }
         m.close();
         toast('वेरीफाई व सेव हो गया ✔');
+        if (zeroHit) setTimeout(() => toast('🎉 ' + partyNow.name + ' का पूरा बकाया चुकता हो गया (बाकी ₹0)'), 1400);
         if (!priv && !data.directBankJama) {
           await recalculateAllDaysChain();
         }

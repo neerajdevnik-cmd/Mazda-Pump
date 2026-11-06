@@ -1,6 +1,12 @@
 /* Mazda Assistant — स्मार्ट दिमाग: इरादा (intent) समझना, तारीख/follow-up याद रखना, हर बार अलग जवाब, ख़ुद से सीखना, और Gemini से आम सवाल */
 (function () {
-  'use strict';
+  // पंप की पहचान: दूसरे पंप को माज़दा का नाम/पता नहीं जाएगा (Gemini को भी नहीं)
+const BPID = () => (window.PUMP_SYSTEM && window.PUMP_SYSTEM.activePumpId) || 'mazda';
+const BPM = () => BPID() === 'mazda';
+const BPN = () => ((window.CFG && CFG.pump && CFG.pump.name) || 'पंप');
+const BAN = () => (BPM() ? 'माज़दा असिस्टेंट' : BPN() + ' असिस्टेंट');
+const BDESC = () => (BPM() ? ' (BPCL पेट्रोल पंप, रानीखेत रोड, अल्मोड़ा)' : (((window.CFG && CFG.pump && CFG.pump.address) || '') ? ' (' + CFG.pump.address + ')' : ''));
+'use strict';
   const APP = window.APP; if (!APP) return;
   const LAST_LIMIT = 150;
 
@@ -178,7 +184,7 @@
         if (APP.AI && APP.AI.hasKey && APP.AI.hasKey() && navigator.onLine !== false) {
           try {
             const snap = await snapshot();
-            const prompt = 'तुम "माज़दा असिस्टेंट" हो — माज़दा ऑयल कंपनी (BPCL पेट्रोल पंप, रानीखेत रोड, अल्मोड़ा) की स्मार्ट मैनेजर। सीधी-सादी हिंदी में 2-3 छोटी लाइन में जवाब दो। सिर्फ़ नीचे दिए आँकड़े इस्तेमाल करो, कोई आँकड़ा अपने मन से मत बनाओ। जवाब पता न हो तो साफ़ कहो और बताओ कि ऐप में कहाँ देखें।\nपंप के ताज़ा आँकड़े: ' + snap + '\nयूज़र का सवाल: ' + raw;
+            const prompt = 'तुम "' + BAN() + '" हो — ' + BPN() + BDESC() + ' की स्मार्ट मैनेजर। सीधी-सादी हिंदी में 2-3 छोटी लाइन में जवाब दो। सिर्फ़ नीचे दिए आँकड़े इस्तेमाल करो, कोई आँकड़ा अपने मन से मत बनाओ। जवाब पता न हो तो साफ़ कहो और बताओ कि ऐप में कहाँ देखें।\nपंप के ताज़ा आँकड़े: ' + snap + '\nयूज़र का सवाल: ' + raw;
             const txt = await APP.AI.ask({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }, { timeout: 12000 });
             if (txt && txt.trim()) return R('🤖 ' + esc(txt.trim()).replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'), { say: txt.replace(/[*_#]/g, ''), chips: userChips() });
           } catch (e) { /* key न हो / नेट कमज़ोर — नीचे वाला तरीका */ }

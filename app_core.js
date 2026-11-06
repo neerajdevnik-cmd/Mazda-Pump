@@ -249,6 +249,18 @@
 
     $('#go-btn').onclick = async () => {
       localStorage.removeItem('mazda_viewer'); S.role = null;
+      const PS = window.PUMP_SYSTEM;
+      if (PS && PS.isCustomPump && PS.isCustomPump()) {
+        // नए पंप: मैनेजर का पासवर्ड ऐप खुद जाँचता है (Firebase email वाला रास्ता यहाँ नहीं)
+        const r = await PS.verifyManager($('#pw').value);
+        if (!r.ok) return loginView(r.msg);
+        try {
+          if (!auth.currentUser) await auth.signInAnonymously();
+          S.role = 'manager'; S.user = { email: 'manager@' + PS.activePumpId }; S.date = todayISO();
+          shell();
+        } catch (e) { loginView('लॉगिन नहीं हो पाया (इंटरनेट चेक करें): ' + e.message); }
+        return;
+      }
       let em = $('#em').value.trim();
       if (!em.includes('@')) em = em.toLowerCase() + '@' + (C.loginDomain || 'mazda-pump.in');
       try { await auth.signInWithEmailAndPassword(em, $('#pw').value); }
@@ -259,8 +271,14 @@
       localStorage.removeItem('mazda_viewer'); S.role = null;
       const smId = $('#sm-sel').value;
       const pin = $('#sm-pin').value.trim();
-      const s = (C.salesmen || []).find(x => x.id === smId);
-      if (s && s.pin === pin) {
+      const PS = window.PUMP_SYSTEM;
+      let s = (C.salesmen || []).find(x => x.id === smId);
+      if (PS && PS.isCustomPump && PS.isCustomPump()) {
+        // नए पंप: PIN ऐप खुद hash से जाँचता है (पंप के सेल्समैन सूची से)
+        s = await PS.verifySalesman(smId, pin);
+        if (!s) return loginView('गलत PIN दर्ज किया गया है!');
+      } else if (!(s && s.pin === pin)) s = null;
+      if (s) {
         try {
           if (!auth.currentUser) await auth.signInAnonymously();
           localStorage.setItem('mazda_sm', JSON.stringify({ id: s.id, name: s.name }));
@@ -279,8 +297,13 @@
 
     $('#go-vw').onclick = async () => {
       const code = $('#vw-code').value.trim();
-      const expectedCode = C.viewerCode || 'Mazda@123';
-      if (code !== expectedCode && code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
+      const PSV = window.PUMP_SYSTEM;
+      const customPump = !!(PSV && PSV.isCustomPump && PSV.isCustomPump());
+      if (customPump) { if (!(await PSV.verifyViewer(code))) return loginView('गलत व्यू कोड!'); }
+      else {
+        const expectedCode = C.viewerCode || 'Mazda@123';
+        if (code !== expectedCode && code !== 'Mazda@123') return loginView('गलत व्यू कोड!');
+      }
       try {
         if (auth) {
           if (!auth.currentUser) await auth.signInAnonymously();
@@ -288,7 +311,7 @@
       } catch (e) { console.error('Auth error:', e); }
       
       localStorage.removeItem('mazda_sm');
-      localStorage.setItem('mazda_viewer', 'Mazda@123');
+      localStorage.setItem('mazda_viewer', (window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump()) ? 'pump-viewer-ok' : 'Mazda@123');
       S.salesman = null;
       S.role = 'viewer';
       S.user = { email: 'viewer@owner.local' };
@@ -321,7 +344,7 @@
     }
 
     const savedViewer = localStorage.getItem('mazda_viewer');
-    if (savedViewer === 'Mazda@123') {
+    if (savedViewer === ((window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump()) ? 'pump-viewer-ok' : 'Mazda@123')) {
       S.salesman = null; S.role = 'viewer'; S.user = { email: 'viewer@owner.local' }; S.date = todayISO(); shell(); return;
     }
 

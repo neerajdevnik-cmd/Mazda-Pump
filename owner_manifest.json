@@ -1,6 +1,6 @@
 {
-  "name": "Owner Control",
-  "short_name": "Owner",
+  "name": "माज़दा ऑयल - Owner Control",
+  "short_name": "Mazda Owner",
   "start_url": "./owner.html",
   "scope": "./",
   "display": "standalone",

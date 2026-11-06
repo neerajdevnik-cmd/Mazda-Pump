@@ -1,4 +1,4 @@
-const V = 'pump-v133';
+const V = 'mazda-v140';
 const SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'dip_chart.js', 'calc.js',
   'device_features.js', 'features2.js', 'assistant.js', 'assistant_brain.js',
@@ -8,7 +8,7 @@ const SHELL = [
   'cibil.js', 'applock.js', 'vehicle_profile.js', 'shop_orders.js', 'vendors.js',
   'portal_gen.js', 'invoice_gen.js',
   'manager_desk.js',
-  'preset_parties.js', 'demo_core.js', 'demo_3m.js', 'pump_create.js', 'manifest.json',
+  'preset_parties.js', 'sync_core.js', 'pump_create.js', 'manifest.json',
   'logo.png', 'icon-192.png', 'icon-512.png',
   'party.html', 'party_portal.js', 'party_manifest.json',
   'owner.html', 'owner_portal.js', 'owner_manifest.json', 'rules.js',
@@ -19,7 +19,7 @@ const SHELL = [
   'features_core.js', 'features_utils.js', 'features_custom.js',
 
   // 👑 Multi-Pump SaaS, Super Admin & PRO Features Files
-  'multi_pump.js', 'pro_features.js', 
+  'multi_pump.js',  
 ];
 
 self.addEventListener('install', e => {

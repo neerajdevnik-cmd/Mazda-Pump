@@ -33,13 +33,60 @@
   PS.LOGOS.custom = './logo.png';
   PS.brandList = () => Object.keys(PS.BRANDS).map(k => PS.BRANDS[k]);
 
+  /* ---------- 1b. थीम: पंप का रंग पूरे ऐप में (CSS variables) ---------- */
+  PS.THEMES = {
+    mazda: { label: 'माज़दा (मूल नीला)', primary: '#0b3d91', dark: '#0a2f6b', accent: '#f4b41a' },
+    bpcl:  { label: 'BPCL (नीला + पीला)', primary: '#0b3d91', dark: '#06245a', accent: '#fdb813' },
+    hpcl:  { label: 'HPCL (नीला + लाल)', primary: '#0b3d91', dark: '#072a66', accent: '#e11d48' },
+    iocl:  { label: 'IOCL (नारंगी + नीला)', primary: '#f97316', dark: '#0a2f6b', accent: '#fbbf24' },
+    nayara:{ label: 'नायरा (नीला + नारंगी)', primary: '#00205b', dark: '#001238', accent: '#f26522' },
+    jiobp: { label: 'Jio-bp (हरा + नीला)', primary: '#0a8f3c', dark: '#005eb8', accent: '#00a651' },
+    shell: { label: 'Shell (लाल + पीला)', primary: '#dd1d21', dark: '#9d0f12', accent: '#ffd500' }
+  };
+  const mix = (hex, toHex, t) => { const a = [1, 3, 5].map(i => parseInt(hex.substr(i, 2), 16)), b = [1, 3, 5].map(i => parseInt(toHex.substr(i, 2), 16)); return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+  PS.applyTheme = function (key) {
+    const T = PS.THEMES[key] || PS.THEMES.mazda, r = document.documentElement.style;
+    if (key === 'mazda') { ['--b', '--b2', '--bpcl-yellow'].forEach(v => r.removeProperty(v)); }
+    else { r.setProperty('--b', T.primary); r.setProperty('--b2', mix(T.primary, '#ffffff', 0.9)); r.setProperty('--bpcl-yellow', T.accent); }
+    let st = document.getElementById('ps-theme-css');
+    if (!st) { st = document.createElement('style'); st.id = 'ps-theme-css'; document.head.appendChild(st); }
+    st.textContent = key === 'mazda' ? '' :
+      'header{background:linear-gradient(135deg,' + T.dark + ' 0%,' + T.primary + ' 100%)!important}' +
+      'header::after{background:linear-gradient(90deg,transparent,' + T.accent + ',transparent)!important}' +
+      'nav button.on::before{background:linear-gradient(90deg,' + T.accent + ',' + mix(T.accent, '#ffffff', 0.4) + ')!important}' +
+      '.btn:not(.o):not(.w):not(.r):not(.g){background:linear-gradient(180deg,' + T.primary + ',' + T.dark + ')!important}';
+    PS.currentTheme = key;
+  };
+  PS.savedMazdaTheme = () => { try { return localStorage.getItem('mazda_theme') || 'mazda'; } catch (e) { return 'mazda'; } };
+  /* पंप का थीम सेव: custom पंप → pumps/{id}.theme ; माज़दा → इसी फ़ोन में */
+  PS.setTheme = async function (key, db) {
+    PS.applyTheme(key);
+    if (PS.isCustomPump()) { if (db) await db.collection('pumps').doc(PS.activePumpId).set({ theme: key }, { merge: true }); }
+    else { try { localStorage.setItem('mazda_theme', key); } catch (e) { } }
+    if (PS.currentConfig) PS.currentConfig.theme = key;
+  };
+
+  /* ---------- 1c. localStorage: नए पंप के सारे mazda_ keys अलग (माज़दा के keys वैसे ही) ---------- */
+  (function () {
+    try {
+      const pid0 = (new URLSearchParams(window.location.search).get('p') || new URLSearchParams(window.location.search).get('pump') || 'mazda').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '') || 'mazda';
+      if (pid0 === 'mazda') return;
+      const mapK = k => (typeof k === 'string' && k.indexOf('mazda_') === 0) ? ('pp_' + pid0 + '__' + k) : k;
+      const g = Storage.prototype.getItem, st = Storage.prototype.setItem, rm = Storage.prototype.removeItem;
+      Storage.prototype.getItem = function (k) { return g.call(this, mapK(k)); };
+      Storage.prototype.setItem = function (k, v) { return st.call(this, mapK(k), v); };
+      Storage.prototype.removeItem = function (k) { return rm.call(this, mapK(k)); };
+    } catch (e) { }
+  })();
+
   /* ---------- 2. कौन सा पंप चालू है ---------- */
   function requestedPumpId() {
+    // पंप की पहचान सिर्फ़ URL से (?p=ID). कोई ID नहीं → माज़दा. कभी किसी पुराने ID को याद नहीं रखते.
     try {
       const p = new URLSearchParams(window.location.search), q = p.get('pump') || p.get('p');
-      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) { try { localStorage.setItem('mazda_active_pump', c); } catch (e) { } return c; } }
+      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) return c; }
     } catch (e) { }
-    return MAZDA;   // पंप ID सिर्फ़ URL (?p=) से; पुरानी localStorage से कभी नहीं
+    return MAZDA;
   }
   PS.activePumpId = requestedPumpId();
   PS.currentConfig = null;
@@ -71,22 +118,15 @@
     const pid = PS.activePumpId, C = window.CFG || {};
     let cfg = null;
     if (pid !== MAZDA && db) {
-      const readPump = () => db.collection('pumps').doc(pid).get();
-      let snap = null;
-      try { snap = await readPump(); }
-      catch (e) {                                   // Firestore rules: pehle sign-in chahiye
-        try { const A = firebase.auth(); if (!A.currentUser) await A.signInAnonymously(); snap = await readPump(); }
-        catch (e2) { console.warn('[MultiPump] पंप की सेटिंग नहीं पढ़ी जा सकी:', e2); }
-      }
-      if (snap && snap.exists) cfg = normalize(pid, snap.data());
-      else if (snap) PS.missing = true;
+      try { const snap = await db.collection('pumps').doc(pid).get(); if (snap.exists) cfg = normalize(pid, snap.data()); else PS.missing = true; }
+      catch (e) { console.warn('[MultiPump] पंप की सेटिंग नहीं मिली:', e); }
     }
-    if (!cfg && pid !== MAZDA) cfg = normalize(pid, { name: 'पंप', nameEn: 'Pump' });   // कभी भी Mazda का नाम नहीं
     if (!cfg) {
       const p = C.pump || {};
       cfg = { id: MAZDA, isMain: true, name: p.name || 'माज़दा ऑयल कंपनी', nameEn: p.nameEn || 'Mazda Oil Company', brand: 'bpcl', dealer: p.dealer || 'Bharat Petroleum Dealer', address: p.address || '', addressEn: p.addressEn || '', phone: p.phone || '', upi: p.upi || '', upiName: p.upiName || '', ownerEmail: C.ownerEmail, ownerPin: C.ownerPin, activeNozzles: C.activeNozzles || ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'], rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, logo: './logo.png' };
     }
     PS.currentConfig = cfg;
+    PS.applyTheme(PS.isCustomPump() ? (cfg.theme || cfg.brand || 'bpcl') : PS.savedMazdaTheme());
     if (PS.isCustomPump() && window.CFG) {           // माज़दा के पुराने डेटा कभी दूसरे पंप में न दिखें
       const P = window.CFG.pump = Object.assign({}, window.CFG.pump, { name: cfg.name, nameEn: cfg.nameEn, dealer: cfg.dealer, address: cfg.address, addressEn: cfg.addressEn, phone: cfg.phone || '', upi: cfg.upi || '', upiName: cfg.upiName || cfg.nameEn, roCode: cfg.roCode || '', gstin: cfg.gstin || '', fssai: cfg.fssai || '', logo: cfg.logo });
       if (!cfg.upi) P.merchant = {};
@@ -130,9 +170,6 @@
       const sd = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
       if (sd && sd.set) Object.defineProperty(HTMLImageElement.prototype, 'src', { get: sd.get, set: function (v) { sd.set.call(this, brandize(v)); }, configurable: true });
       const sa = Element.prototype.setAttribute; Element.prototype.setAttribute = function (n, v) { return sa.call(this, n, (n === 'src' || n === 'href' || n === 'srcdoc') && typeof v === 'string' ? brandize(v) : v); };
-      const tcd = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-      if (tcd && tcd.set) Object.defineProperty(Node.prototype, 'textContent', { get: tcd.get, set: function (v) { tcd.set.call(this, typeof v === 'string' ? brandize(v) : v); }, configurable: true });
-      ['alert', 'confirm', 'prompt'].forEach(fn => { const o = window[fn]; window[fn] = function (m) { const a = Array.prototype.slice.call(arguments); if (typeof a[0] === 'string') a[0] = brandize(a[0]); return o.apply(window, a); }; });
       const wo = window.open;                           // स्टेटमेंट / प्रिंट वाली नई विंडो में भी वही पंप
       window.open = function () {
         const w = wo.apply(window, arguments);
@@ -193,6 +230,97 @@
     document.getElementById('btn-share-party-link').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent('नमस्ते!\n\n*' + cfg.name + '* पार्टी पोर्टल का लिंक:\n\n🔗 ' + partyLink + '\n\nयहाँ से आप अपना पूरा हिसाब, गाड़ी और बिल देख सकते हैं। अपना 6-अंकों का पार्टी कोड डालकर लॉगिन करें।'), '_blank');
   };
 
+  /* ---------- 7v. व्यू (मालिक-व्यू) कोड: नए पंप पर उसी पंप का अपना कोड ---------- */
+  PS.verifyViewer = async function (code) {
+    const cfg = PS.currentConfig;
+    if (!cfg || !cfg.viewerHash || !cfg.viewerSalt || !code) return false;
+    return (await PS.sha256Hex(cfg.viewerSalt + '|' + code)) === cfg.viewerHash;
+  };
+  /* ---------- 7z. मैनेजर पासवर्ड की जाँच (ऐप के अंदर, SHA-256 + पंप का salt) ---------- */
+  PS.sha256Hex = async function (text) {
+    const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(dig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+  PS.verifyManager = async function (pass) {
+    const cfg = PS.currentConfig;
+    if (!cfg || !cfg.managerHash || !cfg.managerSalt) return { ok: false, msg: 'इस पंप का मैनेजर पासवर्ड सेट नहीं है — Super Admin से सेट करवाएँ' };
+    if (!pass) return { ok: false, msg: 'पासवर्ड भरें' };
+    const h = await PS.sha256Hex(cfg.managerSalt + '|' + pass);
+    return h === cfg.managerHash ? { ok: true } : { ok: false, msg: 'पासवर्ड गलत है' };
+  };
+
+  /* ---------- 7y. सेल्समैन (नए पंप): PIN ऐप में hash होकर पंप के record में ---------- */
+  PS.verifySalesman = async function (smId, pin) {
+    const list = (PS.currentConfig && PS.currentConfig.salesmen) || [];
+    const s2 = list.find(x => x.id === smId && x.active !== false);
+    if (!s2 || !s2.pinHash || !s2.pinSalt) return null;
+    const h = await PS.sha256Hex(s2.pinSalt + '|' + pin);
+    return h === s2.pinHash ? s2 : null;
+  };
+  PS.canManageStaff = function () {
+    const A = window.APP; return !!(A && A.S && (A.S.role === 'owner' || A.S.role === 'manager'));
+  };
+  PS.saveSalesmen = async function (db, list) {
+    const pid = PS.activePumpId;
+    await db.collection('pumps').doc(pid).update({ salesmen: list });
+    PS.currentConfig.salesmen = list; window.CFG.salesmen = list;
+  };
+  PS.addSalesman = async function (db, name, phone, pin) {
+    name = String(name || '').trim();
+    phone = String(phone || '').replace(/\s+/g, '');
+    if (!name) throw new Error('सेल्समैन का नाम लिखें');
+    if (phone && !/^\d{10}$/.test(phone)) throw new Error('फ़ोन नंबर 10 अंकों का हो (या खाली छोड़ें)');
+    if (!/^\d{4}$/.test(String(pin || ''))) throw new Error('PIN ठीक 4 अंकों का हो');
+    const list = (PS.currentConfig.salesmen || []).slice();
+    const salt = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    const id = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
+    list.push({ id, name, phone, active: true, pinSalt: salt, pinHash: await PS.sha256Hex(salt + '|' + pin) });
+    await PS.saveSalesmen(db, list);
+    return id;
+  };
+  PS.removeSalesman = async function (db, id) {
+    const list = (PS.currentConfig.salesmen || []).filter(x => x.id !== id);
+    await PS.saveSalesmen(db, list);
+  };
+  PS.salesmanCard = function (db) {
+    if (!PS.isCustomPump() || !PS.canManageStaff() || document.getElementById('ps-sm-card')) return;
+    const main = document.querySelector('#main'); if (!main) return;
+    const card = document.createElement('div'); card.id = 'ps-sm-card'; card.className = 'card'; card.style.marginTop = '12px';
+    const list = PS.currentConfig.salesmen || [];
+    const rows = list.length ? list.map(x => '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed #dbe4f5"><span><b>' + x.name + '</b> <small class="mut">' + (x.phone || '') + '</small></span><button class="btn sm r" data-rm="' + x.id + '">🗑</button></div>').join('') : '<div class="mut" style="font-size:13px">अभी कोई सेल्समैन नहीं</div>';
+    card.innerHTML = '<h3 style="margin:0 0 6px">👥 सेल्समैन</h3><div style="margin-bottom:8px">' + rows + '</div>' +
+      '<label>नाम</label><input id="ps-sm-name"><label>फ़ोन (10 अंक, वैकल्पिक)</label><input id="ps-sm-phone" inputmode="numeric"><label>PIN (4 अंक)</label><input id="ps-sm-pin" inputmode="numeric" maxlength="4" type="password">' +
+      '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-sm-add">➕ सेल्समैन जोड़ें</button></div>';
+    main.insertBefore(card, main.firstChild);
+    card.querySelector('#ps-sm-add').onclick = async () => {
+      try {
+        const v = id => card.querySelector('#' + id).value;
+        await PS.addSalesman(db, v('ps-sm-name'), v('ps-sm-phone'), v('ps-sm-pin'));
+        card.remove(); PS.salesmanCard(db); if (window.APP && APP.toast) APP.toast('सेल्समैन जुड़ गया ✔');
+      } catch (e) { if (window.APP && APP.toast) APP.toast(e.message); }
+    };
+    card.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      if (!confirm('यह सेल्समैन हटाएँ?')) return;
+      try { await PS.removeSalesman(db, b.dataset.rm); card.remove(); PS.salesmanCard(db); } catch (e) { if (window.APP && APP.toast) APP.toast(e.message); }
+    });
+  };
+
+  /* ---------- 7a. "और" पेज पर थीम चुनने का कार्ड (सिर्फ़ मालिक) ---------- */
+  PS.themeCard = function (db) {
+    if (document.getElementById('ps-theme-card')) return;
+    const main = document.querySelector('#main'); if (!main) return;
+    const card = document.createElement('div'); card.id = 'ps-theme-card'; card.className = 'card'; card.style.marginTop = '12px';
+    const cur = PS.currentTheme || 'mazda';
+    card.innerHTML = '<h3 style="margin:0 0 6px">🎨 पंप का रंग (थीम)</h3><div class="mut" style="font-size:12px;margin-bottom:8px">चुनने पर पूरे ऐप का रंग उसी कंपनी के हिसाब से बदल जाएगा।</div>' +
+      Object.keys(PS.THEMES).map(k => '<button class="btn sm ' + (k === cur ? 'g' : 'w') + '" data-theme="' + k + '" style="margin:3px">' + PS.THEMES[k].label + '</button>').join('');
+    main.insertBefore(card, main.firstChild);
+    card.querySelectorAll('[data-theme]').forEach(b => b.onclick = async () => {
+      await PS.setTheme(b.dataset.theme, db);
+      card.remove(); PS.themeCard(db);
+      if (window.APP && APP.toast) APP.toast('रंग बदला ✔');
+    });
+  };
+
   /* ---------- 7. Firestore: हर पंप का डेटा अलग (माज़दा का मूल डेटा मूल जगह) ---------- */
   PS.wrapFirestore = function (db) {
     if (!db || db.__wrappedMultiPump) return db;
@@ -201,6 +329,18 @@
     db.__wrappedMultiPump = true; console.log('[MultiPump] Firestore → पंप [' + pid + ']');
     return db;
   };
+
+  /* "और" पेज खुलने पर मालिक को थीम कार्ड दिखे (सभी scripts लोड होने के बाद) */
+  setTimeout(() => {
+    const A = window.APP; if (!A || !A.views || typeof A.views.more !== 'function') return;
+    const o2 = A.views.more;
+    A.views.more = async function () {
+      const r = await o2.apply(this, arguments);
+      try { if (A.isOwner && A.isOwner()) PS.themeCard(A.db); } catch (e) { }
+      try { PS.salesmanCard(A.db); } catch (e) { }
+      return r;
+    };
+  }, 2000);
 
   /* नई जनरेट होने वाली स्क्रीनों के लिए हल्का observer */
   let tm = null;
