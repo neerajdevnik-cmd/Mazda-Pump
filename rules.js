@@ -82,10 +82,10 @@
  const date = d.date || (cur && cur.date), old = cur && cur.date, opening = d.opening === true || (cur && cur.opening === true);  
  for (const dt of [date, old].filter((x, i, a) => x && a.indexOf(x) === i)) {  
  const dy = await dayDoc(dt);  
- if (dy && dy.status === 'submitted') { E('R3', dmy(dt) + ' का दिन लॉक है — इसकी एंट्री बदली/हटाई नहीं जा सकती। पहले मालिक 🔓 अनलॉक करे।'); }  
+ if (dy && dy.status === 'submitted' && !(opening && (APP.Rules && APP.Rules.dupCleanup))) { E('R3', dmy(dt) + ' का दिन लॉक है — इसकी एंट्री बदली/हटाई नहीं जा सकती। पहले मालिक 🔓 अनलॉक करे।'); }  
  else if (r === 'manager' && dt !== t && !(dy && dy.unlockedAt) && !opening) E('R2', 'मैनेजर सिर्फ़ आज की एंट्री बदल सकता है।');  
  }  
- if (op.type === 'delete') { if (r === 'salesman' && !(cur && cur.sid === sid() && cur.date === t)) E('R8', 'सेल्समैन सिर्फ़ अपनी आज की एंट्री हटा सकता है।'); if (opening && cur && cur.createdOn && cur.createdOn !== t) E('R5', 'ओपनिंग बैलेंस उसी दिन बदला जा सकता है जिस दिन बना था।'); continue; }  
+ if (op.type === 'delete') { if (r === 'salesman' && !(cur && cur.sid === sid() && cur.date === t)) E('R8', 'सेल्समैन सिर्फ़ अपनी आज की एंट्री हटा सकता है।'); if (opening && cur && cur.createdOn && cur.createdOn !== t && !(APP.Rules && APP.Rules.dupCleanup)) E('R5', 'ओपनिंग बैलेंस उसी दिन बदला जा सकता है जिस दिन बना था।'); continue; }  
  if (!date) { E('R7', 'तारीख ज़रूरी है।'); continue; }  
  if (date > t) E('R7', 'आने वाली तारीख की एंट्री नहीं हो सकती।');  
  if (!(num(d.amount) > 0) && d.amount !== undefined) E('R7', 'रकम 0 से ज़्यादा होनी चाहिए।');  
@@ -94,7 +94,7 @@
  if (!cur) {  
  const ex = (await rawCol('ledger').where('partyId', '==', d.partyId).get()).docs.filter(x => x.data().opening === true);  
  if (ex.length) E('R5', 'इस पार्टी का ओपनिंग बैलेंस पहले से बना है — सिर्फ़ एक बार बनता है।');  
- } else if (cur.createdOn && cur.createdOn !== t) E('R5', 'ओपनिंग बैलेंस उसी दिन बदला जा सकता है जिस दिन बना था।');  
+ } else if (cur.createdOn && cur.createdOn !== t && !(APP.Rules && APP.Rules.dupCleanup)) E('R5', 'ओपनिंग बैलेंस उसी दिन बदला जा सकता है जिस दिन बना था।');  
  } else if (r === 'salesman') {  
  if (d.kind !== 'udhar') E('R8', 'सेल्समैन सिर्फ़ उधार लिख सकता है।');  
  if (date !== t) E('R8', 'सेल्समैन सिर्फ़ आज का उधार लिख सकता है।');  
@@ -105,7 +105,7 @@
  }  
  }  
  if (c === 'priv_ledger' && r === 'salesman' && op.type === 'set' && d.kind && d.kind !== 'udhar') E('R8', 'सेल्समैन सिर्फ़ उधार लिख सकता है।');  
- if (c === 'parties' && op.type === 'delete' && cur && Math.abs(num(cur.bal)) > 0.5) E('R6', 'जिस पार्टी का बैलेंस बाकी है उसे हटाया नहीं जा सकता।');  
+ if (c === 'parties' && op.type === 'delete' && cur && Math.abs(num(cur.bal)) > 0.5 && !(APP.Rules && APP.Rules.dupCleanup)) E('R6', 'जिस पार्टी का बैलेंस बाकी है उसे हटाया नहीं जा सकता।');  
  if (c === 'bank_deposits' && op.type === 'delete' && !String(id).startsWith('sbi_auto_')) E('R10', 'बैंक एंट्री हटाई नहीं जाती; "हटाई गई" निशान लगता है।');  
  if (r === 'salesman' && !['ledger', 'priv_ledger', 'parties', 'priv_parties', 'sm_shifts', 'cash_submissions', 'audit', 'attendance', 'salary_payments', 'shop', 'runsheets'].includes(c)) E('R8', 'सेल्समैन के लिए ये बदलाव मना है (' + c + ')।');  
  }  
