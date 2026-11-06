@@ -17,14 +17,14 @@
   const nowTime = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
   const dmy = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return d + '/' + m + '/' + y; };
   const shiftDate = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
-  const FUEL = { petrol: 'पेट्रोल', diesel: 'डीज़ल' };
+  const FUEL = { petrol: 'पेट्रोल', diesel: 'डीज़ल', power: 'पावर' };
   const MODE = { cash: 'नकद', paytm: 'Paytm/UPI', swipe: 'स्वाइप', bank: 'बैंक' };
   const AUTO_LBL = { cash: 'नकद जमा', paytm: 'Paytm/UPI से जमा', swipe: 'स्वाइप (कार्ड) से जमा', bank: 'बैंक ट्रांसफर से जमा' };
   const AUTO_NOTES = Object.values(AUTO_LBL);
 
   const APP = window.APP = {
     C, K, $, $$, esc, num, r2, money, lit, pad, todayISO, nowTime, dmy, shiftDate, FUEL, MODE,
-    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, range: 'month', _costCache: {} },
+    S: { role: null, user: null, salesman: null, date: null, tab: 'day', draft: {}, rates: { petrol: C.defaultRateP, diesel: C.defaultRateD, power: C.defaultRateX || 0 }, range: 'month', _costCache: {} },
     views: {}
   };
   const S = APP.S;
@@ -265,6 +265,7 @@
         try {
           if (!auth.currentUser) await auth.signInAnonymously();
           S.role = asOwner ? 'owner' : 'manager'; S.user = { email: (asOwner ? 'owner@' : 'manager@') + PS.activePumpId }; S.date = todayISO();
+          try { localStorage.setItem('mazda_sess', JSON.stringify({ pid: PS.activePumpId, role: S.role, email: S.user.email })); } catch (e) { }
           shell();
         } catch (e) { loginView('लॉगिन नहीं हो पाया (इंटरनेट चेक करें): ' + e.message); }
         return;
@@ -351,7 +352,15 @@
       if (err) { err.style.display = 'block'; err.innerText = 'Firebase init error: ' + e.message; }
     }
 
-    const savedViewer = localStorage.getItem('mazda_viewer');
+    // दूसरे पंप का मालिक/मैनेजर: refresh या ऐप बंद होने के बाद फिर login न माँगे (सिर्फ़ उसी पंप के लिए)
+  try {
+    const sx = JSON.parse(localStorage.getItem('mazda_sess') || 'null');
+    if (sx && window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump() && sx.pid === PUMP_SYSTEM.activePumpId && (sx.role === 'owner' || sx.role === 'manager')) {
+      S.role = sx.role; S.user = { email: sx.email }; S.date = todayISO(); shell(); return;
+    }
+  } catch (e) { }
+
+  const savedViewer = localStorage.getItem('mazda_viewer');
     if (savedViewer === ((window.PUMP_SYSTEM && PUMP_SYSTEM.isCustomPump && PUMP_SYSTEM.isCustomPump()) ? 'pump-viewer-ok' : 'Mazda@123')) {
       S.salesman = null; S.role = 'viewer'; S.user = { email: 'viewer@owner.local' }; S.date = todayISO(); shell(); return;
     }
@@ -383,7 +392,7 @@
         S.role = isOwnerAccount ? 'owner' : 'manager';
         S.user = u; S.date = todayISO(); shell();
         db.collection('days').orderBy('date', 'desc').limit(1).get().then(s => {
-          if (!s.empty) { const d = s.docs[0].data(); S.rates = { petrol: d.rateP, diesel: d.rateD }; }
+          if (!s.empty) { const d = s.docs[0].data(); S.rates = { petrol: d.rateP, diesel: d.rateD, power: d.rateX || S.rates.power || 0 }; }
         }).catch(() => { });
       }
     });
@@ -418,7 +427,7 @@
     }
 
     $('#top-logout').onclick = () => {
-      localStorage.removeItem('mazda_sm'); localStorage.removeItem('mazda_viewer');
+      localStorage.removeItem('mazda_sm'); localStorage.removeItem('mazda_viewer'); localStorage.removeItem('mazda_sess');
       if (auth) auth.signOut(); location.reload();
     };
 

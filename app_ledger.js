@@ -116,6 +116,7 @@
       let prevCloseCash = null;
       let prevStockP = null;
       let prevStockD = null;
+      let prevStockX = null;
       let prevNz = null;
       let prevDate = null;
 
@@ -126,6 +127,7 @@
           d.openCash = r2(prevCloseCash);
           if (prevStockP !== null) d.openStockP = r2(prevStockP);
           if (prevStockD !== null) d.openStockD = r2(prevStockD);
+      if (prevStockX !== null && K.powerOn()) d.openStockX = r2(prevStockX);
           d.chainPrev = prevDate;
           if (prevNz && d.nz) {
             K.NZ.forEach(k => {
@@ -158,12 +160,14 @@
           actStockP: o.actStockP,
           actStockD: o.actStockD,
           diffP: o.diffP,
-          diffD: o.diffD
+          diffD: o.diffD,
+    ...(K.powerOn() ? { litX: o.litX, amtX: o.amtX, expStockX: o.expStockX, actStockX: o.actStockX, diffX: o.diffX } : {})
         });
 
         prevCloseCash = o.close;
         prevStockP = o.actStockP !== null ? o.actStockP : Math.max(0, o.expStockP || 0);
         prevStockD = o.actStockD !== null ? o.actStockD : Math.max(0, o.expStockD || 0);
+        prevStockX = o.actStockX !== null ? o.actStockX : Math.max(0, o.expStockX || 0);
         prevNz = d.nz;
         prevDate = dt;
 

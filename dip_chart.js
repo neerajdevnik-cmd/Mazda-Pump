@@ -11,10 +11,10 @@
   const valid = a => Array.isArray(a) && a.length > 1;
   const isCustom = () => { try { const PS = window.PUMP_SYSTEM; return !!(PS && PS.isCustomPump && PS.isCustomPump()); } catch (e) { return false; } };
   const cfgOf = () => { try { return window.PUMP_SYSTEM.currentConfig || {}; } catch (e) { return {}; } };
-  const fk = type => (type === 'diesel' ? 'diesel' : 'petrol');
+  const fk = type => (type === 'diesel' ? 'diesel' : (type === 'power' ? 'power' : 'petrol'));
   /* उस ईंधन के सभी टैंकों के चार्ट (list). माज़दा: एक डिफ़ॉल्ट चार्ट. नया पंप: उसका अपना tankList (न हो तो पुराना dipCharts) */
   function charts(type) {
-    if (!isCustom()) return [type === 'diesel' ? DIESEL_DATA : PETROL_DATA];
+    if (!isCustom()) return type === 'power' ? [] : [type === 'diesel' ? DIESEL_DATA : PETROL_DATA];
     const c = cfgOf(), tl = c.tankList && c.tankList[fk(type)];
     if (Array.isArray(tl) && tl.length) return tl.map(t => (t && t.chart) || null);
     const one = c.dipCharts && c.dipCharts[fk(type)];
@@ -23,7 +23,7 @@
   const tankCount = type => Math.max(1, charts(type).length);          // डिप के कितने खाने दिखाने हैं
   const hasChart = type => { const c = charts(type); return c.length > 0 && c.every(valid); };
   const tankName = (type, i) => { try { const t = cfgOf().tankList[fk(type)][i]; if (t && t.name) return t.name; } catch (e) { } return 'टैंक ' + (i + 1); };
-  const field = (type, i) => 'dip' + (type === 'diesel' ? 'D' : 'P') + (i ? (i + 1) : '');   // दिन के record में: dipP, dipP2, dipP3…
+  const field = (type, i) => 'dip' + (type === 'diesel' ? 'D' : (type === 'power' ? 'X' : 'P')) + (i ? (i + 1) : '');   // दिन के record में: dipP, dipP2, dipP3…
   const chartAt = (type, i) => { const c = charts(type)[i || 0]; return valid(c) ? c : null; };
 
   function getLiters(type, dip, idx) {
@@ -57,7 +57,7 @@
   /* दिन का फ़ॉर्म सेव करते समय: dipP2, dipP3, dipD2… की value (g = id से value पढ़ने वाला) */
   function extraFields(g) {
     const out = {};
-    ['petrol', 'diesel'].forEach(t => { for (let i = 1; i < tankCount(t); i++) out[field(t, i)] = g('f-' + field(t, i)); });
+    ['petrol', 'diesel', 'power'].forEach(t => { for (let i = 1; i < tankCount(t); i++) out[field(t, i)] = g('f-' + field(t, i)); });
     return out;
   }
   window.DipChart = { getLiters, maxDip, hasChart, tankCount, tankName, field, totalLiters, extraFields, PETROL_DATA, DIESEL_DATA };

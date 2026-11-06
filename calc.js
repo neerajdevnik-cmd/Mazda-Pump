@@ -5,9 +5,10 @@
   const r2 = n => Math.round((num(n) + Number.EPSILON) * 100) / 100;
   const has = v => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
   const isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
-  const NZ = []; ['p', 'd'].forEach(pre => { for (let i = 1; i <= 20; i++) NZ.push(pre + i); });  /* हर तरफ़ 20 तक; कौन से चालू हैं वो पंप की सेटिंग (activeNozzles) तय करती है */
+  const NZ = []; ['p', 'd', 'x'].forEach(pre => { for (let i = 1; i <= 20; i++) NZ.push(pre + i); });  /* हर तरफ़ 20 तक; कौन से चालू हैं वो पंप की सेटिंग (activeNozzles) तय करती है */
   const activeNz = () => { const a = (window.CFG || {}).activeNozzles; return (Array.isArray(a) && a.length) ? NZ.filter(k => a.includes(k)) : NZ.slice(); };
 
+  const powerOn = () => activeNz().some(k => k.charAt(0) === 'x');   // पंप में Power चालू है?
   const nzGroup = pre => activeNz().filter(k => k.charAt(0) === pre);
 
   const BANK_IDS = ['bank_sbi', 'bank_pnb'];
@@ -37,9 +38,9 @@
   function compute(d, rows) {
     rows = (rows || []).filter(r => !isOpening(r) && !r.autoBankSync && !r.directBankJama);
     const t = has(d.testing) ? num(d.testing) : 5;
-    const rateP = num(d.rateP), rateD = num(d.rateD);
+    const rateP = num(d.rateP), rateD = num(d.rateD), rateX = num(d.rateX);
     const nz = {};
-    let filled = 0, litP = 0, litD = 0;
+    let filled = 0, litP = 0, litD = 0, litX = 0;
     const warn = [];
 
     const act = activeNz();
@@ -58,7 +59,8 @@
           const gross = roll ? r2(MM - o + c) : r2(c - o);
           const net = r2(Math.max(0, gross - t));
           nz[k] = { ok: true, gross, net };
-          if (k.startsWith('p')) litP += net;
+          if (k.charAt(0) === 'p') litP += net;
+          else if (k.charAt(0) === 'x') litX += net;
           else litD += net;
         }
       } else {
@@ -66,10 +68,11 @@
       }
     });
 
-    litP = r2(litP); litD = r2(litD);
+    litP = r2(litP); litD = r2(litD); litX = r2(litX);
     const amtP = r2(litP * rateP);
     const amtD = r2(litD * rateD);
-    const sale = r2(amtP + amtD);
+    const amtX = r2(litX * rateX);
+    const sale = r2(amtP + amtD + amtX);
 
     let jCash = 0, jPaytm = 0, jSwipe = 0, jBank = 0, udhar = 0, bankCashDeposit = 0;
     rows.forEach(r => {
@@ -99,29 +102,33 @@
 
     const close = r2(kul - paytm - swipe - udhar - totalKharcha - bankOut);
 
-    const openStockP = num(d.openStockP), openStockD = num(d.openStockD);
-    const tankerP = num(d.tankerP), tankerD = num(d.tankerD);
+    const openStockP = num(d.openStockP), openStockD = num(d.openStockD), openStockX = num(d.openStockX);
+    const tankerP = num(d.tankerP), tankerD = num(d.tankerD), tankerX = num(d.tankerX);
 
     const expStockP = r2(openStockP + tankerP - litP);
     const expStockD = r2(openStockD + tankerD - litD);
+    const expStockX = r2(openStockX + tankerX - litX);
 
-    let actStockP = null, actStockD = null;
+    let actStockP = null, actStockD = null, actStockX = null;
     if (window.DipChart) {
       const DC = window.DipChart;   // एक से ज़्यादा टैंक हों तो सबकी डिप का जोड़; कोई डिप खाली हो या चार्ट न हो तो null
       actStockP = DC.totalLiters ? DC.totalLiters('petrol', d) : null;
       actStockD = DC.totalLiters ? DC.totalLiters('diesel', d) : null;
+      actStockX = DC.totalLiters ? DC.totalLiters('power', d) : null;
+      if (actStockX !== null) actStockX = r2(actStockX);
       if (actStockP !== null) actStockP = r2(actStockP);
       if (actStockD !== null) actStockD = r2(actStockD);
     }
 
     const diffP = (actStockP !== null && expStockP !== null) ? r2(actStockP - expStockP) : null;
     const diffD = (actStockD !== null && expStockD !== null) ? r2(actStockD - expStockD) : null;
+    const diffX = (actStockX !== null && expStockX !== null) ? r2(actStockX - expStockX) : null;
 
     return {
-      filled, nz, litP, litD, amtP, amtD, sale,
+      filled, nz, litP, litD, litX, amtP, amtD, amtX, sale,
       jCash, jPaytm, jSwipe, jBank, udhar, bankCashDeposit: bankOut,
       totalKharcha, kul, close,
-      expStockP, expStockD, actStockP, actStockD, diffP, diffD, warn
+      expStockP, expStockD, expStockX, actStockP, actStockD, actStockX, diffP, diffD, diffX, warn
     };
   }
 
@@ -154,7 +161,8 @@
     if (c.filled < activeNz().length) errors.push(`सभी ${activeNz().length} नोज़ल की ओपनिंग और क्लोज़िंग भरें (${c.filled} भरे हैं)`);
     c.warn.forEach(w => errors.push(w));
     if (!(num(d.rateP) > 0) || !(num(d.rateD) > 0)) errors.push('पेट्रोल और डीज़ल दोनों का रेट भरें');
-    if (!has(d.dipP) || !has(d.dipD)) warns.push('पेट्रोल या डीज़ल की आज की डिप नहीं भरी है');
+    if (powerOn() && !(num(d.rateX) > 0)) errors.push('पावर का रेट भरें');
+    if (!has(d.dipP) || !has(d.dipD) || (powerOn() && !has(d.dipX))) warns.push('पेट्रोल, डीज़ल' + (powerOn() ? ' या पावर' : '') + ' की आज की डिप नहीं भरी है');
     if (opts.prevPending) warns.push(`कल (${opts.prevPending}) का हिसाब अभी लॉक नहीं है`);
     if (opts.gap > 0) warns.push(`${opts.prevDate} के बाद ${opts.gap} दिन का हिसाब छूटा हुआ है`);
     return { errors, warns };
@@ -163,7 +171,7 @@
   const signed = e => !e ? 0 : (e.kind === 'udhar' ? r2(num(e.amount)) : -r2(num(e.amount)));
 
   window.Calc = {
-    num, r2, has, isOpening, NZ, activeNz, nzGroup,
+    num, r2, has, isOpening, NZ, activeNz, nzGroup, powerOn,
     KH, khList, khTotal, khSummary,
     compute, stmt, validate, signed,
     BANK_IDS, isBankParty

@@ -80,11 +80,14 @@
   })();
 
   /* ---------- 2. कौन सा पंप चालू है ---------- */
+  const isStandalone = () => { try { return !!(window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)); } catch (e) { return false; } };
   function requestedPumpId() {
     // पंप की पहचान सिर्फ़ URL से (?p=ID). कोई ID नहीं → माज़दा. कभी किसी पुराने ID को याद नहीं रखते.
     try {
       const p = new URLSearchParams(window.location.search), q = p.get('pump') || p.get('p');
-      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) return c; }
+      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) { if (isStandalone()) try { localStorage.setItem('mazda_home_pump', c); } catch (e) { } return c; } }
+      /* Home Screen वाला ऐप बिना ?p= के खुले तो उसी पंप पर जाए जो install के समय खोला गया था */
+      if (isStandalone()) { const h = localStorage.getItem('mazda_home_pump'); if (h) return h; }
     } catch (e) { }
     return MAZDA;
   }
@@ -391,7 +394,7 @@
       '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-s-save-info">💾 जानकारी सेव करें</button></div></details>' +
       '<details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer">⛽ नोज़ल (मशीन की संख्या)</summary>' +
       '<div class="mut" style="font-size:12px;margin:6px 0">पेट्रोल और डीज़ल के कितने नोज़ल चालू हैं — हर तरफ़ अधिकतम 20. सेव के बाद हिसाब में उतने ही मीटर दिखेंगे।</div>' +
-      '<div class="row"><div><label>पेट्रोल नोज़ल</label><select id="ps-n-p">' + opts(nzCount('p') || 4, 20) + '</select></div><div><label>डीज़ल नोज़ल</label><select id="ps-n-d">' + opts(nzCount('d') || 4, 20) + '</select></div></div>' +
+      '<div class="row"><div><label>पेट्रोल नोज़ल</label><select id="ps-n-p">' + opts(nzCount('p') || 4, 20) + '</select></div><div><label>डीज़ल नोज़ल</label><select id="ps-n-d">' + opts(nzCount('d') || 4, 20) + '</select></div><div><label>पावर नोज़ल</label><select id="ps-n-x">' + opts(nzCount('x'), 20) + '</select></div></div>' +
       '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-n-save">💾 नोज़ल सेव करें</button></div></details>' +
       '<details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer">🛢️ टैंक और डिप चार्ट</summary>' +
       '<div class="mut" style="font-size:12px;margin:6px 0">जितने टैंक हैं उतने जोड़ें — हर टैंक का अपना साइज़ और चार्ट। हिसाब में हर टैंक की डिप का अलग खाना आएगा और कुल स्टॉक अपने-आप जुड़ेगा।</div>' +
@@ -403,10 +406,15 @@
       '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-m-save">💾 सेव करें</button></div></details>';
     main.insertBefore(card, main.firstChild);
     const $c = s => card.querySelector(s), val = id => ($c('#' + id) || { value: '' }).value.trim();
-    const save = async (upd, okMsg, reload) => {
-      try { upd.updatedAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('pumps').doc(PS.activePumpId).update(upd); Object.assign(PS.currentConfig, upd); decodeCharts(PS.currentConfig); toast(okMsg); if (reload) setTimeout(() => location.reload(), 700); }
-      catch (e) { toast('सेव नहीं हुआ: ' + (e.message || e)); }
-    };
+    const save = async (upd, okMsg) => {
+    try {
+      upd.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('pumps').doc(PS.activePumpId).update(upd);
+      Object.assign(PS.currentConfig, upd); decodeCharts(PS.currentConfig);
+      try { PS.applyDOMBranding(); } catch (e) { }
+      toast(okMsg);
+    } catch (e) { toast('सेव नहीं हुआ: ' + (e.message || e)); }
+  };
     $c('#ps-s-save-info').onclick = async () => {
       const phone = val('ps-s-phone').replace(/\s+/g, '');
       if (!val('ps-s-name')) return toast('पंप का नाम लिखें');
@@ -414,13 +422,13 @@
       const upd = { name: val('ps-s-name'), nameEn: val('ps-s-nameEn') || val('ps-s-name'), phone, address: val('ps-s-address'), addressEn: val('ps-s-addressEn') || val('ps-s-address'), dealer: val('ps-s-dealer'), roCode: val('ps-s-roCode'), gstin: val('ps-s-gstin'), fssai: val('ps-s-fssai'), upi: val('ps-s-upi'), upiName: val('ps-s-upiName') || val('ps-s-name') };
       const file = $c('#ps-s-logo').files[0];
       try { if (file) upd.logoData = await logoFromFile(file); } catch (e) { return toast('लोगो नहीं पढ़ पाए'); }
-      await save(upd, 'जानकारी सेव हो गई ✔', true);
+      await save(upd, 'जानकारी सेव हो गई ✔');
     };
     $c('#ps-n-save').onclick = async () => {
-      const p = +val('ps-n-p'), d = +val('ps-n-d');
+      const p = +val('ps-n-p'), d = +val('ps-n-d'), x = +val('ps-n-x');
       if (p + d < 1) return toast('कम से कम 1 नोज़ल चालू रखें');
-      const list = []; for (let i = 1; i <= p; i++) list.push('p' + i); for (let i = 1; i <= d; i++) list.push('d' + i);
-      await save({ activeNozzles: list }, 'नोज़ल सेव हो गए ✔', true);
+      const list = []; for (let i = 1; i <= p; i++) list.push('p' + i); for (let i = 1; i <= d; i++) list.push('d' + i); for (let i = 1; i <= x; i++) list.push('x' + i);
+      await save({ activeNozzles: list }, 'नोज़ल सेव हो गए ✔');
     };
     /* ---- टैंक एडिटर: हर ईंधन के कितने भी टैंक, हर टैंक का अपना चार्ट ---- */
     const seed = fuel => {
@@ -429,11 +437,11 @@
       const ch = cfg.dipCharts && cfg.dipCharts[fuel], t0 = (cfg.tanks && cfg.tanks[fuel]) || {};
       return (ch && ch.length > 1) ? [{ name: '', capacity: t0.capacity || '', diameter: t0.diameter || '', chart: chartToText(ch) }] : [];
     };
-    const TS = { petrol: seed('petrol'), diesel: seed('diesel') };
-    const FT = { petrol: '⛽ पेट्रोल टैंक', diesel: '🛢️ डीज़ल टैंक' };
+    const TS = { petrol: seed('petrol'), diesel: seed('diesel'), power: seed('power') };
+    const FT = { petrol: '⛽ पेट्रोल टैंक', diesel: '🛢️ डीज़ल टैंक', power: '⚡ पावर टैंक' };
     const renderTanks = () => {
       const box = $c('#ps-tanks');
-      box.innerHTML = ['petrol', 'diesel'].map(fuel => {
+      box.innerHTML = ['petrol', 'diesel', 'power'].map(fuel => {
         const rows = TS[fuel].map((t, i) =>
           '<div style="border:1px dashed #cbd5e1;border-radius:10px;padding:8px;margin-top:8px" data-f="' + fuel + '" data-i="' + i + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:center"><b>टैंक ' + (i + 1) + '</b><button class="btn sm r" type="button" data-rm="1">🗑 हटाएँ</button></div>' +
@@ -445,7 +453,7 @@
           '<textarea data-k="chart" rows="5" style="width:100%;box-sizing:border-box;font-size:12px" placeholder="0.5,3.3&#10;1,9.35">' + escH(t.chart) + '</textarea>' +
           '<div class="mut" style="font-size:11px">' + (t.chart ? '✅ चार्ट भरा है' : '⚠️ चार्ट खाली') + '</div></div>').join('');
         return '<div style="margin-top:10px"><b>' + FT[fuel] + ' (' + TS[fuel].length + ')</b>' + rows +
-          '<div class="btns" style="margin-top:6px"><button class="btn sm o" type="button" data-add="' + fuel + '">➕ ' + (fuel === 'petrol' ? 'पेट्रोल' : 'डीज़ल') + ' टैंक जोड़ें</button></div></div>';
+          '<div class="btns" style="margin-top:6px"><button class="btn sm o" type="button" data-add="' + fuel + '">➕ ' + ({ petrol: 'पेट्रोल', diesel: 'डीज़ल', power: 'पावर' }[fuel]) + ' टैंक जोड़ें</button></div></div>';
       }).join('') + '<div class="btns" style="margin-top:10px"><button class="btn g" id="ps-t-save">💾 टैंक/चार्ट सेव करें</button></div>';
       box.querySelectorAll('[data-i]').forEach(blk => {
         const fuel = blk.dataset.f, i = +blk.dataset.i, t = TS[fuel][i];
@@ -460,8 +468,8 @@
       });
       box.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { TS[b.dataset.add].push({ name: '', capacity: '', diameter: '', chart: '' }); renderTanks(); });
       box.querySelector('#ps-t-save').onclick = async () => {
-        const upd = { tankList: { petrol: [], diesel: [] }, tanks: {}, dipCharts: {} };
-        for (const fuel of ['petrol', 'diesel']) {
+        const upd = { tankList: { petrol: [], diesel: [], power: [] }, tanks: {}, dipCharts: {} };
+        for (const fuel of ['petrol', 'diesel', 'power']) {
           for (let i = 0; i < TS[fuel].length; i++) {
             const t = TS[fuel][i], r = PS.parseChart(t.chart);
             if (r.error) return toast(FT[fuel] + ' ' + (i + 1) + ': ' + r.error);
@@ -470,11 +478,11 @@
           const first = upd.tankList[fuel][0];
           if (first) { upd.dipCharts[fuel] = first.chart; upd.tanks[fuel] = { capacity: first.capacity, diameter: first.diameter }; }
         }
-        await save(upd, 'टैंक/चार्ट सेव हो गए ✔', true);
+        await save(upd, 'टैंक/चार्ट सेव हो गए ✔');
       };
     };
     renderTanks();
-    $c('#ps-m-save').onclick = () => save({ managerFullEdit: $c('#ps-m-full').checked }, 'मैनेजर अधिकार सेव ✔', true);
+    $c('#ps-m-save').onclick = () => save({ managerFullEdit: $c('#ps-m-full').checked }, 'मैनेजर अधिकार सेव ✔');
   };
 
   /* ---------- 7y. सेल्समैन (नए पंप): PIN ऐप में hash होकर पंप के record में ---------- */
