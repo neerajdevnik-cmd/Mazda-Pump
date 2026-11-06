@@ -204,15 +204,15 @@
         <p class="mut" style="text-align:center">${esc(C.pump.address)}</p>
         
         <div class="seg" style="margin:16px 0">
-          <button id="tab-man" class="on">${custom0 ? 'मैनेजर' : 'मालिक'}</button>
+          <button id="tab-man" class="on">${custom0 ? 'मालिक / मैनेजर' : 'मालिक'}</button>
           <button id="tab-sm">सेल्समैन</button>
           <button id="tab-vw">मालिक-व्यू</button>
         </div>
 
         <div id="form-man">
-          ${custom0 ? '<input id="em" type="hidden" value="">' : `<label>यूज़रनेम (ईमेल)</label>
+          ${custom0 ? '<label>कौन लॉगिन कर रहा है?</label><select id="man-role"><option value="owner">👑 मालिक (पूरा कंट्रोल)</option><option value="manager">💼 मैनेजर</option></select><input id="em" type="hidden" value="">' : `<label>यूज़रनेम (ईमेल)</label>
           <input id="em" placeholder="neeraj ya manager" autocomplete="username" autocapitalize="none">`}
-          <label>${custom0 ? 'मैनेजर पासवर्ड' : 'पासवर्ड'}</label>
+          <label>पासवर्ड</label>
           <input id="pw" type="password" autocomplete="current-password">
           <div class="btns" style="margin-top:14px"><button class="btn full" id="go-btn">लॉगिन करें</button></div>
         </div>
@@ -259,11 +259,12 @@
       const PS = window.PUMP_SYSTEM;
       if (PS && PS.isCustomPump && PS.isCustomPump()) {
         // नए पंप: मैनेजर का पासवर्ड ऐप खुद जाँचता है (Firebase email वाला रास्ता यहाँ नहीं)
-        const r = await PS.verifyManager($('#pw').value);
+        const asOwner = ($('#man-role') || {}).value === 'owner';
+        const r = asOwner ? await PS.verifyOwner($('#pw').value) : await PS.verifyManager($('#pw').value);
         if (!r.ok) return loginView(r.msg);
         try {
           if (!auth.currentUser) await auth.signInAnonymously();
-          S.role = 'manager'; S.user = { email: 'manager@' + PS.activePumpId }; S.date = todayISO();
+          S.role = asOwner ? 'owner' : 'manager'; S.user = { email: (asOwner ? 'owner@' : 'manager@') + PS.activePumpId }; S.date = todayISO();
           shell();
         } catch (e) { loginView('लॉगिन नहीं हो पाया (इंटरनेट चेक करें): ' + e.message); }
         return;

@@ -57,11 +57,11 @@
     const doc = Object.assign(base, snap.exists ? snap.data() : {});
     doc.nz = doc.nz || {};
 
-    let allowedNz = K.NZ;
+    let allowedNz = K.activeNz();
     if (activeRs) allowedNz = activeRs.nozzles;
 
     const autoO = {};
-    K.NZ.forEach(k => {
+    K.activeNz().forEach(k => {
       const n = doc.nz[k] = Object.assign({ o: '', c: '' }, doc.nz[k] || {});
       if (activeRs && activeRs.openings && K.has(activeRs.openings[k])) {
         n.o = activeRs.openings[k];
@@ -82,7 +82,7 @@
       paytm: g('sm-paytm'), swipe: g('sm-swipe'), expLabel: g('sm-expLabel'), expAmt: g('sm-expAmt'),
       note: g('sm-note'), nz: {}
     });
-    K.NZ.forEach(k => { d.nz[k] = { o: '', c: '' }; });
+    K.activeNz().forEach(k => { d.nz[k] = { o: '', c: '' }; });
     $$('.smn').forEach(i => { d.nz[i.dataset.k][i.dataset.f] = i.value; });
     return d;
   }
@@ -122,7 +122,7 @@
     if (!ST) return;
     const d = readForm(); ST.doc = d;
     const o = computeSm(d);
-    K.NZ.forEach(k => { const e = $('#smnet-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
+    K.activeNz().forEach(k => { const e = $('#smnet-' + k); if (e) e.textContent = o.nz[k].ok ? r2(o.nz[k].net) : '–'; });
     const w = $('#sm-warn');
     if (w) w.innerHTML = o.warn.map(x => '<div class="warn">' + esc(x) + '</div>').join('') +
       (o.filled === 0 ? '<div class="mut">जिस नोज़ल पर काम किया उसकी क्लोज़िंग भरें</div>' : '<div class="mut">' + o.filled + ' नोज़ल भरे हैं</div>');

@@ -12,20 +12,32 @@
   const DT = { P: 'petrol', D: 'diesel' };
   const MAXDIP = { petrol: 160, diesel: 210 };
   // dip cm ho to DipChart se litre; agar value pehle se litre jaisi (max dip se badi) ho to wahi litre maano
-  const toLitre = (fuel, v) => {
+  const toLitre = (fuel, v, idx) => {
     const x = num(v); if (!(x > 0)) return 0;
-    if (x > MAXDIP[fuel]) return r2(x);
-    return (window.DipChart && window.DipChart.getLiters) ? r2(window.DipChart.getLiters(fuel, x)) : r2(x);
+    const DC = window.DipChart, ok = !DC || !DC.hasChart || DC.hasChart(fuel);
+    const mx = (DC && DC.maxDip && DC.hasChart && DC.hasChart(fuel)) ? DC.maxDip(fuel, idx || 0) : MAXDIP[fuel];
+    if (x > mx) return r2(x);
+    return (DC && DC.getLiters && ok) ? r2(DC.getLiters(fuel, x, idx || 0)) : r2(x);
+  };
+  // एक से ज़्यादा टैंक हों तो v = [डिप1, डिप2…] → सबके लीटर का जोड़
+  const toLitreSum = (fuel, v) => Array.isArray(v) ? r2(v.reduce((a, x, i) => a + toLitre(fuel, x, i), 0)) : toLitre(fuel, v, 0);
+  const tanksN = fuel => (window.DipChart && window.DipChart.tankCount) ? window.DipChart.tankCount(fuel) : 1;
+  const tankLbl = (fuel, i) => (window.DipChart && window.DipChart.tankName) ? window.DipChart.tankName(fuel, i) : ('टैंक ' + (i + 1));
+  // फ़ॉर्म के डिप खाने: एक टैंक = पहले जैसा एक खाना; ज़्यादा = हर टैंक का अलग
+  const dipIn = (fuel, base, pre, title) => {
+    const n = tanksN(fuel);
+    const one = i => `<div${i ? ' style="margin-top:6px"' : ''}><label>${title} Dip${n > 1 ? ' (' + esc(tankLbl(fuel, i)) + ')' : ''}</label><input id="${base}${pre}${i ? i + 1 : ''}" inputmode="decimal"></div>`;
+    return n <= 1 ? one(0) : '<div>' + Array.from({ length: n }, (_, i) => one(i)).join('') + '</div>';
   };
   // nz = { p1..p4 , d1..d4 } meter readings (before/after). Testing ka koi minus nahi.
   function tankerCalc(pre, before, after, received, dipB, dipA) {
     const k = pre.toLowerCase(); let sale = 0;
-    ['1', '2', '3', '4'].forEach(n => {
+    window.Calc.NZ.filter(x => x[0] === k).map(x => x.slice(1)).forEach(n => {
       const key = k + n, b = num(before.nz[key]), a = num(after.nz[key]);
       if (a > b) sale += (a - b);
     });
     sale = r2(sale);
-    const B = toLitre(DT[pre], dipB), A = toLitre(DT[pre], dipA), rec = r2(num(received));
+    const B = toLitreSum(DT[pre], dipB), A = toLitreSum(DT[pre], dipA), rec = r2(num(received));
     const expected = r2(B + rec - sale);
     return { sale, before: B, after: A, received: rec, expected, diff: r2(A - expected) };
   }
@@ -127,8 +139,8 @@
     
     const buildFuel = (name, pre, res) => {
       if (!res) return '';
-      let rows = ['p1','p2','p3','p4'].map(k => `<tr><td>${k.toUpperCase()}</td><td>${r.before.nz[k]}</td><td>${r.after.nz[k]}</td></tr>`).join('');
-      if (pre === 'D') rows = ['d1','d2','d3','d4'].map(k => `<tr><td>${k.toUpperCase()}</td><td>${r.before.nz[k]}</td><td>${r.after.nz[k]}</td></tr>`).join('');
+      let rows = window.Calc.nzGroup('p').map(k => `<tr><td>${k.toUpperCase()}</td><td>${r.before.nz[k]}</td><td>${r.after.nz[k]}</td></tr>`).join('');
+      if (pre === 'D') rows = window.Calc.nzGroup('d').map(k => `<tr><td>${k.toUpperCase()}</td><td>${r.before.nz[k]}</td><td>${r.after.nz[k]}</td></tr>`).join('');
       
       return `
         <div class="card" style="margin-bottom:8px;padding:10px; border-left:4px solid #0b3d91;">
@@ -210,34 +222,20 @@
       
       <div class="mut" style="margin-top:10px; font-weight:bold; color:#0b3d91;">1. अनलोडिंग से पहले (BEFORE)</div>
       <div class="row">
-        <div><label>Petrol Dip</label><input id="tr-bdipP" inputmode="decimal"></div>
-        <div><label>Diesel Dip</label><input id="tr-bdipD" inputmode="decimal"></div>
+        ${dipIn('petrol', 'tr-bdip', 'P', 'Petrol')}
+        ${dipIn('diesel', 'tr-bdip', 'D', 'Diesel')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px;">
-        <div><label style="font-size:10px;margin:0">P1</label><input id="tr-bo-p1" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P2</label><input id="tr-bo-p2" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P3</label><input id="tr-bo-p3" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P4</label><input id="tr-bo-p4" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D1</label><input id="tr-bo-d1" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D2</label><input id="tr-bo-d2" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D3</label><input id="tr-bo-d3" class="tr-bo" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D4</label><input id="tr-bo-d4" class="tr-bo" inputmode="decimal"></div>
+  ${window.Calc.activeNz().map(k => `<div><label style="font-size:10px;margin:0">${k.toUpperCase()}</label><input id="tr-bo-${k}" class="tr-bo" inputmode="decimal"></div>`).join('')}
       </div>
 
       <div class="mut" style="margin-top:10px; font-weight:bold; color:#0b3d91;">2. अनलोडिंग के बाद (AFTER)</div>
       <div class="row">
-        <div><label>Petrol Dip</label><input id="tr-adipP" inputmode="decimal"></div>
-        <div><label>Diesel Dip</label><input id="tr-adipD" inputmode="decimal"></div>
+        ${dipIn('petrol', 'tr-adip', 'P', 'Petrol')}
+        ${dipIn('diesel', 'tr-adip', 'D', 'Diesel')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px;">
-        <div><label style="font-size:10px;margin:0">P1</label><input id="tr-ao-p1" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P2</label><input id="tr-ao-p2" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P3</label><input id="tr-ao-p3" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">P4</label><input id="tr-ao-p4" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D1</label><input id="tr-ao-d1" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D2</label><input id="tr-ao-d2" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D3</label><input id="tr-ao-d3" class="tr-ao" inputmode="decimal"></div>
-        <div><label style="font-size:10px;margin:0">D4</label><input id="tr-ao-d4" class="tr-ao" inputmode="decimal"></div>
+  ${window.Calc.activeNz().map(k => `<div><label style="font-size:10px;margin:0">${k.toUpperCase()}</label><input id="tr-ao-${k}" class="tr-ao" inputmode="decimal"></div>`).join('')}
       </div>
 
       <div class="mut" style="margin-top:10px; font-weight:bold; color:#0b3d91;">3. टैंकर में तेल आया</div>
@@ -262,12 +260,12 @@
       autofill.innerHTML = `<button class="btn sm w" id="tr-auto" style="margin-top:8px;width:100%;">📥 आज के हिसाब से डेटा भरें</button>`;
       q('tr-no').after(autofill);
       $('#tr-auto', m).onclick = () => {
-        if (dayData.dipP) q('tr-adipP').value = dayData.dipP;
-        if (dayData.dipD) q('tr-adipD').value = dayData.dipD;
+        for (let i = 0; i < tanksN('petrol'); i++) { const f = 'dipP' + (i ? i + 1 : ''), e = q('tr-adip' + 'P' + (i ? i + 1 : '')); if (e && dayData[f]) e.value = dayData[f]; }
+        for (let i = 0; i < tanksN('diesel'); i++) { const f = 'dipD' + (i ? i + 1 : ''), e = q('tr-adip' + 'D' + (i ? i + 1 : '')); if (e && dayData[f]) e.value = dayData[f]; }
         if (dayData.tankerP) q('tr-recP').value = dayData.tankerP;
         if (dayData.tankerD) q('tr-recD').value = dayData.tankerD;
         if (dayData.nz) {
-          ['p1','p2','p3','p4','d1','d2','d3','d4'].forEach(k => {
+          window.Calc.activeNz().forEach(k => {
             if (dayData.nz[k] && dayData.nz[k].c) q('tr-ao-'+k).value = dayData.nz[k].c;
           });
         }
@@ -286,10 +284,12 @@
           after[k] = gv('tr-ao-'+k);
           if (after[k] > before[k]) sale += (after[k] - before[k]);
         });
-        const dipB = gv('tr-bdip'+pre);
-        const dipA = gv('tr-adip'+pre);
+        const fuelN = pre === 'P' ? 'petrol' : 'diesel';
+        const dipsOf = base => { const n = tanksN(fuelN); return n <= 1 ? gv(base + pre) : Array.from({ length: n }, (_, i) => gv(base + pre + (i ? i + 1 : ''))); };
+        const dipB = dipsOf('tr-bdip'), dipA = dipsOf('tr-adip');
+        const okD = v => Array.isArray(v) ? (v.length > 0 && v.every(x => x > 0)) : !!v;
         const rec = gv('tr-rec'+pre);
-        if (!dipB || !dipA || !rec) return null;
+        if (!okD(dipB) || !okD(dipA) || !rec) return null;
         return tankerCalc(pre, { nz: before }, { nz: after }, rec, dipB, dipA);
       };
       
@@ -314,7 +314,8 @@
       set('tr-st', editRec.startTime || ''); set('tr-et', editRec.endTime || '');
       set('tr-bdipP', editRec.before && editRec.before.dipP); set('tr-bdipD', editRec.before && editRec.before.dipD);
       set('tr-adipP', editRec.after && editRec.after.dipP); set('tr-adipD', editRec.after && editRec.after.dipD);
-      ['p1','p2','p3','p4','d1','d2','d3','d4'].forEach(k => {
+      [['before', 'bdip'], ['after', 'adip']].forEach(([w, b]) => ['P', 'D'].forEach(p => { const arr = editRec[w] && editRec[w]['dips' + p]; if (Array.isArray(arr)) arr.forEach((v, i) => { if (i) set('tr-' + b + p + (i + 1), v); }); }));
+      window.Calc.activeNz().forEach(k => {
         set('tr-bo-' + k, editRec.before && editRec.before.nz && editRec.before.nz[k]);
         set('tr-ao-' + k, editRec.after && editRec.after.nz && editRec.after.nz[k]);
       });
@@ -331,7 +332,8 @@
       
       const before = { nz: {}, dipP: gv('tr-bdipP'), dipD: gv('tr-bdipD') };
       const after = { nz: {}, dipP: gv('tr-adipP'), dipD: gv('tr-adipD') };
-      ['p1','p2','p3','p4','d1','d2','d3','d4'].forEach(k => {
+      [['P', 'petrol'], ['D', 'diesel']].forEach(([p, fuel]) => { const n = tanksN(fuel); if (n > 1) { before['dips' + p] = Array.from({ length: n }, (_, i) => gv('tr-bdip' + p + (i ? i + 1 : ''))); after['dips' + p] = Array.from({ length: n }, (_, i) => gv('tr-adip' + p + (i ? i + 1 : ''))); } });
+      window.Calc.activeNz().forEach(k => {
         before.nz[k] = gv('tr-bo-'+k);
         after.nz[k] = gv('tr-ao-'+k);
       });
@@ -339,10 +341,10 @@
       
       const calcFuel = (pre) => {
         let sale = 0;
-        ['p1','p2','p3','p4','d1','d2','d3','d4'].filter(k=>k.startsWith(pre.toLowerCase())).forEach(k => {
+        window.Calc.activeNz().filter(k=>k.startsWith(pre.toLowerCase())).forEach(k => {
           if (after.nz[k] > before.nz[k]) sale += (after.nz[k] - before.nz[k]);
         });
-        return tankerCalc(pre, before, after, received[pre.toLowerCase()], before['dip'+pre], after['dip'+pre]);
+        return tankerCalc(pre, before, after, received[pre.toLowerCase()], before['dips'+pre] || before['dip'+pre], after['dips'+pre] || after['dip'+pre]);
       };
 
       const result = { petrol: calcFuel('P'), diesel: calcFuel('D') };

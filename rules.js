@@ -164,16 +164,18 @@
  try {  
  const c = K.compute(d, rows);  
  if (num(c.close) < -0.005) res.errors.push('[R11] बचा कैश माइनस है (' + APP.money(c.close) + ') — हिसाब गलत है, जाँचें।');  
- [['dipP', 'पेट्रोल'], ['dipD', 'डीज़ल']].forEach(([f, n]) => { if (K.has(d[f]) && num(d[f]) > 250) res.errors.push('[R11] ' + n + ' की डिप ' + d[f] + ' cm है — 250 से ज़्यादा नहीं हो सकती।'); });  
+ Object.keys(d).filter(f => /^dip[PD]\d*$/.test(f)).forEach(f => { const n = f.charAt(3) === 'P' ? 'पेट्रोल' : 'डीज़ल'; const ix = (parseInt(f.slice(4)) || 1) - 1, DC = window.DipChart; const lim = (DC && DC.hasChart && DC.hasChart(f.charAt(3) === 'P' ? 'petrol' : 'diesel') && DC.maxDip(f.charAt(3) === 'P' ? 'petrol' : 'diesel', ix)) || 250; if (K.has(d[f]) && num(d[f]) > lim) res.errors.push('[R11] ' + n + ' की डिप ' + d[f] + ' cm है — ' + lim + ' से ज़्यादा नहीं हो सकती।'); });  
  } catch (e) { }  
  return res;  
  };  
   
  document.addEventListener('change', e => {  
- const el = e.target; if (!el || !/^f-dip[PD]$/.test(el.id) || !window.DipChart) return;  
- const v = num(el.value); if (v <= 250) return;  
- const type = el.id.endsWith('P') ? 'petrol' : 'diesel'; let best = 0, bd = 1e9;  
- for (let cm = 0; cm <= 250; cm += 0.5) { const df = Math.abs(window.DipChart.getLiters(type, cm) - v); if (df < bd) { bd = df; best = cm; } }  
+ const el = e.target; if (!el || !/^f-dip[PD]\d*$/.test(el.id) || !window.DipChart) return;  
+ const type0 = el.id.charAt(5) === 'P' ? 'petrol' : 'diesel', ix0 = (parseInt(el.id.slice(6)) || 1) - 1;
+ const lim0 = (window.DipChart.hasChart && window.DipChart.hasChart(type0) && window.DipChart.maxDip(type0, ix0)) || 250;
+ const v = num(el.value); if (v <= lim0) return;  
+ const type = type0; let best = 0, bd = 1e9;  
+ for (let cm = 0; cm <= Math.max(lim0, 250); cm += 0.5) { const df = Math.abs(window.DipChart.getLiters(type, cm, ix0) - v); if (df < bd) { bd = df; best = cm; } }  
  el.value = best; el.dispatchEvent(new Event('input', { bubbles: true })); APP.toast('📏 ' + v + ' लीटर था — डिप ' + best + ' cm में बदल दी');  
  }, true);  
   

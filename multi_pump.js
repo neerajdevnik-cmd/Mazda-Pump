@@ -107,9 +107,19 @@
   PS.getLogo = () => (PS.currentConfig && PS.currentConfig.logo) || './logo.png';
 
   /* ---------- 3. पंप की सेटिंग लोड करके पूरे ऐप पर लगाना ---------- */
+  /* Firestore में array के अंदर array नहीं रखा जा सकता → चार्ट text ("डिप,लीटर" हर लाइन) में सेव होता है; यहाँ वापस array बनता है */
+  function decodeCharts(cfg) {
+    const dec = v => (typeof v === 'string') ? ((PS.parseChart(v) || {}).rows || null) : v;
+    try {
+      if (cfg.dipCharts) { const o = {}; Object.keys(cfg.dipCharts).forEach(k => { const r = dec(cfg.dipCharts[k]); if (r) o[k] = r; }); cfg.dipCharts = o; }
+      if (cfg.tankList) { const o = {}; Object.keys(cfg.tankList).forEach(k => { o[k] = (cfg.tankList[k] || []).map(t => Object.assign({}, t, { chart: dec(t.chart) || null })); }); cfg.tankList = o; }
+    } catch (e) { console.warn('[MultiPump] chart decode', e); }
+    return cfg;
+  }
+  PS.decodeCharts = decodeCharts;
   function normalize(id, d) {
     const C = window.CFG || {}, base = C.pump || {}, b = PS.BRANDS[d.brand] || PS.BRANDS.bpcl;
-    const cfg = Object.assign({}, d, { id });
+    const cfg = decodeCharts(Object.assign({}, d, { id }));
     cfg.name = d.name || id; cfg.nameEn = d.nameEn || d.name || id;
     cfg.brand = PS.BRANDS[d.brand] ? d.brand : (d.customLogo ? 'custom' : 'bpcl');
     cfg.dealer = d.dealer || b.dealer; cfg.address = d.address || ''; cfg.addressEn = d.addressEn || d.address || '';
@@ -165,6 +175,13 @@
     document.title = cfg.name + ' - स्मार्ट पंप पोर्टल';
     try { PS.applyDOMBranding(); } catch (e) { } try { PS.updateIcons(); } catch (e) { }
     if (PS.missing) PS.banner('⚠️ पंप कोड [' + pid + '] सिस्टम में नहीं मिला — Super Admin से बनाएँ।');
+    try {
+      const A0 = window.APP;
+      if (PS.isCustomPump() && A0 && A0.isOwner && !A0.__ownerPatched) {
+        const o0 = A0.isOwner; A0.__ownerPatched = true;
+        A0.isOwner = () => o0() || !!(A0.S && A0.S.role === 'manager' && PS.currentConfig && PS.currentConfig.managerFullEdit);
+      }
+    } catch (e) { }
     PS._resolveReady();
     return cfg;
   };
@@ -279,6 +296,187 @@
     return h === cfg.managerHash ? { ok: true } : { ok: false, msg: 'पासवर्ड गलत है' };
   };
 
+  /* ---------- 7o. मालिक (नए पंप): Owner password (hash) — न हो तो पुराना Owner PIN चलेगा ---------- */
+  PS.verifyOwner = async function (pass) {
+    await PS.ready;
+    const cfg = PS.currentConfig;
+    if (PS.missing) return { ok: false, msg: 'यह पंप सिस्टम में नहीं मिला — लिंक जाँचें' };
+    if (PS.loadError && cfg && cfg.loadFailed) return { ok: false, msg: 'पंप की सेटिंग सर्वर से नहीं आई (इंटरनेट जाँचें) — कोड: ' + PS.loadError };
+    if (!pass) return { ok: false, msg: 'पासवर्ड भरें' };
+    if (cfg && cfg.ownerHash && cfg.ownerSalt) {
+      return (await PS.sha256Hex(cfg.ownerSalt + '|' + pass)) === cfg.ownerHash ? { ok: true } : { ok: false, msg: 'मालिक का पासवर्ड गलत है' };
+    }
+    if (cfg && cfg.ownerPin && String(pass) === String(cfg.ownerPin)) return { ok: true, usedPin: true };
+    return { ok: false, msg: cfg && cfg.ownerPin ? 'मालिक का पासवर्ड/PIN गलत है' : 'इस पंप का मालिक पासवर्ड सेट नहीं है — Super Admin से सेट करवाएँ' };
+  };
+  const newSalt = () => PS.activePumpId + '-' + Math.random().toString(36).slice(2, 10);
+  PS.changePassword = async function (db, who, pass) {
+    pass = String(pass || '');
+    if (pass.length < 6) throw new Error('पासवर्ड कम से कम 6 अक्षर का हो');
+    const salt = newSalt(), hash = await PS.sha256Hex(salt + '|' + pass), upd = {};
+    upd[who + 'Salt'] = salt; upd[who + 'Hash'] = hash;
+    await db.collection('pumps').doc(PS.activePumpId).update(upd);
+    Object.assign(PS.currentConfig, upd);
+  };
+  PS.accessCard = function (db) {
+    if (!PS.isCustomPump() || document.getElementById('ps-access-card')) return;
+    const A = window.APP; if (!(A && A.S && A.S.role === 'owner')) return;
+    const main = document.querySelector('#main'); if (!main) return;
+    const cfg = PS.currentConfig || {};
+    const card = document.createElement('div'); card.id = 'ps-access-card'; card.className = 'card'; card.style.marginTop = '12px';
+    card.innerHTML = '<h3 style="margin:0 0 6px">🔑 लॉगिन पासवर्ड (सिर्फ़ मालिक)</h3>' +
+      '<div class="mut" style="font-size:12px;margin-bottom:8px">' + (cfg.ownerHash ? '' : '⚠️ अभी आप पुराने Owner PIN से चल रहे हैं — नीचे अपना पासवर्ड बना लें।<br>') + 'सेल्समैन जोड़ने का कार्ड नीचे अलग है।</div>' +
+      '<label>नया मालिक पासवर्ड (6+ अक्षर)</label><input id="ps-ow-pw" type="password" autocomplete="new-password">' +
+      '<div class="btns" style="margin-top:6px"><button class="btn g sm" id="ps-ow-save">💾 मालिक पासवर्ड बदलें</button></div>' +
+      '<label style="margin-top:10px">नया मैनेजर पासवर्ड (6+ अक्षर)</label><input id="ps-mg-pw" type="password" autocomplete="new-password">' +
+      '<div class="btns" style="margin-top:6px"><button class="btn g sm" id="ps-mg-save">💾 मैनेजर पासवर्ड बदलें</button></div>';
+    main.insertBefore(card, main.firstChild);
+    const hook = (btn, inp, who, okMsg) => card.querySelector(btn).onclick = async () => {
+      try { await PS.changePassword(db, who, card.querySelector(inp).value); card.querySelector(inp).value = ''; if (A.toast) A.toast(okMsg); }
+      catch (e) { if (A.toast) A.toast(e.message); }
+    };
+    hook('#ps-ow-save', '#ps-ow-pw', 'owner', 'मालिक पासवर्ड बदल गया ✔');
+    hook('#ps-mg-save', '#ps-mg-pw', 'manager', 'मैनेजर पासवर्ड बदल गया ✔');
+  };
+
+
+  /* ---------- 7s. पंप की सेटिंग (सिर्फ़ मालिक): जानकारी · नोज़ल · टैंक/डिप चार्ट · मैनेजर अधिकार ---------- */
+  const escH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  /* खड़े पड़े (horizontal) बेलनाकार टैंक का डिप→लीटर चार्ट: capacity (L) + diameter (cm); हर 0.5 cm पर */
+  PS.makeChart = function (capL, diaCm) {
+    capL = Number(capL); diaCm = Number(diaCm) || 0;
+    if (!(capL > 0)) return null;
+    let estimated = false;
+    if (!(diaCm > 0)) { diaCm = Math.round(Math.cbrt((4 * capL * 1000) / (Math.PI * 2))); estimated = true; }   // व्यास न पता हो: लंबाई ≈ 2 × व्यास मानकर अंदाज़ा
+    const R = diaCm / 2, len = (capL * 1000) / (Math.PI * R * R), rows = [];
+    const vol = h => { h = Math.min(Math.max(h, 0), diaCm); return len * (R * R * Math.acos((R - h) / R) - (R - h) * Math.sqrt(Math.max(0, 2 * R * h - h * h))) / 1000; };
+    for (let h = 0.5; h < diaCm; h += 0.5) rows.push([h, Math.round(vol(h) * 100) / 100]);
+    rows.push([diaCm, Math.round(capL * 100) / 100]);
+    return { rows, dia: diaCm, estimated };
+  };
+  const chartToText = a => (a || []).map(r => r[0] + ',' + r[1]).join('\n');
+  PS.parseChart = function (txt) {
+    const rows = [];
+    String(txt || '').split(/\n+/).forEach(line => {
+      const p = line.trim().split(/[\s,;\t]+/).filter(Boolean);
+      if (p.length >= 2) { const d = parseFloat(p[0]), l = parseFloat(p[1]); if (isFinite(d) && isFinite(l)) rows.push([d, l]); }
+    });
+    rows.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < rows.length; i++) if (rows[i][0] === rows[i - 1][0] || rows[i][1] < rows[i - 1][1]) return { error: 'चार्ट में डिप बढ़ने पर लीटर भी बढ़ने चाहिए (पंक्ति ' + (i + 1) + ' जाँचें)' };
+    if (rows.length < 2) return { error: 'चार्ट में कम से कम 2 पंक्तियाँ चाहिए (डिप,लीटर)' };
+    return { rows };
+  };
+  function logoFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const rd = new FileReader(); rd.onerror = reject;
+      rd.onload = () => { const img = new Image(); img.onerror = reject; img.onload = () => { const S = 256, c = document.createElement('canvas'); c.width = S; c.height = S; const k = Math.min(S / img.width, S / img.height); c.getContext('2d').drawImage(img, (S - img.width * k) / 2, (S - img.height * k) / 2, img.width * k, img.height * k); resolve(c.toDataURL('image/png')); }; img.src = rd.result; };
+      rd.readAsDataURL(file);
+    });
+  }
+  PS.settingsCard = function (db) {
+    if (!PS.isCustomPump() || document.getElementById('ps-settings-card')) return;
+    const A = window.APP; if (!(A && A.S && A.S.role === 'owner')) return;
+    const main = document.querySelector('#main'); if (!main) return;
+    const cfg = PS.currentConfig || {}, tk = cfg.tanks || {}, toast = m => { if (A.toast) A.toast(m); };
+    const nzCount = pre => (cfg.activeNozzles || []).filter(k => k.charAt(0) === pre).length;
+    const opts = (n, max) => Array.from({ length: max + 1 }, (_, i) => '<option value="' + i + '"' + (i === n ? ' selected' : '') + '>' + i + '</option>').join('');
+    const f = (id, label, val, extra) => '<label>' + label + '</label><input id="ps-s-' + id + '" value="' + escH(val) + '" ' + (extra || '') + '>';
+    const card = document.createElement('div'); card.id = 'ps-settings-card'; card.className = 'card'; card.style.marginTop = '12px';
+    card.innerHTML = '<h3 style="margin:0 0 6px">🏭 मेरे पंप की सेटिंग</h3>' +
+      '<details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer">📝 पंप की जानकारी (नाम, मोबाइल, पता…)</summary>' +
+      f('name', 'पंप का नाम (हिंदी)', cfg.name) + f('nameEn', 'Pump name (English)', cfg.nameEn) + f('phone', 'मोबाइल नंबर (10 अंक)', cfg.phone, 'inputmode="numeric" maxlength="10"') +
+      f('address', 'पता (हिंदी)', cfg.address) + f('addressEn', 'Address (English)', cfg.addressEn) + f('dealer', 'Dealer / कंपनी', cfg.dealer) + f('roCode', 'RO Code', cfg.roCode) +
+      f('gstin', 'GSTIN', cfg.gstin) + f('fssai', 'FSSAI', cfg.fssai) + f('upi', 'UPI ID', cfg.upi) + f('upiName', 'UPI नाम', cfg.upiName) +
+      '<label>लोगो बदलें (फ़ोटो)</label><input id="ps-s-logo" type="file" accept="image/*">' +
+      '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-s-save-info">💾 जानकारी सेव करें</button></div></details>' +
+      '<details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer">⛽ नोज़ल (मशीन की संख्या)</summary>' +
+      '<div class="mut" style="font-size:12px;margin:6px 0">पेट्रोल और डीज़ल के कितने नोज़ल चालू हैं — हर तरफ़ अधिकतम 20. सेव के बाद हिसाब में उतने ही मीटर दिखेंगे।</div>' +
+      '<div class="row"><div><label>पेट्रोल नोज़ल</label><select id="ps-n-p">' + opts(nzCount('p') || 4, 20) + '</select></div><div><label>डीज़ल नोज़ल</label><select id="ps-n-d">' + opts(nzCount('d') || 4, 20) + '</select></div></div>' +
+      '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-n-save">💾 नोज़ल सेव करें</button></div></details>' +
+      '<details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer">🛢️ टैंक और डिप चार्ट</summary>' +
+      '<div class="mut" style="font-size:12px;margin:6px 0">जितने टैंक हैं उतने जोड़ें — हर टैंक का अपना साइज़ और चार्ट। हिसाब में हर टैंक की डिप का अलग खाना आएगा और कुल स्टॉक अपने-आप जुड़ेगा।</div>' +
+      '<div id="ps-tanks"></div>' +
+      '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-t-save">💾 टैंक/चार्ट सेव करें</button></div></details>' +
+      '<details><summary style="font-weight:700;cursor:pointer">👔 मैनेजर के अधिकार</summary>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="ps-m-full" ' + (cfg.managerFullEdit ? 'checked' : '') + ' style="width:auto"> मैनेजर भी पुराने दिन/जमा हिसाब बदल-मिटा सके, रेट बदल सके और पार्टी जोड़-हटा सके</label>' +
+      '<div class="mut" style="font-size:11px;margin:4px 0">बंद रखने पर मैनेजर सिर्फ़ पिछले 2 दिन के खुले हिसाब बदल सकता है।</div>' +
+      '<div class="btns" style="margin-top:8px"><button class="btn g" id="ps-m-save">💾 सेव करें</button></div></details>';
+    main.insertBefore(card, main.firstChild);
+    const $c = s => card.querySelector(s), val = id => ($c('#' + id) || { value: '' }).value.trim();
+    const save = async (upd, okMsg, reload) => {
+      try { upd.updatedAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('pumps').doc(PS.activePumpId).update(upd); Object.assign(PS.currentConfig, upd); decodeCharts(PS.currentConfig); toast(okMsg); if (reload) setTimeout(() => location.reload(), 700); }
+      catch (e) { toast('सेव नहीं हुआ: ' + (e.message || e)); }
+    };
+    $c('#ps-s-save-info').onclick = async () => {
+      const phone = val('ps-s-phone').replace(/\s+/g, '');
+      if (!val('ps-s-name')) return toast('पंप का नाम लिखें');
+      if (phone && !/^\d{10}$/.test(phone)) return toast('मोबाइल नंबर 10 अंकों का हो');
+      const upd = { name: val('ps-s-name'), nameEn: val('ps-s-nameEn') || val('ps-s-name'), phone, address: val('ps-s-address'), addressEn: val('ps-s-addressEn') || val('ps-s-address'), dealer: val('ps-s-dealer'), roCode: val('ps-s-roCode'), gstin: val('ps-s-gstin'), fssai: val('ps-s-fssai'), upi: val('ps-s-upi'), upiName: val('ps-s-upiName') || val('ps-s-name') };
+      const file = $c('#ps-s-logo').files[0];
+      try { if (file) upd.logoData = await logoFromFile(file); } catch (e) { return toast('लोगो नहीं पढ़ पाए'); }
+      await save(upd, 'जानकारी सेव हो गई ✔', true);
+    };
+    $c('#ps-n-save').onclick = async () => {
+      const p = +val('ps-n-p'), d = +val('ps-n-d');
+      if (p + d < 1) return toast('कम से कम 1 नोज़ल चालू रखें');
+      const list = []; for (let i = 1; i <= p; i++) list.push('p' + i); for (let i = 1; i <= d; i++) list.push('d' + i);
+      await save({ activeNozzles: list }, 'नोज़ल सेव हो गए ✔', true);
+    };
+    /* ---- टैंक एडिटर: हर ईंधन के कितने भी टैंक, हर टैंक का अपना चार्ट ---- */
+    const seed = fuel => {
+      const tl = cfg.tankList && cfg.tankList[fuel];
+      if (Array.isArray(tl) && tl.length) return tl.map(t => ({ name: t.name || '', capacity: t.capacity || '', diameter: t.diameter || '', chart: chartToText(t.chart) }));
+      const ch = cfg.dipCharts && cfg.dipCharts[fuel], t0 = (cfg.tanks && cfg.tanks[fuel]) || {};
+      return (ch && ch.length > 1) ? [{ name: '', capacity: t0.capacity || '', diameter: t0.diameter || '', chart: chartToText(ch) }] : [];
+    };
+    const TS = { petrol: seed('petrol'), diesel: seed('diesel') };
+    const FT = { petrol: '⛽ पेट्रोल टैंक', diesel: '🛢️ डीज़ल टैंक' };
+    const renderTanks = () => {
+      const box = $c('#ps-tanks');
+      box.innerHTML = ['petrol', 'diesel'].map(fuel => {
+        const rows = TS[fuel].map((t, i) =>
+          '<div style="border:1px dashed #cbd5e1;border-radius:10px;padding:8px;margin-top:8px" data-f="' + fuel + '" data-i="' + i + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center"><b>टैंक ' + (i + 1) + '</b><button class="btn sm r" type="button" data-rm="1">🗑 हटाएँ</button></div>' +
+          '<label>नाम (जैसे "बड़ा टैंक")</label><input data-k="name" value="' + escH(t.name) + '" placeholder="टैंक ' + (i + 1) + '">' +
+          '<div class="row"><div><label>क्षमता (L) — 22 KL = 22000</label><input data-k="capacity" inputmode="decimal" value="' + escH(t.capacity) + '"></div>' +
+          '<div><label>व्यास (cm) — न पता हो तो खाली</label><input data-k="diameter" inputmode="decimal" value="' + escH(t.diameter) + '"></div></div>' +
+          '<div class="btns" style="margin-top:6px"><button class="btn sm w" type="button" data-gen="1">⚙️ चार्ट अपने-आप बनाओ</button></div>' +
+          '<label>डिप चार्ट (हर लाइन: डिप cm , लीटर) — कंपनी का असली चार्ट हो तो वही चिपकाएँ</label>' +
+          '<textarea data-k="chart" rows="5" style="width:100%;box-sizing:border-box;font-size:12px" placeholder="0.5,3.3&#10;1,9.35">' + escH(t.chart) + '</textarea>' +
+          '<div class="mut" style="font-size:11px">' + (t.chart ? '✅ चार्ट भरा है' : '⚠️ चार्ट खाली') + '</div></div>').join('');
+        return '<div style="margin-top:10px"><b>' + FT[fuel] + ' (' + TS[fuel].length + ')</b>' + rows +
+          '<div class="btns" style="margin-top:6px"><button class="btn sm o" type="button" data-add="' + fuel + '">➕ ' + (fuel === 'petrol' ? 'पेट्रोल' : 'डीज़ल') + ' टैंक जोड़ें</button></div></div>';
+      }).join('') + '<div class="btns" style="margin-top:10px"><button class="btn g" id="ps-t-save">💾 टैंक/चार्ट सेव करें</button></div>';
+      box.querySelectorAll('[data-i]').forEach(blk => {
+        const fuel = blk.dataset.f, i = +blk.dataset.i, t = TS[fuel][i];
+        blk.querySelectorAll('[data-k]').forEach(inp => inp.oninput = () => { t[inp.dataset.k] = inp.value; });
+        blk.querySelector('[data-rm]').onclick = () => { if (confirm('यह टैंक हटाएँ?')) { TS[fuel].splice(i, 1); renderTanks(); } };
+        blk.querySelector('[data-gen]').onclick = () => {
+          const r = PS.makeChart(t.capacity, t.diameter);
+          if (!r) return toast('पहले टैंक की क्षमता (L) भरें');
+          t.chart = chartToText(r.rows); if (r.estimated) t.diameter = r.dia;
+          renderTanks(); toast(r.estimated ? 'व्यास का अंदाज़ा ' + r.dia + ' cm लिया — असली व्यास पता हो तो भरकर दोबारा बनाएँ' : 'चार्ट बन गया — जाँचकर सेव करें');
+        };
+      });
+      box.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { TS[b.dataset.add].push({ name: '', capacity: '', diameter: '', chart: '' }); renderTanks(); });
+      box.querySelector('#ps-t-save').onclick = async () => {
+        const upd = { tankList: { petrol: [], diesel: [] }, tanks: {}, dipCharts: {} };
+        for (const fuel of ['petrol', 'diesel']) {
+          for (let i = 0; i < TS[fuel].length; i++) {
+            const t = TS[fuel][i], r = PS.parseChart(t.chart);
+            if (r.error) return toast(FT[fuel] + ' ' + (i + 1) + ': ' + r.error);
+            upd.tankList[fuel].push({ name: String(t.name || '').trim() || ('टैंक ' + (i + 1)), capacity: Number(t.capacity) || 0, diameter: Number(t.diameter) || 0, chart: chartToText(r.rows) });
+          }
+          const first = upd.tankList[fuel][0];
+          if (first) { upd.dipCharts[fuel] = first.chart; upd.tanks[fuel] = { capacity: first.capacity, diameter: first.diameter }; }
+        }
+        await save(upd, 'टैंक/चार्ट सेव हो गए ✔', true);
+      };
+    };
+    renderTanks();
+    $c('#ps-m-save').onclick = () => save({ managerFullEdit: $c('#ps-m-full').checked }, 'मैनेजर अधिकार सेव ✔', true);
+  };
+
   /* ---------- 7y. सेल्समैन (नए पंप): PIN ऐप में hash होकर पंप के record में ---------- */
   PS.verifySalesman = async function (smId, pin) {
     await PS.ready;
@@ -369,6 +567,8 @@
       const r = await o2.apply(this, arguments);
       try { if (A.isOwner && A.isOwner()) PS.themeCard(A.db); } catch (e) { }
       try { PS.salesmanCard(A.db); } catch (e) { }
+      try { PS.accessCard(A.db); } catch (e) { }
+      try { PS.settingsCard(A.db); } catch (e) { }
       return r;
     };
   }, 2000);

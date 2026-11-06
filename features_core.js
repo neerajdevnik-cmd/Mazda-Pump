@@ -244,7 +244,7 @@
     try { snap = await db().collection('days').orderBy('date', 'desc').limit(30).get(); }
     catch (e) { main.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return; }
     const days = snap.docs.map(x => x.data()).reverse();
-    const nzKeys = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+    const nzKeys = window.Calc.activeNz();
     const sums = {}; nzKeys.forEach(k => sums[k] = 0);
     const perDay = days.map(d => {
       const out = { date: d.date };

@@ -190,7 +190,7 @@
 
   function createRunsheetModal() {
     const salesmen = C.salesmen || [];
-    const nzKeys = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+    const nzKeys = K.activeNz();
 
     const m = modal(`
       <h3>नई रनशीट बनाएं</h3>

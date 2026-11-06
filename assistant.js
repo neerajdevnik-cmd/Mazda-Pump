@@ -600,7 +600,7 @@ const PERSON = {
       );
     }
 
-    const keys = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+    const keys = (window.Calc ? window.Calc.activeNz() : ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4']);
     let lines = [], bestK = null, maxL = 0;
     keys.forEach(k => {
       if (nz[k] && (n(nz[k].o) > 0 || n(nz[k].c) > 0)) {

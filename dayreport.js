@@ -127,10 +127,10 @@
       </div>
       
       ${title('⛽ पेट्रोल (M.S.) — मीटर')} 
-      ${meterTable(['p1', 'p2', 'p3', 'p4'], o, d, T, 'M.S.', o.litP, d.rateP, o.amtP, 'P')}
+      ${meterTable(window.Calc.nzGroup('p'), o, d, T, 'M.S.', o.litP, d.rateP, o.amtP, 'P')}
       
       ${title('⛽ डीज़ल (HSD) — मीटर')} 
-      ${meterTable(['d1', 'd2', 'd3', 'd4'], o, d, T, 'HSD', o.litD, d.rateD, o.amtD, 'D')}
+      ${meterTable(window.Calc.nzGroup('d'), o, d, T, 'HSD', o.litD, d.rateD, o.amtD, 'D')}
       
       ${title('💰 कैश का हिसाब')} 
       <div style="display:flex;gap:10px">

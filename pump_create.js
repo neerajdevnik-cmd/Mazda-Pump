@@ -12,6 +12,7 @@
   const FIELDS = [
     ['name', 'पंप का नाम (हिंदी)'], ['nameEn', 'Pump name (English)'], ['ownerEmail', 'Owner email (जानकारी)'],
     ['ownerPin', 'Owner PIN (4 अंक)'], ['phone', 'फ़ोन'], ['address', 'पता (हिंदी)'], ['addressEn', 'Address (English)'],
+    ['ownerPass', 'मालिक लॉगिन पासवर्ड (कम से कम 6 अक्षर) — मालिक यहीं से सब खुद सँभालेगा'],
     ['managerPass', 'मैनेजर लॉगिन पासवर्ड (कम से कम 6 अक्षर)'],
     ['viewerPass', 'मालिक-व्यू कोड (4+ अक्षर, वैकल्पिक)'],
     ['upi', 'UPI ID'], ['upiName', 'UPI नाम'], ['dealer', 'Dealer / कंपनी'], ['roCode', 'RO Code'],
@@ -90,6 +91,14 @@
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (logoData) data.logoData = logoData;
+    if (f.ownerPass) {
+      if (f.ownerPass.length < 6) return alert('मालिक पासवर्ड कम से कम 6 अक्षर का हो');
+      const osalt = id + '-o-' + Math.random().toString(36).slice(2, 10);
+      data.ownerSalt = osalt;
+      data.ownerHash = await hashPass(f.ownerPass, osalt);
+    } else if (!editing) {
+      return alert('मालिक लॉगिन पासवर्ड भरें (मालिक इसी से लॉगिन करके पार्टी/सेल्समैन खुद जोड़ेगा)');
+    }
     if (f.managerPass) {
       if (f.managerPass.length < 6) return alert('मैनेजर पासवर्ड कम से कम 6 अक्षर का हो');
       const salt = id + '-' + Math.random().toString(36).slice(2, 10);
@@ -129,7 +138,7 @@
   }
 
   function fieldHTML(k, label, val) {
-    if (k === 'managerPass' || k === 'viewerPass') return `<label style="font-size:11px;color:#cbd5e1;grid-column:span 2;">${label}<input id="pc-${k}" type="password" autocomplete="new-password" value="" placeholder="${val ? 'बदलना हो तो नया लिखें, वरना खाली छोड़ें' : ''}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;"></label>`;
+    if (k === 'managerPass' || k === 'viewerPass' || k === 'ownerPass') return `<label style="font-size:11px;color:#cbd5e1;grid-column:span 2;">${label}<input id="pc-${k}" type="password" autocomplete="new-password" value="" placeholder="${val ? 'बदलना हो तो नया लिखें, वरना खाली छोड़ें' : ''}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;"></label>`;
     return `<label style="font-size:11px;color:#cbd5e1;">${label}<input id="pc-${k}" value="${esc(val)}" style="width:100%;margin-top:3px;padding:8px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px;box-sizing:border-box;"></label>`;
   }
 

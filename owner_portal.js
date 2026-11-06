@@ -231,7 +231,7 @@
 
       <div class="glass-card">
         <h3 style="font-size:14px;">⛽ Nozzle Trend (30 दिन)</h3>
-        ${['p1','p2','p3','p4','d1','d2','d3','d4'].map(k => {
+        ${(window.Calc ? window.Calc.activeNz() : ['p1','p2','p3','p4','d1','d2','d3','d4']).map(k => {
            let sum = 0;
            allDays.slice(0,30).forEach(d => { if(d.nz && d.nz[k] && d.nz[k].o && d.nz[k].c) sum += Math.max(0, Number(d.nz[k].c) - Number(d.nz[k].o) - 5); });
            return `<div class="item-row"><span>${k.toUpperCase()}</span><b>${sum.toFixed(0)} L</b></div>`;

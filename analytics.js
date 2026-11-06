@@ -222,8 +222,8 @@
         daily[k].push(net);
       });
     });
-    const pTotal = ['p1','p2','p3','p4'].reduce((a, k) => a + (totals[k] || 0), 0);
-    const dTotal = ['d1','d2','d3','d4'].reduce((a, k) => a + (totals[k] || 0), 0);
+    const pTotal = K.NZ.filter(k => k[0] === 'p').reduce((a, k) => a + (totals[k] || 0), 0);
+    const dTotal = K.NZ.filter(k => k[0] === 'd').reduce((a, k) => a + (totals[k] || 0), 0);
     const result = {};
     K.NZ.forEach(k => {
       if (!totals[k]) return;
@@ -407,7 +407,7 @@
       groups.forEach(g => {
         if (g.total <= 0) return;
         html += '<div style="margin-top:8px"><b style="color:#0b3d91">' + g.name + ' — कुल ' + lit(g.total) + '</b></div>';
-        ['1', '2', '3', '4'].forEach(n => {
+        K.NZ.filter(x => x[0] === g.prefix).map(x => x.slice(1)).forEach(n => {
           const k = g.prefix + n;
           const nz = nozzleData.byNozzle[k]; if (!nz) return;
           const statusCls = nz.status === 'low' ? 'neg' : nz.status === 'high' ? 'pos' : '';

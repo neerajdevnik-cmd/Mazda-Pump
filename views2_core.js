@@ -102,8 +102,8 @@
       let totLitP = 0, totLitD = 0;
       let totDiffP = 0, totDiffD = 0;
       let totTestP = 0, totTestD = 0;
-      const nzP = { p1: 0, p2: 0, p3: 0, p4: 0 };
-      const nzD = { d1: 0, d2: 0, d3: 0, d4: 0 };
+      const nzP = {}; K.NZ.filter(k => k[0] === 'p').forEach(k => nzP[k] = 0);
+      const nzD = {}; K.NZ.filter(k => k[0] === 'd').forEach(k => nzD[k] = 0);
 
       days.forEach(d => {
         totTankerP += num(d.tankerP);
@@ -160,12 +160,12 @@
 
         <div class="card">
           <h3>⛽ नोज़ल-वाइज पेट्रोल बिक्री</h3>
-          ${['p1','p2','p3','p4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
+          ${K.nzGroup('p').map(k => kvEl(k.toUpperCase(), APP.lit(nzP[k]) + ' (' + pct(nzP[k], totLitP) + ')')).join('')}
         </div>
 
         <div class="card">
           <h3>🛢️ नोज़ल-वाइज डीज़ल बिक्री</h3>
-          ${['d1','d2','d3','d4'].map(k => kvEl(k.toUpperCase(), APP.lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
+          ${K.nzGroup('d').map(k => kvEl(k.toUpperCase(), APP.lit(nzD[k]) + ' (' + pct(nzD[k], totLitD) + ')')).join('')}
         </div>
 
         <div class="card" style="overflow-x:auto">
@@ -265,7 +265,7 @@
         </div>
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0;">
         ${kv('लॉगिन', esc(S.user ? S.user.email : 'Salesman'))}
-        ${kv('भूमिका', APP.isOwner() ? 'मालिक' : 'मैनेजर')}
+        ${kv('भूमिका', (APP.S && APP.S.role === 'owner') ? 'मालिक' : 'मैनेजर')}
         <div class="btns" style="margin-top:12px">
           <button class="btn r full" id="m-logout">लॉगआउट</button>
         </div>

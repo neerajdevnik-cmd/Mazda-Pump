@@ -5,8 +5,10 @@
   const r2 = n => Math.round((num(n) + Number.EPSILON) * 100) / 100;
   const has = v => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
   const isOpening = r => !!r && (r.opening === true || (/Opening Balance/i.test(String(r.note || '')) && !num(r.litre)));
-  const NZ = ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
+  const NZ = []; ['p', 'd'].forEach(pre => { for (let i = 1; i <= 20; i++) NZ.push(pre + i); });  /* हर तरफ़ 20 तक; कौन से चालू हैं वो पंप की सेटिंग (activeNozzles) तय करती है */
   const activeNz = () => { const a = (window.CFG || {}).activeNozzles; return (Array.isArray(a) && a.length) ? NZ.filter(k => a.includes(k)) : NZ.slice(); };
+
+  const nzGroup = pre => activeNz().filter(k => k.charAt(0) === pre);
 
   const BANK_IDS = ['bank_sbi', 'bank_pnb'];
   const isBankParty = p => !!p && (p.isBank === true || BANK_IDS.includes(p.id) || /state bank of india|punjab national bank/i.test(String(p.name || p.partyName || '')));
@@ -105,8 +107,11 @@
 
     let actStockP = null, actStockD = null;
     if (window.DipChart) {
-      if (has(d.dipP)) actStockP = r2(window.DipChart.getLiters('petrol', d.dipP));
-      if (has(d.dipD)) actStockD = r2(window.DipChart.getLiters('diesel', d.dipD));
+      const DC = window.DipChart;   // एक से ज़्यादा टैंक हों तो सबकी डिप का जोड़; कोई डिप खाली हो या चार्ट न हो तो null
+      actStockP = DC.totalLiters ? DC.totalLiters('petrol', d) : null;
+      actStockD = DC.totalLiters ? DC.totalLiters('diesel', d) : null;
+      if (actStockP !== null) actStockP = r2(actStockP);
+      if (actStockD !== null) actStockD = r2(actStockD);
     }
 
     const diffP = (actStockP !== null && expStockP !== null) ? r2(actStockP - expStockP) : null;
@@ -158,7 +163,7 @@
   const signed = e => !e ? 0 : (e.kind === 'udhar' ? r2(num(e.amount)) : -r2(num(e.amount)));
 
   window.Calc = {
-    num, r2, has, isOpening, NZ, activeNz,
+    num, r2, has, isOpening, NZ, activeNz, nzGroup,
     KH, khList, khTotal, khSummary,
     compute, stmt, validate, signed,
     BANK_IDS, isBankParty

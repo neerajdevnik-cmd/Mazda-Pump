@@ -147,6 +147,11 @@
     const isOpeningLocked = chainLock;
     const ro = isOpeningLocked ? 'readonly style="background:#f0f0f0;color:#555;font-weight:bold;"' : '';
 
+    const dipBlock = (fuel, pre) => {          // हर टैंक की अलग डिप (एक ही टैंक हो तो पहले जैसा एक खाना)
+      const DC = window.DipChart, n = (DC && DC.tankCount) ? DC.tankCount(fuel) : 1;
+      const one = i => { const f = (DC && DC.field) ? DC.field(fuel, i) : ('dip' + pre); return `<div style="${i ? 'margin-top:6px' : ''}"><label>आज की डिप${n > 1 ? ' (' + esc(DC.tankName(fuel, i)) + ')' : ''}</label>${inp('f-' + f, d[f])}</div>`; };
+      return n <= 1 ? one(0) : '<div>' + Array.from({ length: n }, (_, i) => one(i)).join('') + '</div>';
+    };
     const inp = (id, v, ph) => `<input id="${id}" inputmode="decimal" value="${esc(v == null ? '' : v)}" placeholder="${ph || ''}" ${dis}>`;
     const nzr = (k, lab) => { 
         const n = (d.nz && d.nz[k]) || {}; 
@@ -181,8 +186,8 @@
       <div><label>टेस्टिंग (L)</label>${inp('f-testing', d.testing)}</div></div></div>
     <div class="card"><h3>मीटर रीडिंग</h3>
       <div class="nz h"><span></span><span>ओपनिंग</span><span>क्लोज़िंग</span><span style="text-align:right">नेट L</span></div>
-      <b class="mut">पेट्रोल</b>${['p1', 'p2', 'p3', 'p4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
-      <b class="mut">डीज़ल</b>${['d1', 'd2', 'd3', 'd4'].filter(k => K.activeNz().includes(k)).map(k => nzr(k, k.toUpperCase())).join('')}
+      <b class="mut">पेट्रोल</b>${K.nzGroup('p').map(k => nzr(k, k.toUpperCase())).join('')}
+      <b class="mut">डीज़ल</b>${K.nzGroup('d').map(k => nzr(k, k.toUpperCase())).join('')}
       <div id="nzwarn"></div>
       ${(!locked && APP.isOwner() && ch) ? `
       <div class="btns" style="margin-top:8px">
@@ -196,7 +201,7 @@
         <div><label>टैंकर आया (L)</label>${inp('f-tankerP', d.tankerP)}</div>
       </div>
       <div class="row" style="margin-top:8px">
-        <div><label>आज की डिप</label>${inp('f-dipP', d.dipP)}</div>
+        ${dipBlock('petrol', 'P')}
         <div><label>डिप के हिसाब से (L)</label><input id="f-actStockP" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
       </div>
       <div id="stkP" style="margin-top:8px"></div>
@@ -208,7 +213,7 @@
         <div><label>टैंकर आया (L)</label>${inp('f-tankerD', d.tankerD)}</div>
       </div>
       <div class="row" style="margin-top:8px">
-        <div><label>आज की डिप</label>${inp('f-dipD', d.dipD)}</div>
+        ${dipBlock('diesel', 'D')}
         <div><label>डिप के हिसाब से (L)</label><input id="f-actStockD" readonly style="background:#f0f0f0;font-weight:bold" value=""></div>
       </div>
       <div id="stkD" style="margin-top:8px"></div>
@@ -327,7 +332,7 @@
       malikDiya: g('f-malikDiya'), note: g('f-note'),
       openStockP: g('f-openStockP'), openStockD: g('f-openStockD'),
       tankerP: g('f-tankerP'), tankerD: g('f-tankerD'), 
-      dipP: g('f-dipP'), dipD: g('f-dipD'), nz: {},
+      dipP: g('f-dipP'), dipD: g('f-dipD'), ...((window.DipChart && window.DipChart.extraFields) ? window.DipChart.extraFields(g) : {}), nz: {},
       physicalCash: $('#f-physicalCash') ? g('f-physicalCash') : (st.d.physicalCash == null ? '' : st.d.physicalCash),
       opening_locked: st.d.opening_locked !== false,
       kharchaItems: $('#expbox')

@@ -88,17 +88,8 @@
       <div class="card">
         <h3>⛽ मीटर रीडिंग (Current)</h3>
         <div class="mut" style="font-size:12px;margin-bottom:8px;">नई सेल अपडेट करने के लिए आज की क्लोज़िंग डालें</div>
-        <div class="row">
-          <div><label>P1</label><input class="md-nz" data-k="p1" inputmode="decimal" value="${esc((d.nz && d.nz['p1'] && d.nz['p1'].c) || '')}"></div>
-          <div><label>P2</label><input class="md-nz" data-k="p2" inputmode="decimal" value="${esc((d.nz && d.nz['p2'] && d.nz['p2'].c) || '')}"></div>
-          <div><label>P3</label><input class="md-nz" data-k="p3" inputmode="decimal" value="${esc((d.nz && d.nz['p3'] && d.nz['p3'].c) || '')}"></div>
-          <div><label>P4</label><input class="md-nz" data-k="p4" inputmode="decimal" value="${esc((d.nz && d.nz['p4'] && d.nz['p4'].c) || '')}"></div>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <div><label>D1</label><input class="md-nz" data-k="d1" inputmode="decimal" value="${esc((d.nz && d.nz['d1'] && d.nz['d1'].c) || '')}"></div>
-          <div><label>D2</label><input class="md-nz" data-k="d2" inputmode="decimal" value="${esc((d.nz && d.nz['d2'] && d.nz['d2'].c) || '')}"></div>
-          <div><label>D3</label><input class="md-nz" data-k="d3" inputmode="decimal" value="${esc((d.nz && d.nz['d3'] && d.nz['d3'].c) || '')}"></div>
-          <div><label>D4</label><input class="md-nz" data-k="d4" inputmode="decimal" value="${esc((d.nz && d.nz['d4'] && d.nz['d4'].c) || '')}"></div>
+        <div class="row" style="display:grid;grid-template-columns:repeat(4,1fr)">
+          ${window.Calc.activeNz().map(k => `<div><label>${k.toUpperCase()}</label><input class="md-nz" data-k="${k}" inputmode="decimal" value="${esc((d.nz && d.nz[k] && d.nz[k].c) || '')}"></div>`).join('')}
         </div>
         <div class="btns" style="margin-top:10px"><button class="btn o" id="md-save-nz">💾 सेल अपडेट करें</button></div>
       </div>
