@@ -37,7 +37,7 @@
   function requestedPumpId() {
     try {
       const p = new URLSearchParams(window.location.search), q = p.get('pump') || p.get('p');
-      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''); if (c) { try { localStorage.setItem('mazda_active_pump', c); } catch (e) { } return c; } }
+      if (q) { const c = q.toLowerCase().trim().replace(/[^a-z0-9_-]/g, ''); if (c) { try { localStorage.setItem('mazda_active_pump', c); } catch (e) { } return c; } }
     } catch (e) { }
     return MAZDA;   // पंप ID सिर्फ़ URL (?p=) से; पुरानी localStorage से कभी नहीं
   }
