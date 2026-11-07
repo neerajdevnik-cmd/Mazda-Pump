@@ -202,6 +202,7 @@
       <div class="row" style="margin-top:8px">
         <div><label>आज का पेट्रोल रेट</label><input id="rs-rateP" inputmode="decimal" value="${S.rates.petrol || ''}"></div>
         <div><label>आज का डीज़ल रेट</label><input id="rs-rateD" inputmode="decimal" value="${S.rates.diesel || ''}"></div>
+        ${K.powerOn() ? `<div><label>आज का पावर रेट</label><input id="rs-rateX" inputmode="decimal" value="${S.rates.power || C.defaultRateX || ''}"></div>` : ''}
       </div>
       <label style="margin-top:10px;">मीटर चुनें और ओपनिंग रीडिंग डालें</label>
       <div id="rs-nz-grid" style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:6px;">
@@ -251,7 +252,9 @@
       if (missingOpen) return toast('चुने गए सभी मीटर की ओपनिंग रीडिंग डालें');
 
       const rateP = num($('#rs-rateP', m).value), rateD = num($('#rs-rateD', m).value);
+      const rateX = K.powerOn() ? num($('#rs-rateX', m) && $('#rs-rateX', m).value) : 0;
       if (!(rateP > 0) || !(rateD > 0)) return toast('आज का पेट्रोल व डीज़ल रेट भरें');
+      if (K.powerOn() && !(rateX > 0)) return toast('आज का पावर रेट भरें');
       const snap = await db().collection('runsheets').where('status', '==', 'active').get();
       const activeNz = [];
       snap.docs.forEach(d => { activeNz.push(...d.data().nozzles); });
@@ -261,11 +264,11 @@
 
       try {
         await db().collection('runsheets').add({
-          date: today(), sid: sid, salesmanName: smObj.name, nozzles: selectedNz, openings: openings, rateP, rateD,
+          date: today(), sid: sid, salesmanName: smObj.name, nozzles: selectedNz, openings: openings, rateP, rateD, rateX: K.powerOn() ? rateX : null,
           status: 'active', startTime: APP.nowTime(), createdAt: APP.FV.serverTimestamp(),
           createdBy: S.user ? S.user.email : 'manager'
         });
-        S.rates = { petrol: rateP, diesel: rateD }; S.ratesSetAt = today(); S.smRates = null;
+        S.rates = { petrol: rateP, diesel: rateD, power: rateX || S.rates.power || 0 }; S.ratesSetAt = today(); S.smRates = null;
         m.close(); toast('रनशीट शुरू हो गई ✔'); APP.views.runsheet();
       } catch (e) { toast('एरर: ' + e.message); }
     };

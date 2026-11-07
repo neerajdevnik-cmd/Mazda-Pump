@@ -21,7 +21,7 @@
 
   async function latestRates() {
     if (S.smRates && Date.now() - (S.smRatesAt || 0) < 600000) return S.smRates;
-    const r = { rateP: S.rates.petrol, rateD: S.rates.diesel };
+    const r = { rateP: S.rates.petrol, rateD: S.rates.diesel, rateX: S.rates.power || 0 };
     try {
       const s = await db().collection('days').orderBy('date', 'desc').limit(1).get();
       if (!s.empty) { const d = s.docs[0].data(); if (num(d.rateP)) r.rateP = d.rateP; if (num(d.rateD)) r.rateD = d.rateD; }
@@ -51,7 +51,7 @@
 
     const rows = rs ? rs.docs.map(x => ({ id: x.id, ...x.data() })).filter(r => r.kind === 'udhar' && (!activeRs || !r.rsId || r.rsId === activeRs.id)) : [];
     const base = {
-      sid, name: sm.name, date, status: 'open', rsId: activeRs ? activeRs.id : null, rateP: (activeRs && num(activeRs.rateP)) || rates.rateP, rateD: (activeRs && num(activeRs.rateD)) || rates.rateD,
+      sid, name: sm.name, date, status: 'open', rsId: activeRs ? activeRs.id : null, rateP: (activeRs && num(activeRs.rateP)) || rates.rateP, rateD: (activeRs && num(activeRs.rateD)) || rates.rateD, rateX: (activeRs && num(activeRs.rateX)) || S.rates.power || 0,
       testing: C.testing != null ? C.testing : 5, nz: {}, paytm: '', swipe: '', expLabel: '', expAmt: '', note: ''
     };
     const doc = Object.assign(base, snap.exists ? snap.data() : {});
@@ -248,14 +248,14 @@
     let parties;
     try { parties = await APP.getParties(false, true); } catch (e) { return toast('पार्टी लिस्ट नहीं मिली'); }
     if (!parties.length) return toast('पार्टी लिस्ट खाली है');
-    const rates = { petrol: num(ST && ST.doc.rateP) || S.rates.petrol, diesel: num(ST && ST.doc.rateD) || S.rates.diesel };
+    const rates = { petrol: num(ST && ST.doc.rateP) || S.rates.petrol, diesel: num(ST && ST.doc.rateD) || S.rates.diesel, power: num(ST && ST.doc.rateX) || S.rates.power || 0 };
     
     const m = modal(`<h3>🚚 उधार लिखें</h3>
       <div class="mut">${dmy(date)} · ${esc(S.salesman.name)}</div>
       <label>पार्टी खोजें (नाम या गाड़ी नंबर)</label><input id="su-q" placeholder="टाइप करें…" autocomplete="off">
       <label>पार्टी</label><select id="su-p"></select>
       <label>गाड़ी नंबर</label><select id="su-v"></select><input id="su-vx" placeholder="गाड़ी नंबर टाइप करें" style="display:none;margin-top:6px;text-transform:uppercase">
-      <div class="row"><div><label>तेल</label><select id="su-f"><option value="petrol">पेट्रोल</option><option value="diesel">डीज़ल</option></select></div>
+      <div class="row"><div><label>तेल</label><select id="su-f"><option value="petrol">पेट्रोल</option><option value="diesel">डीज़ल</option>${rates.power > 0 ? '<option value="power">पावर</option>' : ''}</select></div>
       <div><label>रेट</label><input id="su-r" inputmode="decimal"></div></div>
       <div class="row"><div><label>लीटर</label><input id="su-l" inputmode="decimal"></div><div><label>रुपये</label><input id="su-a" inputmode="decimal"></div></div>
       <label>नोट</label><input id="su-n">

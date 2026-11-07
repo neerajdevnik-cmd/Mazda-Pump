@@ -16,7 +16,7 @@
     ['managerPass', 'मैनेजर लॉगिन पासवर्ड (कम से कम 6 अक्षर)'],
     ['viewerPass', 'मालिक-व्यू कोड (4+ अक्षर, वैकल्पिक)'],
     ['upi', 'UPI ID'], ['upiName', 'UPI नाम'], ['dealer', 'Dealer / कंपनी'], ['roCode', 'RO Code'],
-    ['gstin', 'GSTIN'], ['fssai', 'FSSAI'], ['rateP', 'Petrol रेट'], ['rateD', 'Diesel रेट']
+    ['gstin', 'GSTIN'], ['fssai', 'FSSAI'], ['rateP', 'Petrol रेट'], ['rateD', 'Diesel रेट'], ['rateX', 'Power रेट']
   ];
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,7 +87,7 @@
       name: f.name, nameEn: f.nameEn || f.name, brand: f.brand, dealer: f.dealer, roCode: f.roCode,
       gstin: f.gstin, fssai: f.fssai, address: f.address, addressEn: f.addressEn || f.address,
       phone: f.phone, upi: f.upi, upiName: f.upiName || f.name, ownerEmail: f.ownerEmail, ownerPin: f.ownerPin,
-      rates: { petrol: Number(f.rateP) || 100.23, diesel: Number(f.rateD) || 95.68 },
+      rates: { petrol: Number(f.rateP) || 100.23, diesel: Number(f.rateD) || 95.68, power: Number(f.rateX) || 0 },
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (logoData) data.logoData = logoData;
@@ -145,7 +145,7 @@
   function formHTML(pid, data, editing) {
     const d = data || {};
     const r = d.rates || {};
-    const vals = { ...d, rateP: r.petrol ?? 100.23, rateD: r.diesel ?? 95.68, ownerPin: d.ownerPin || randPin() };
+    const vals = { ...d, rateP: r.petrol ?? 100.23, rateD: r.diesel ?? 95.68, rateX: r.power ?? 0, ownerPin: d.ownerPin || randPin() };
     return `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         ${editing ? `<div style="grid-column:span 2;font-size:12px;color:#94a3b8;">Pump ID: <b style="color:#fff;">${esc(pid)}</b></div>`

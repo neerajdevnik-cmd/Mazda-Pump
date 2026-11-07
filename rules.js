@@ -283,26 +283,32 @@
  }  
  function bookModal() { const m = APP.modal('<h3>📜 नियम पुस्तिका</h3>' + BOOK.map(r => '<div style="padding:5px 0;border-bottom:1px dashed #e3e8f2;font-size:13.5px"><b>' + r[0] + '</b> · ' + APP.esc(r[1]) + '</div>').join('') + '<div class="btns" style="margin-top:10px"><button class="btn w" id="bk-x">बंद</button></div>'); m.querySelector('#bk-x').onclick = () => m.close(); }  
   
- function rateModal() {  
- if (role() !== 'owner') return APP.toast('नया रेट सिर्फ़ मालिक लगा सकता है');  
- const m = APP.modal('<h3>💰 नया रेट (मालिक)</h3><p class="mut" style="font-size:12px">आज के हिसाब से रेट बदलेगा और आगे के सब नए दिनों में यही चलेगा। पुराने दिन नहीं बदलते।</p><div class="row"><div><label>पेट्रोल ₹/L</label><input id="rt-p" inputmode="decimal"></div><div><label>डीज़ल ₹/L</label><input id="rt-d" inputmode="decimal"></div></div><div class="btns" style="margin-top:12px"><button class="btn g" id="rt-ok">✅ लागू करें</button><button class="btn w" id="rt-no">रद्द</button></div>');  
- m.querySelector('#rt-no').onclick = () => m.close();  
- m.querySelector('#rt-ok').onclick = async () => {  
- const p = num(m.querySelector('#rt-p').value), d = num(m.querySelector('#rt-d').value); if (!(p > 0) || !(d > 0)) return APP.toast('दोनों रेट भरें');  
- if (!confirm('रेट ' + p + ' / ' + d + ' लागू करें? ये आज से सब जगह चलेगा।')) return;  
- try {  
- const dy = await dayDoc(today()); if (dy && dy.status === 'submitted') return APP.toast('आज का दिन लॉक है — पहले अनलॉक करें');  
- APP.Rules.sys = true; try { await db.collection('days').doc(today()).set({ date: today(), rateP: p, rateD: d, status: (dy && dy.status) || 'open' }, { merge: true }); } finally { APP.Rules.sys = false; }  
- await db.collection('rate_history').add({ date: today(), rateP: p, rateD: d, by: (S.user && S.user.email) || '', at: FV.serverTimestamp() });  
- APP.S.rates = { petrol: p, diesel: d }; APP.S.ratesSetAt = today(); m.close(); APP.toast('नया रेट लागू ✔'); if (APP.go) APP.go('day');  
- } catch (e) { APP.toast(e.message); }  
- };  
- }  
- APP.Rules = { rateModal, BOOK, check, gate, audit, sys: false, parseNote, saveBankParty, bankModal, bankNote };  
-  
- let tm = null;  
- const add = (id, txt, fn, host, cls) => { if (document.getElementById(id)) return; const b = document.createElement('button'); b.id = id; b.type = 'button'; b.className = 'btn ' + (cls || 'w'); b.style.cssText = 'margin-top:10px;width:100%'; b.textContent = txt; b.onclick = fn; host.appendChild(b); };  
- function buttons() {  
+ function rateModal() {
+ if (role() !== 'owner') return APP.toast('नया रेट सिर्फ़ मालिक लगा सकता है');
+ const hasPower = !!(APP.K && APP.K.powerOn && APP.K.powerOn());
+ const m = APP.modal('<h3>💰 नया रेट (मालिक)</h3><p class="mut" style="font-size:12px">आज के हिसाब से रेट बदलेगा और आगे के सब नए दिनों में यही चलेगा। पुराने दिन नहीं बदलते।</p>' +
+   '<div class="row"><div><label>पेट्रोल ₹/L</label><input id="rt-p" inputmode="decimal" value="' + (APP.S.rates.petrol || '') + '"></div>' +
+   '<div><label>डीज़ल ₹/L</label><input id="rt-d" inputmode="decimal" value="' + (APP.S.rates.diesel || '') + '"></div></div>' +
+   (hasPower ? '<label>पावर ₹/L</label><input id="rt-x" inputmode="decimal" value="' + (APP.S.rates.power || '') + '">' : '') +
+   '<div class="btns" style="margin-top:12px"><button class="btn g" id="rt-ok">✅ लागू करें</button><button class="btn w" id="rt-no">रद्द</button></div>');
+ m.querySelector('#rt-no').onclick = () => m.close();
+ m.querySelector('#rt-ok').onclick = async () => {
+  const p = num(m.querySelector('#rt-p').value), d = num(m.querySelector('#rt-d').value);
+  const x = hasPower ? num(m.querySelector('#rt-x').value) : 0;
+  if (!(p > 0) || !(d > 0) || (hasPower && !(x > 0))) return APP.toast(hasPower ? 'तीनों रेट भरें' : 'दोनों रेट भरें');
+  if (!confirm('रेट ' + p + ' / ' + d + (hasPower ? ' / ' + x : '') + ' लागू करें? ये आज से सब जगह चलेगा।')) return;
+  try {
+   const dy = await dayDoc(today()); if (dy && dy.status === 'submitted') return APP.toast('आज का दिन लॉक है — पहले अनलॉक करें');
+   const fields = { date: today(), rateP: p, rateD: d, status: (dy && dy.status) || 'open' };
+   if (hasPower) fields.rateX = x;
+   APP.Rules.sys = true; try { await db.collection('days').doc(today()).set(fields, { merge: true }); } finally { APP.Rules.sys = false; }
+   await db.collection('rate_history').add({ date: today(), rateP: p, rateD: d, rateX: hasPower ? x : null, by: (S.user && S.user.email) || '', at: FV.serverTimestamp() });
+   APP.S.rates = { petrol: p, diesel: d, power: hasPower ? x : (APP.S.rates.power || 0) }; APP.S.ratesSetAt = today(); m.close(); APP.toast('नया रेट लागू ✔'); if (APP.go) APP.go('day');
+  } catch (e) { APP.toast(e.message); }
+ };
+}
+
+function buttons() {  
  const main = document.getElementById('main'); if (!main || role() === 'salesman') return;  
  if (S.tab === 'more' && role() !== 'viewer') { add('rl-bank', '🏦 पार्टी का बैंक जमा जोड़ें', bankModal, main, 'g'); if (role() === 'owner') add('rl-rate', '💰 नया रेट लगाएँ (मालिक)', rateModal, main, 'o'); add('rl-audit', '🔍 नियम जाँच (रेट / बैलेंस)', auditModal, main); add('rl-book', '📜 नियम पुस्तिका', bookModal, main); }  
  if (S.tab === 'more' && role() === 'viewer') add('rl-book', '📜 नियम पुस्तिका', bookModal, main);  

@@ -153,7 +153,7 @@
     cfg.brand = PS.BRANDS[d.brand] ? d.brand : (d.customLogo ? 'custom' : 'bpcl');
     cfg.dealer = d.dealer || b.dealer; cfg.address = d.address || ''; cfg.addressEn = d.addressEn || d.address || '';
     cfg.activeNozzles = (Array.isArray(d.activeNozzles) && d.activeNozzles.length) ? d.activeNozzles : ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
-    cfg.rates = (d.rates && Number(d.rates.petrol) > 0 && Number(d.rates.diesel) > 0) ? { petrol: Number(d.rates.petrol), diesel: Number(d.rates.diesel) } : { petrol: Number(C.defaultRateP) || 0, diesel: Number(C.defaultRateD) || 0 };
+    cfg.rates = (d.rates && Number(d.rates.petrol) > 0 && Number(d.rates.diesel) > 0) ? { petrol: Number(d.rates.petrol), diesel: Number(d.rates.diesel), power: Number(d.rates.power) || 0 } : { petrol: Number(C.defaultRateP) || 0, diesel: Number(C.defaultRateD) || 0 };
     cfg.logo = PS.logoFor(cfg);
     cfg.logos = PS.slotLogos(cfg);
     return cfg;
@@ -190,6 +190,10 @@
       const p = C.pump || {};
       cfg = { id: MAZDA, isMain: true, name: p.name || 'माज़दा ऑयल कंपनी', nameEn: p.nameEn || 'Mazda Oil Company', brand: 'bpcl', dealer: p.dealer || 'Bharat Petroleum Dealer', address: p.address || '', addressEn: p.addressEn || '', phone: p.phone || '', upi: p.upi || '', upiName: p.upiName || '', ownerEmail: C.ownerEmail, ownerPin: C.ownerPin, activeNozzles: C.activeNozzles || ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'], rates: { petrol: C.defaultRateP, diesel: C.defaultRateD }, logo: './logo.png' };
     }
+    /* ऐप से अपलोड किए गए लोगो (pumps/<id>/logos/<slot>) — फ़ाइल वाले लोगो की जगह लेते हैं */
+    if (PS.isCustomPump() && db && cfg.logos) {
+      try { const ls = await db.collection('logos').get(); ls.forEach(d => { const v = d.data() && d.data().data; if (v && Object.prototype.hasOwnProperty.call(cfg.logos, d.id)) cfg.logos[d.id] = v; }); if (cfg.logos.login) cfg.logo = cfg.logos.login; } catch (e) { console.warn('[logos] load', e); }
+    }
     PS.currentConfig = cfg;
     PS.applyTheme(PS.isCustomPump() ? (cfg.theme || cfg.brand || 'bpcl') : PS.savedMazdaTheme());
     if (PS.isCustomPump() && window.CFG) {           // माज़दा के पुराने डेटा कभी दूसरे पंप में न दिखें
@@ -199,7 +203,7 @@
       window.CFG.activeNozzles = cfg.activeNozzles;
       window.CFG.salesmen = Array.isArray(cfg.salesmen) ? cfg.salesmen : [];
       if (cfg.rates.petrol > 0) { window.CFG.defaultRateP = cfg.rates.petrol; window.CFG.defaultRateD = cfg.rates.diesel; }
-      try { const A = window.APP; if (A && A.S && cfg.rates.petrol > 0) A.S.rates = { petrol: cfg.rates.petrol, diesel: cfg.rates.diesel }; } catch (e) { }
+      try { const A = window.APP; if (A && A.S && cfg.rates.petrol > 0) A.S.rates = { petrol: cfg.rates.petrol, diesel: cfg.rates.diesel, power: cfg.rates.power || 0 }; } catch (e) { }
       installPatches();
     } else if (window.CFG) { window.CFG.pump = Object.assign({}, window.CFG.pump, { logo: './logo.png' }); }
     document.title = cfg.name + ' - स्मार्ट पंप पोर्टल';
