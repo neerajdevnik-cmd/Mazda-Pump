@@ -169,7 +169,7 @@
 
   function headerLogo() {
     const h = document.querySelector('header'); if (!h || h.querySelector('.hdr-logo')) return;
-    const im = new Image(); im.className = 'hdr-logo'; im.alt = ''; im.src = './logo.png';
+    const im = new Image(); im.className = 'hdr-logo'; im.alt = ''; im.src = (window.pumpLogoSlot ? window.pumpLogoSlot('header') : './logo.png');
     im.onerror = () => im.remove();
     h.insertBefore(im, h.firstChild);
   }

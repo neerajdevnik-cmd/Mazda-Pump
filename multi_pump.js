@@ -101,13 +101,38 @@
   PS.isCustomPump = () => PS.activePumpId !== MAZDA;
 
   /* पंप के लिए सही लोगो: कस्टम (अपलोड) → नहीं तो ब्रांड → नहीं तो BPCL */
+  /* हर पंप की logo फ़ाइलें — नाम से अपनी जगह पर सेट होती हैं
+     pump-logos/<पंप-ID>/<फ़ाइल> . नई पंप जोड़ें तो यहाँ एक एंट्री जोड़ें */
+  PS.LOGO_SLOTS = {
+    'gurunanak-pump': {
+      login: 'round.png',        // लॉगिन स्क्रीन पर गोल लोगो
+      header: 'small.png',       // ऊपर का छोटा लोगो
+      bill: 'square.png',        // बिल/प्रिंट के लिए चौकोर लोगो
+      banner: 'banner.png',      // चौड़ा बैनर
+      favicon: 'favicon.png',    // ब्राउज़र टैब का आइकन
+      apple: 'apple-touch.png',  // iPhone होम स्क्रीन आइकन
+      icon192: 'app-192.png',    // Android होम स्क्रीन (192)
+      icon512: 'app-512.png'     // Android होम स्क्रीन (512)
+    }
+  };
+  PS.slotLogos = function (cfg) {
+    const m = cfg && PS.LOGO_SLOTS[cfg.id]; if (!m) return null;
+    const base = './pump-logos/' + cfg.id + '/', o = {};
+    Object.keys(m).forEach(k => { o[k] = base + m[k]; });
+    return o;
+  };
+
   PS.logoFor = function (cfg) {
     if (!cfg) return PS.LOGOS.bpcl;
     if (cfg.id === MAZDA || cfg.isMain) return './logo.png';
+    const sl = PS.slotLogos(cfg); if (sl) return sl.login;
     const c = cfg.customLogo || cfg.logoData || '';
     if (c && (c.indexOf('data:image') === 0 || /^https?:/.test(c))) return c;
     return PS.LOGOS[cfg.brand] && cfg.brand !== 'custom' ? PS.LOGOS[cfg.brand] : PS.LOGOS.bpcl;
   };
+  /* किसी भी screen से: pumpLogoSlot('bill' | 'header' | 'login' | 'banner') — Mazda पर पुराना ./logo.png */
+  PS.logoSlot = function (name) { const c = PS.currentConfig; return (c && c.logos && c.logos[name]) || './logo.png'; };
+  window.pumpLogoSlot = PS.logoSlot;
   PS.getLogo = () => (PS.currentConfig && PS.currentConfig.logo) || './logo.png';
 
   /* ---------- 3. पंप की सेटिंग लोड करके पूरे ऐप पर लगाना ---------- */
@@ -130,6 +155,7 @@
     cfg.activeNozzles = (Array.isArray(d.activeNozzles) && d.activeNozzles.length) ? d.activeNozzles : ['p1', 'p2', 'p3', 'p4', 'd1', 'd2', 'd3', 'd4'];
     cfg.rates = (d.rates && Number(d.rates.petrol) > 0 && Number(d.rates.diesel) > 0) ? { petrol: Number(d.rates.petrol), diesel: Number(d.rates.diesel) } : { petrol: Number(C.defaultRateP) || 0, diesel: Number(C.defaultRateD) || 0 };
     cfg.logo = PS.logoFor(cfg);
+    cfg.logos = PS.slotLogos(cfg);
     return cfg;
   }
   PS.initBranding = async function (db) {
@@ -249,6 +275,14 @@
   PS.updateIcons = function () {
     const cfg = PS.currentConfig; if (!cfg || !PS.isCustomPump()) return;
     const setLink = (rel, href, extra) => { let l = document.querySelector('link[rel="' + rel + '"]'); if (!l) { l = document.createElement('link'); l.rel = rel; document.head.appendChild(l); } if (extra) Object.keys(extra).forEach(k => l.setAttribute(k, extra[k])); l.href = href; };
+    if (cfg.logos) {
+      setLink('icon', cfg.logos.favicon, { type: 'image/png' });
+      setLink('apple-touch-icon', cfg.logos.apple);
+      const man = { name: cfg.name, short_name: cfg.name.slice(0, 14), start_url: new URL(location.pathname + '?p=' + PS.activePumpId, location.origin).href, scope: new URL(location.pathname.replace(/[^\/]*$/, ''), location.origin).href, display: 'standalone', orientation: 'portrait', background_color: '#ffffff', theme_color: '#0b3d91',
+        icons: [{ src: new URL(cfg.logos.icon192, location.href).href, sizes: '192x192', type: 'image/png' }, { src: new URL(cfg.logos.icon512, location.href).href, sizes: '512x512', type: 'image/png' }] };
+      setLink('manifest', URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' })));
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       const mk = size => { const cv = document.createElement('canvas'); cv.width = cv.height = size; const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, size, size); const s = Math.min(size * 0.9 / img.width, size * 0.9 / img.height); const w = img.width * s, h = img.height * s; x.drawImage(img, (size - w) / 2, (size - h) / 2, w, h); return cv.toDataURL('image/png'); };

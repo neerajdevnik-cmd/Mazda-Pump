@@ -23,7 +23,7 @@
     const html = `
       <div id="inv-node" style="background:#fff; padding:20px; color:#333; font-family:'Noto Sans Devanagari',sans-serif; max-width:400px; margin:0 auto; border:1px solid #ddd; border-radius:10px;">
         <div style="text-align:center; border-bottom:2px solid #0b3d91; padding-bottom:10px; margin-bottom:10px;">
-          <img src="./logo.png" style="width:60px;height:60px;border-radius:50%;">
+          <img src="${pumpLogoSlot('bill')}" style="width:60px;height:60px;border-radius:50%;">
           <h2 style="margin:5px 0; color:#0b3d91; font-size:18px;">${esc(C.pump.name)}</h2>
           <div style="font-size:11px; color:#666;">${esc(C.pump.address)}</div>
           <div style="font-size:11px; color:#666;">Ph: ${esc(C.pump.phone)}</div>

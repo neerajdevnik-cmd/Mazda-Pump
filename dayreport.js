@@ -104,7 +104,7 @@
 
     return `
       <div style="display:flex;align-items:center;gap:14px;border-bottom:5px solid ${NAVY};padding-bottom:12px">
-        <img src="./logo.png" crossorigin="anonymous" style="width:60px;height:60px;border-radius:50%">
+        <img src="${pumpLogoSlot('bill')}" crossorigin="anonymous" style="width:60px;height:60px;border-radius:50%">
         <div style="flex:1;min-width:0">
           <div style="font-size:26px;font-weight:900;color:${NAVY}">${esc(C.pump.name)}</div>
           <div style="font-size:15px;color:${MUT}">दैनिक हिसाब</div>

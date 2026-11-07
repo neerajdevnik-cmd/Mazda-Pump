@@ -187,7 +187,7 @@
 
       const contHead = pg => `
         <div class="hd mini">
-          <div class="hd-l"><img src="./logo.png" class="lg sm" alt=""><div><div class="co s">${esc(C.pump.nameEn)}</div><div class="ad">${esc(p.name)} · ${dmy(from)} से ${dmy(to)}</div></div></div>
+          <div class="hd-l"><img src="${pumpLogoSlot('header')}" class="lg sm" alt=""><div><div class="co s">${esc(C.pump.nameEn)}</div><div class="ad">${esc(p.name)} · ${dmy(from)} से ${dmy(to)}</div></div></div>
           <div class="hd-r"><div class="ti s">ACCOUNT STATEMENT</div><div class="mt">${no}</div></div>
         </div>`;
 
